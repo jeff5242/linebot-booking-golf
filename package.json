@@ -1,0 +1,24 @@
+{
+  "name": "linebot-booking-golf",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "line-bot",
+    "booking",
+    "golf"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "LINE Bot for golf booking",
+  "dependencies": {
+    "@line/bot-sdk": "^10.5.0",
+    "concurrently": "^9.2.1",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1"
+  }
+}
