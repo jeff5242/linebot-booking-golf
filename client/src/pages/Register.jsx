@@ -23,7 +23,7 @@ export function Register() {
             const lineUserId = localStorage.getItem('line_user_id') || mockLiffId;
 
             // 2. Insert into Supabase
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from('users')
                 .insert([
                     {
@@ -31,14 +31,26 @@ export function Register() {
                         display_name: formData.name,
                         phone: formData.phone
                     }
-                ]);
+                ])
+                .select();
 
-            if (error) throw error;
+            if (error) {
+                console.error('Registration error:', error);
+                alert('註冊失敗: ' + error.message);
+                return;
+            }
 
-            // 3. Save locally and redirect
+            // 3. Save locally
             localStorage.setItem('golf_user_phone', formData.phone);
-            navigate('/');
+            localStorage.setItem('golf_user_name', formData.name);
+
+            alert('註冊成功！');
+
+            // 4. Force reload to ensure App.jsx re-checks user status
+            window.location.href = '/';
+
         } catch (error) {
+            console.error('Unexpected error:', error);
             alert('Error registering: ' + error.message);
         } finally {
             setLoading(false);
