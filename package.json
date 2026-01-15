@@ -4,8 +4,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "install": "cd client && npm install",
+    "build": "cd client && npm run build",
+    "dev": "cd client && npm run dev"
   },
   "keywords": [
     "line-bot",
