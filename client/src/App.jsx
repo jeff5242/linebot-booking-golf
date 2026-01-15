@@ -4,6 +4,7 @@ import { Register } from './pages/Register';
 import { Booking } from './pages/Booking';
 import { MyBookings } from './pages/MyBookings';
 import { AdminDashboard } from './pages/Admin';
+import { HealthCheck } from './pages/HealthCheck';
 import { supabase } from './supabase';
 
 import liff from '@line/liff';
@@ -77,6 +78,7 @@ function App() {
       <Routes>
         <Route path="/register" element={<Register />} />
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/health" element={<HealthCheck />} />
         <Route path="/my-bookings" element={
           <ProtectedRoute>
             <MyBookings />
