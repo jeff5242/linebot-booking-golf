@@ -32,13 +32,42 @@ export function Booking() {
     }, []);
 
     const loadMainUser = async () => {
-        const phone = localStorage.getItem('golf_user_phone');
-        if (phone) {
-            const { data } = await supabase.from('users').select('display_name, phone').eq('phone', phone).single();
-            if (data) {
+        try {
+            const phone = localStorage.getItem('golf_user_phone');
+            const name = localStorage.getItem('golf_user_name');
+
+            if (phone) {
+                // Try to get from database first
+                const { data, error } = await supabase
+                    .from('users')
+                    .select('display_name, phone')
+                    .eq('phone', phone)
+                    .single();
+
+                if (data && !error) {
+                    setPlayers(prev => {
+                        const newPlayers = [...prev];
+                        newPlayers[0] = { name: data.display_name || name || '', phone: data.phone };
+                        return newPlayers;
+                    });
+                } else if (name && phone) {
+                    // Fallback to localStorage if DB query fails
+                    setPlayers(prev => {
+                        const newPlayers = [...prev];
+                        newPlayers[0] = { name: name, phone: phone };
+                        return newPlayers;
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error loading user:', error);
+            // Fallback to localStorage
+            const phone = localStorage.getItem('golf_user_phone');
+            const name = localStorage.getItem('golf_user_name');
+            if (name && phone) {
                 setPlayers(prev => {
                     const newPlayers = [...prev];
-                    newPlayers[0] = { name: data.display_name, phone: data.phone };
+                    newPlayers[0] = { name: name, phone: phone };
                     return newPlayers;
                 });
             }

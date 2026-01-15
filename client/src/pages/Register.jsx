@@ -82,11 +82,17 @@ export function Register() {
                         <label className="form-label">手機號碼</label>
                         <input
                             type="tel"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             className="form-input"
                             required
                             placeholder="0912345678"
+                            maxLength="10"
                             value={formData.phone}
-                            onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                            onChange={e => {
+                                const value = e.target.value.replace(/[^0-9]/g, '');
+                                setFormData({ ...formData, phone: value });
+                            }}
                         />
                     </div>
 
