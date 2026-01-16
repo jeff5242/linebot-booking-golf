@@ -38,7 +38,7 @@ export function AdminDashboard() {
             const { error: bookingError } = await supabase
                 .from('bookings')
                 .delete()
-                .neq('id', 0); // Delete all rows hack
+                .neq('id', '00000000-0000-0000-0000-000000000000');
 
             if (bookingError) throw bookingError;
 
@@ -46,7 +46,7 @@ export function AdminDashboard() {
             const { error: userError } = await supabase
                 .from('users')
                 .delete()
-                .neq('phone', '0000000000'); // Hacky way to match all
+                .neq('id', '00000000-0000-0000-0000-000000000000');
 
             if (userError) throw userError;
 
