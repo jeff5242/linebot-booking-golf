@@ -158,10 +158,61 @@ export function Booking() {
     return (
         <div className="container">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h1 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>預約球場</h1>
-                <button onClick={() => navigate('/my-bookings')} style={{ fontSize: '0.9rem', color: 'var(--primary-color)' }}>
-                    我的預約
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <h1 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: 0 }}>預約球場</h1>
+                    <button
+                        onClick={() => navigate('/my-bookings')}
+                        style={{
+                            fontSize: '0.85rem',
+                            color: 'var(--primary-color)',
+                            padding: '4px 12px',
+                            border: '1px solid var(--primary-color)',
+                            borderRadius: '16px',
+                            background: 'white',
+                            cursor: 'pointer'
+                        }}>
+                        我的預約
+                    </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {userName ? (
+                        <>
+                            <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                backgroundColor: 'var(--primary-color)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'white',
+                                fontWeight: 'bold',
+                                fontSize: '0.9rem'
+                            }}>
+                                {userName.charAt(0)}
+                            </div>
+                            <span style={{ fontSize: '0.9rem', color: '#374151' }}>{userName}</span>
+                        </>
+                    ) : (
+                        <button
+                            onClick={() => navigate('/register')}
+                            style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                border: '1px solid #d1d5db',
+                                background: 'white',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                fontSize: '1.2rem'
+                            }}>
+                            👤
+                        </button>
+                    )}
+                </div>
             </div>
 
             <Calendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
@@ -259,9 +310,17 @@ export function Booking() {
             {showPlayerModal && (
                 <div style={{
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-                }}>
-                    <div className="card" style={{ width: '90%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto' }}>
+                    backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000,
+                    padding: '0'
+                }} onClick={() => setShowPlayerModal(false)}>
+                    <div className="card" style={{
+                        width: '100%',
+                        maxWidth: '500px',
+                        maxHeight: '85vh',
+                        overflowY: 'auto',
+                        borderRadius: '16px 16px 0 0',
+                        margin: 0
+                    }} onClick={e => e.stopPropagation()}>
                         <h2 className="title" style={{ marginBottom: '16px' }}>確認預約資訊</h2>
                         <p style={{ marginBottom: '16px', fontWeight: 'bold' }}>
                             {format(selectedDate, 'yyyy-MM-dd')} {pendingTime && format(pendingTime, 'HH:mm')} ({selectedHoles}洞)
