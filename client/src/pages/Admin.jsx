@@ -1,9 +1,120 @@
-import React, { useEffect, useState } from 'react';
-import { format, addMinutes } from 'date-fns';
+import React, { useEffect, useState, useRef } from 'react';
+import { format, addMinutes, isAfter, parseISO, isBefore } from 'date-fns';
 import { supabase } from '../supabase';
 import { Calendar } from '../components/Calendar';
 import { generateDailySlots } from '../utils/golfLogic';
 import { Html5QrcodeScanner } from 'html5-qrcode';
+
+// Sub-component: Check-in List (New Feature)
+function CheckInList({ bookings, selectedDate }) {
+    // Filter only checked-in bookings
+    const list = bookings.filter(b => b.status === 'checked_in');
+
+    // Sort by check-in time (latest first) or scheduled time?
+    // Usually "First In, First Out" or based on Reserved Time. 
+    // Let's sort by Reserved Time to see who should go out first.
+    list.sort((a, b) => a.time.localeCompare(b.time));
+
+    const getStatusIndicator = (booking) => {
+        // Condition 1: Helper assigned departure time -> Green
+        if (booking.scheduled_departure_time) {
+            return { color: '#22c55e', text: '已排定', bg: '#dcfce7' }; // Green
+        }
+
+        // Construct Booking Date Object
+        const [h, m] = booking.time.split(':');
+        const bookTime = new Date(selectedDate);
+        bookTime.setHours(h, m, 0);
+        const now = new Date();
+
+        // Condition 2: Overdue -> Red
+        if (isAfter(now, bookTime)) {
+            return { color: '#ef4444', text: '延誤中', bg: '#fee2e2' }; // Red
+        }
+
+        // Condition 3: Waiting -> Yellow
+        return { color: '#eab308', text: '等待中', bg: '#fef9c3' }; // Yellow
+    };
+
+    return (
+        <div className="card animate-fade-in">
+            <h2 className="title">現場報到組別清單 ({list.length})</h2>
+            <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                        <tr style={{ textAlign: 'left', borderBottom: '2px solid #e5e7eb', background: '#f9fafb' }}>
+                            <th style={{ padding: '12px', minWidth: '60px' }}>狀態</th>
+                            <th style={{ padding: '12px' }}>報到時間</th>
+                            <th style={{ padding: '12px' }}>訂位人</th>
+                            <th style={{ padding: '12px' }}>組員名單</th>
+                            <th style={{ padding: '12px' }}>預約時間</th>
+                            <th style={{ padding: '12px' }}>排定出發</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {list.length === 0 ? (
+                            <tr><td colSpan={6} style={{ padding: '20px', textAlign: 'center', color: '#888' }}>目前尚無已報到的組別</td></tr>
+                        ) : list.map(b => {
+                            const status = getStatusIndicator(b);
+                            const checkInTimeDisplay = b.checkin_time ? format(new Date(b.checkin_time), 'HH:mm') : '-';
+
+                            return (
+                                <tr key={b.id} style={{ borderBottom: '1px solid #eee' }}>
+                                    <td style={{ padding: '12px' }}>
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', gap: '6px',
+                                            fontWeight: 'bold', fontSize: '0.9rem', color: status.color
+                                        }}>
+                                            <div style={{
+                                                width: '12px', height: '12px', borderRadius: '50%',
+                                                backgroundColor: status.color,
+                                                boxShadow: `0 0 6px ${status.color}`
+                                            }} />
+                                            {status.text}
+                                        </div>
+                                    </td>
+                                    <td style={{ padding: '12px', fontWeight: 'bold' }}>{checkInTimeDisplay}</td>
+                                    <td style={{ padding: '12px' }}>
+                                        {b.users?.display_name}<br />
+                                        <span style={{ fontSize: '0.8rem', color: '#666' }}>{b.users?.phone}</span>
+                                    </td>
+                                    <td style={{ padding: '12px' }}>
+                                        {b.players_info?.map((p, i) => (
+                                            p.name && <span key={i} style={{
+                                                display: 'inline-block',
+                                                background: '#f3f4f6',
+                                                padding: '2px 6px',
+                                                borderRadius: '4px',
+                                                fontSize: '0.8rem',
+                                                marginRight: '4px',
+                                                marginBottom: '2px'
+                                            }}>
+                                                {p.name}
+                                            </span>
+                                        ))}
+                                    </td>
+                                    <td style={{ padding: '12px', fontSize: '1.1rem', fontWeight: 'bold' }}>{b.time.slice(0, 5)}</td>
+                                    <td style={{ padding: '12px' }}>
+                                        {b.scheduled_departure_time ? (
+                                            <span style={{
+                                                color: '#15803d', fontWeight: 'bold',
+                                                background: '#dcfce7', padding: '4px 8px', borderRadius: '4px'
+                                            }}>
+                                                {b.scheduled_departure_time.slice(0, 5)}
+                                            </span>
+                                        ) : (
+                                            <span style={{ color: '#9ca3af' }}>-</span>
+                                        )}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
 
 // Sub-component: Scanner Tab
 function QRScannerTab() {
@@ -22,9 +133,6 @@ function QRScannerTab() {
         async function onScanSuccess(decodedText) {
             if (decodedText === lastScanned) return; // Prevent double scan
             setLastScanned(decodedText);
-
-            // Beep sound
-            // const audio = new Audio('/beep.mp3'); audio.play().catch(e=>{});
 
             try {
                 let phone = decodedText;
@@ -357,13 +465,14 @@ function AdminManagement() {
 }
 
 export function AdminDashboard() {
-    const [activeTab, setActiveTab] = useState('starter'); // starter, bg-checkin, users, admins
+    const [activeTab, setActiveTab] = useState('starter'); // starter, scan, checkin_list, users, admins
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (activeTab === 'starter') fetchBookings();
+        // Fetch bookings whenever date changes OR we are in a tab that displays bookings
+        if (activeTab === 'starter' || activeTab === 'checkin_list') fetchBookings();
     }, [selectedDate, activeTab]);
 
     const fetchBookings = async () => {
@@ -436,6 +545,21 @@ export function AdminDashboard() {
                     📷 掃碼報到
                 </button>
                 <button
+                    onClick={() => setActiveTab('checkin_list')}
+                    style={{
+                        padding: '10px 16px',
+                        whiteSpace: 'nowrap',
+                        border: 'none',
+                        background: 'none',
+                        borderBottom: activeTab === 'checkin_list' ? '3px solid var(--primary-color)' : '3px solid transparent',
+                        fontWeight: activeTab === 'checkin_list' ? 'bold' : 'normal',
+                        cursor: 'pointer',
+                        color: activeTab === 'checkin_list' ? 'var(--primary-color)' : '#6b7280'
+                    }}
+                >
+                    📋 報到清單
+                </button>
+                <button
                     onClick={() => setActiveTab('users')}
                     style={{
                         padding: '10px 16px',
@@ -478,6 +602,13 @@ export function AdminDashboard() {
             )}
 
             {activeTab === 'scan' && <QRScannerTab />}
+
+            {activeTab === 'checkin_list' && (
+                <CheckInList
+                    bookings={bookings}
+                    selectedDate={selectedDate}
+                />
+            )}
 
             {activeTab === 'users' && <UserManagement />}
 
