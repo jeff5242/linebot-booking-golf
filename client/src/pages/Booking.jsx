@@ -11,6 +11,7 @@ export function Booking() {
     const [selectedHoles, setSelectedHoles] = useState(18);
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [userName, setUserName] = useState('');
 
     // Player Details State
     const [showPlayerModal, setShowPlayerModal] = useState(false);
