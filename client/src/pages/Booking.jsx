@@ -396,34 +396,48 @@ export function Booking() {
                             </div>
 
                             {players.slice(0, playersCount).map((player, index) => (
-                                <div key={index} style={{ marginBottom: '16px', padding: '10px', backgroundColor: '#f9fafb', borderRadius: '8px' }}>
-                                    <h4 style={{ marginBottom: '8px', fontSize: '0.9rem', color: '#4b5563' }}>
-                                        {index === 0 ? '主訂位人 (您)' : `組員 ${index + 1}`}
-                                    </h4>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                        <input
-                                            type="text"
-                                            placeholder="姓名"
-                                            className="form-input"
-                                            required={index === 0}
-                                            value={player.name}
-                                            onChange={e => updatePlayer(index, 'name', e.target.value)}
-                                        />
-                                        <input
-                                            type="tel"
-                                            placeholder="手機 (09XX-XXX-XXX)"
-                                            className="form-input"
-                                            required={index === 0}
-                                            pattern="09[0-9]{8}"
-                                            maxLength="10"
-                                            value={player.phone}
-                                            onChange={e => {
-                                                const value = e.target.value.replace(/[^0-9]/g, '');
-                                                if (value.length <= 10) {
-                                                    updatePlayer(index, 'phone', value);
-                                                }
-                                            }}
-                                        />
+                                <div key={index} style={{ marginBottom: '12px', padding: '10px', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+                                        <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#4b5563', width: '70px', flexShrink: 0 }}>
+                                            {index === 0 ? '主訂位人' : `組員 ${index + 1}`}
+                                        </span>
+                                        <div style={{ display: 'flex', gap: '8px', flex: 1 }}>
+                                            <input
+                                                type="text"
+                                                placeholder="姓名"
+                                                className="form-input"
+                                                style={{
+                                                    padding: '6px 8px',
+                                                    fontSize: '0.9rem',
+                                                    flex: 1, // Take available space
+                                                    minWidth: '0' // Allow shrinking
+                                                }}
+                                                required={index === 0}
+                                                value={player.name}
+                                                onChange={e => updatePlayer(index, 'name', e.target.value)}
+                                            />
+                                            <input
+                                                type="tel"
+                                                placeholder="手機"
+                                                className="form-input"
+                                                style={{
+                                                    padding: '6px 8px',
+                                                    fontSize: '0.9rem',
+                                                    flex: 1.4, // give slightly more space to phone
+                                                    minWidth: '0'
+                                                }}
+                                                required={index === 0}
+                                                pattern="09[0-9]{8}"
+                                                maxLength="10"
+                                                value={player.phone}
+                                                onChange={e => {
+                                                    const value = e.target.value.replace(/[^0-9]/g, '');
+                                                    if (value.length <= 10) {
+                                                        updatePlayer(index, 'phone', value);
+                                                    }
+                                                }}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             ))}
