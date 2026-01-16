@@ -20,39 +20,55 @@ function ProtectedRoute({ children }) {
 
   async function initLiffAndCheckUser() {
     try {
-      // 1. Initialize LIFF
-      await liff.init({ liffId: import.meta.env.VITE_LIFF_ID });
-
-      if (!liff.isLoggedIn()) {
-        liff.login();
-        return; // Wait for redirect
-      }
-
-      const profile = await liff.getProfile();
-      const lineUserId = profile.userId;
-      localStorage.setItem('line_user_id', lineUserId); // Save for API calls
-
-      // 2. Check if user is registered in Supabase
-      // First check local phone cache for speed
+      // First, check if local user applies to DB
+      // If DB is wiped but LocalStorage remains, we need to clear LocalStorage
       const localPhone = localStorage.getItem('golf_user_phone');
-
       if (localPhone) {
-        setIsRegistered(true);
-      } else {
-        // Double check DB with line_user_id to be safe (sync across devices)
-        const { data } = await supabase
+        const { data: user } = await supabase
           .from('users')
-          .select('phone')
-          .eq('line_user_id', lineUserId)
-          .single();
+          .select('id')
+          .eq('phone', localPhone)
+          .maybeSingle();
 
-        if (data?.phone) {
-          localStorage.setItem('golf_user_phone', data.phone);
-          setIsRegistered(true);
+        if (!user) {
+          console.log('Local user not found in DB (DB wiped?), clearing local storage.');
+          localStorage.removeItem('golf_user_phone');
+          localStorage.removeItem('golf_user_name');
+          localStorage.removeItem('line_user_id');
+          // Force reload to clear state effectively
+          window.location.reload();
+          return;
         }
       }
-    } catch (err) {
-      console.error('LIFF Init Failed', err);
+
+      await liff.init({ liffId: import.meta.env.VITE_LIFF_ID });
+      if (!liff.isLoggedIn()) {
+        // check if we are in dev mode or mock mode
+        // For now, auto login is only possible in LINE browser
+        // In external browser, we might rely on mock ID if not redirecting
+        // liff.login();
+      } else {
+        const profile = await liff.getProfile();
+        localStorage.setItem('line_user_id', profile.userId);
+
+        // Check if registered
+        const { data: user } = await supabase
+          .from('users')
+          .select('phone, display_name')
+          .eq('line_user_id', profile.userId)
+          .single();
+
+        if (user) {
+          localStorage.setItem('golf_user_phone', user.phone);
+          localStorage.setItem('golf_user_name', user.display_name);
+          setIsRegistered(true); // Set registered if user found
+        } else {
+          // Not registered, but logged in LINE
+          setIsRegistered(false); // Explicitly set to false if not registered
+        }
+      }
+    } catch (error) {
+      console.error('LIFF Init Error:', error);
       // Fallback for local testing if LIFF fails (e.g. browser)
       // Check if we have mock in local storage
       if (localStorage.getItem('golf_user_phone')) {
