@@ -55,6 +55,7 @@ function ProtectedRoute({ children }) {
         }
         return; // Stop execution to wait for redirect
       }
+
       const profile = await liff.getProfile();
       localStorage.setItem('line_user_id', profile.userId);
 
@@ -73,26 +74,26 @@ function ProtectedRoute({ children }) {
         // Not registered, but logged in LINE
         setIsRegistered(false); // Explicitly set to false if not registered
       }
-    }
+
     } catch (error) {
-    console.error('LIFF Init Error:', error);
-    // Fallback for local testing if LIFF fails (e.g. browser)
-    // Check if we have mock in local storage
-    if (localStorage.getItem('golf_user_phone')) {
-      setIsRegistered(true);
+      console.error('LIFF Init Error:', error);
+      // Fallback for local testing if LIFF fails (e.g. browser)
+      // Check if we have mock in local storage
+      if (localStorage.getItem('golf_user_phone')) {
+        setIsRegistered(true);
+      }
+    } finally {
+      setLoading(false);
     }
-  } finally {
-    setLoading(false);
   }
-}
 
-if (loading) return <div>Loading...</div>;
+  if (loading) return <div>Loading...</div>;
 
-if (!isRegistered) {
-  return <Navigate to="/register" replace />;
-}
+  if (!isRegistered) {
+    return <Navigate to="/register" replace />;
+  }
 
-return children;
+  return children;
 }
 
 function App() {
