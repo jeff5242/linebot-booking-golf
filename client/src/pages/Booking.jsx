@@ -30,6 +30,9 @@ export function Booking() {
     // Load Main User Info
     useEffect(() => {
         loadMainUser();
+        // Load user name for header
+        const name = localStorage.getItem('golf_user_name');
+        if (name) setUserName(name);
     }, []);
 
     const loadMainUser = async () => {
