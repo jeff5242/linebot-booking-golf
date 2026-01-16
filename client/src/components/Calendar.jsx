@@ -11,7 +11,13 @@ export function Calendar({ selectedDate, onSelectDate }) {
 
     const handleDateChange = (e) => {
         if (e.target.value) {
-            onSelectDate(new Date(e.target.value));
+            if (e.target.value) {
+                // e.target.value is YYYY-MM-DD
+                // new Date('YYYY-MM-DD') parses as UTC, which might show prev day in local time
+                // We append 'T00:00:00' to parse it as local time, or manually parse
+                const [y, m, d] = e.target.value.split('-').map(Number);
+                onSelectDate(new Date(y, m - 1, d)); // Month is 0-indexed
+            }
         }
     };
 
