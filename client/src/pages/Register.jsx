@@ -7,6 +7,13 @@ export function Register() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [isLineLoggedIn, setIsLineLoggedIn] = useState(false);
+
+    // OTP State
+    const [verificationSent, setVerificationSent] = useState(false);
+    const [otp, setOtp] = useState('');
+    const [countdown, setCountdown] = useState(0);
+    const [mockServerOtp, setMockServerOtp] = useState(null); // The "correct" OTP
+
     const [formData, setFormData] = useState({
         name: '',
         phone: ''
@@ -15,6 +22,14 @@ export function Register() {
     useEffect(() => {
         checkLineLogin();
     }, []);
+
+    // Countdown timer effect
+    useEffect(() => {
+        if (countdown > 0) {
+            const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [countdown]);
 
     const checkLineLogin = async () => {
         try {
@@ -25,8 +40,6 @@ export function Register() {
                 localStorage.setItem('line_user_id', profile.userId);
             } else {
                 setIsLineLoggedIn(false);
-                // Optionally auto-login here, or let user click button
-                // liff.login(); 
             }
         } catch (err) {
             console.error('LIFF check failed', err);
@@ -37,8 +50,37 @@ export function Register() {
         liff.login({ redirectUri: window.location.href });
     };
 
+    const sendVerificationCode = () => {
+        if (!formData.phone || formData.phone.length < 10) {
+            alert('請先輸入正確的手機號碼');
+            return;
+        }
+
+        // Mock sending SMS
+        const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
+        setMockServerOtp(generatedOtp);
+        setVerificationSent(true);
+        setCountdown(60); // 60s cooldown
+
+        // Simulate SMS arrival
+        setTimeout(() => {
+            alert(`[模擬簡訊] 您的驗證碼是: ${generatedOtp}`);
+        }, 1000);
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        // Verify OTP logic
+        if (!verificationSent) {
+            alert('請先進行手機驗證');
+            return;
+        }
+        if (otp !== mockServerOtp) {
+            alert('驗證碼錯誤，請重新輸入');
+            return;
+        }
+
         setLoading(true);
 
         try {
@@ -150,7 +192,7 @@ export function Register() {
             <div className="card animate-fade-in">
                 <h1 className="title">首次使用設定</h1>
                 <p style={{ marginBottom: '20px', color: '#666', textAlign: 'center' }}>
-                    歡迎使用高爾夫預約系統，請先綁定您的個人資訊。
+                    歡迎使用高爾夫預約系統，請先驗證手機並綁定資訊。
                 </p>
 
                 <form onSubmit={handleSubmit}>
@@ -168,21 +210,58 @@ export function Register() {
 
                     <div className="form-group">
                         <label className="form-label">手機號碼</label>
-                        <input
-                            type="tel"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            className="form-input"
-                            required
-                            placeholder="0912345678"
-                            maxLength="10"
-                            value={formData.phone}
-                            onChange={e => {
-                                const value = e.target.value.replace(/[^0-9]/g, '');
-                                setFormData({ ...formData, phone: value });
-                            }}
-                        />
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <input
+                                type="tel"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                className="form-input"
+                                required
+                                placeholder="0912345678"
+                                maxLength="10"
+                                style={{ flex: 1 }}
+                                value={formData.phone}
+                                onChange={e => {
+                                    const value = e.target.value.replace(/[^0-9]/g, '');
+                                    setFormData({ ...formData, phone: value });
+                                }}
+                                disabled={verificationSent} // Disable phone edit after sending code
+                            />
+                            <button
+                                type="button"
+                                onClick={sendVerificationCode}
+                                disabled={countdown > 0 || !formData.phone}
+                                style={{
+                                    padding: '0 12px',
+                                    backgroundColor: countdown > 0 ? '#d1d5db' : 'var(--primary-color)',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    fontSize: '0.9rem',
+                                    whiteSpace: 'nowrap',
+                                    cursor: countdown > 0 ? 'not-allowed' : 'pointer'
+                                }}
+                            >
+                                {countdown > 0 ? `${countdown}s` : (verificationSent ? '重發' : '發送驗證碼')}
+                            </button>
+                        </div>
                     </div>
+
+                    {verificationSent && (
+                        <div className="form-group animate-fade-in">
+                            <label className="form-label">驗證碼</label>
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                className="form-input"
+                                required
+                                placeholder="請輸入6位數驗證碼"
+                                maxLength="6"
+                                value={otp}
+                                onChange={e => setOtp(e.target.value.replace(/[^0-9]/g, ''))}
+                            />
+                        </div>
+                    )}
 
                     <button type="submit" className="btn btn-primary" disabled={loading}>
                         {loading ? '處理中...' : '確認綁定'}
