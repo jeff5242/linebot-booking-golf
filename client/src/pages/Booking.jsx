@@ -41,14 +41,16 @@ export function Booking() {
             const name = localStorage.getItem('golf_user_name');
 
             if (phone) {
-                // Try to get from database first
-                const { data, error } = await supabase
+                // Try to get from database first - handle multiple records
+                const { data: users, error } = await supabase
                     .from('users')
                     .select('display_name, phone')
                     .eq('phone', phone)
-                    .single();
+                    .order('created_at', { ascending: false })
+                    .limit(1);
 
-                if (data && !error) {
+                if (users && users.length > 0 && !error) {
+                    const data = users[0];
                     setPlayers(prev => {
                         const newPlayers = [...prev];
                         newPlayers[0] = { name: data.display_name || name || '', phone: data.phone };
@@ -126,8 +128,15 @@ export function Booking() {
             const userName = localStorage.getItem('golf_user_name');
             const lineUserId = localStorage.getItem('line_user_id') || 'temp_' + Date.now();
 
-            // Try to find user
-            let { data: user } = await supabase.from('users').select('id').eq('phone', userPhone).single();
+            // Try to find user - handle duplicate phones by taking the latset one
+            const { data: users, error: userError } = await supabase
+                .from('users')
+                .select('id')
+                .eq('phone', userPhone)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            let user = users && users.length > 0 ? users[0] : null;
 
             // If user not found but we have local info, try to register/restore user seamlessly
             if (!user && userPhone && userName) {
@@ -272,24 +281,6 @@ export function Booking() {
                             const isAvailable = isSlotAvailable(slot, bookings, selectedHoles);
                             const timeLabel = format(slot, 'HH:mm');
 
-                            // Checking if it's too late for 18 holes
-                            // We use the shared logic now
-                            // const isTooLateFor18 = selectedHoles === 18 && slot.getHours() >= 15; 
-
-                            // Import logic from utils ideally, but here we can just do simple hour check or move logic.
-                            // Better: use the utility I just added if I imported it.
-                            // Wait, I haven't imported it in this file yet. I need to update imports first.
-                            // BUT since I can't do multiple edits easily without context, I will just implement the logic directly or rely on "isTooLateFor18" if I imported it.
-                            // Let's assume I will import it.
-
-                            // ACTUALLY, I missed adding the import in the `replace_file_content` above. 
-                            // I should have done `view_file` -> `multi_replace`.
-
-                            // Let's rely on manual hour check that MATCHES the logic:
-                            // Cutoff is 13:00. 13:00 OK. 13:10 BAD.
-                            // So if hours >= 13 and minutes > 0... NO. 
-                            // If hours > 13 ... NO.
-
                             let isTooLateFor18 = false;
                             if (selectedHoles === 18) {
                                 // Cutoff is 13:00 (15:30 - 2.5h)
@@ -388,7 +379,7 @@ export function Booking() {
                                             type="text"
                                             placeholder="姓名"
                                             className="form-input"
-                                            required={index === 0} // Only main booker required? Or all? Usually golf course needs all names.
+                                            required={index === 0}
                                             value={player.name}
                                             onChange={e => updatePlayer(index, 'name', e.target.value)}
                                         />
