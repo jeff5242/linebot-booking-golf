@@ -1,26 +1,55 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
-
-// Mock LIFF for web dev if not in LIFF browser
-const mockLiffId = "mock-user-" + Math.floor(Math.random() * 1000);
+import liff from '@line/liff';
 
 export function Register() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
+    const [isLineLoggedIn, setIsLineLoggedIn] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
         phone: ''
     });
+
+    useEffect(() => {
+        checkLineLogin();
+    }, []);
+
+    const checkLineLogin = async () => {
+        try {
+            await liff.init({ liffId: import.meta.env.VITE_LIFF_ID });
+            if (liff.isLoggedIn()) {
+                setIsLineLoggedIn(true);
+                const profile = await liff.getProfile();
+                localStorage.setItem('line_user_id', profile.userId);
+            } else {
+                setIsLineLoggedIn(false);
+                // Optionally auto-login here, or let user click button
+                // liff.login(); 
+            }
+        } catch (err) {
+            console.error('LIFF check failed', err);
+        }
+    };
+
+    const handleLineLogin = () => {
+        liff.login({ redirectUri: window.location.href });
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
 
         try {
-            // 1. Get LINE ID (Mock or Real)
-            // In production, use liff.getProfile().userId
-            const lineUserId = localStorage.getItem('line_user_id') || mockLiffId;
+            // Updated to ensure we use REAL Line ID
+            const lineUserId = localStorage.getItem('line_user_id');
+
+            if (!lineUserId) {
+                alert('無法取得 LINE 使用者資訊，請重新登入 LINE');
+                handleLineLogin();
+                return;
+            }
 
             // 2. Insert or Update into Supabase
             // Check by Phone first
@@ -95,6 +124,26 @@ export function Register() {
             setLoading(false);
         }
     };
+
+    if (!isLineLoggedIn) {
+        return (
+            <div className="container">
+                <div className="card animate-fade-in" style={{ textAlign: 'center', padding: '40px 20px' }}>
+                    <h1 className="title">歡迎使用</h1>
+                    <p style={{ marginBottom: '30px', color: '#666' }}>
+                        請先登入 LINE 帳號以進行球場預約
+                    </p>
+                    <button
+                        onClick={handleLineLogin}
+                        className="btn"
+                        style={{ background: '#06C755', color: 'white', fontWeight: 'bold' }}
+                    >
+                        使用 LINE 登入
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="container">
