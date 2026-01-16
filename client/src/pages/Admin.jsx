@@ -458,6 +458,12 @@ function VoucherManagement() {
     const [actionReason, setActionReason] = useState('');
     const [newExpiryDate, setNewExpiryDate] = useState('');
 
+    // Import Modal
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [importText, setImportText] = useState('');
+    const [importResult, setImportResult] = useState(null);
+    const [isImporting, setIsImporting] = useState(false);
+
     useEffect(() => {
         fetchVouchers();
     }, [filterStatus, filterSource]);
@@ -540,6 +546,78 @@ function VoucherManagement() {
         }
     };
 
+    const handleBulkImport = async () => {
+        if (!importText.trim()) return alert('請輸入資料');
+        setIsImporting(true);
+        setImportResult(null);
+
+        const lines = importText.split('\n').filter(l => l.trim());
+        let successCount = 0;
+        let failCount = 0;
+        let details = [];
+
+        for (const line of lines) {
+            // Format: Phone, PaperCode, ProductName, ValidUntil
+            const parts = line.split(',').map(s => s.trim());
+            if (parts.length < 3) {
+                failCount++;
+                details.push(`格式錯誤: ${line}`);
+                continue;
+            }
+
+            const [phone, paperCode, productName, dateStr] = parts;
+            const validUntil = dateStr ? new Date(dateStr).toISOString() : addMinutes(new Date(), 525600).toISOString(); // Default 1 year
+
+            try {
+                // 1. Find User
+                const { data: users } = await supabase.from('users').select('id, display_name').eq('phone', phone).limit(1);
+
+                if (!users || users.length === 0) {
+                    failCount++;
+                    details.push(`找不到用戶 (${phone})`);
+                    continue;
+                }
+                const user = users[0];
+
+                // 2. Insert Voucher
+                // Generate a unique digital code: EV-{Timestamp}-{Random4}
+                const digitalCode = `EV-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+                const { data: voucher, error: vError } = await supabase.from('vouchers').insert([{
+                    code: digitalCode,
+                    product_id: 0, // Placeholder
+                    product_name: productName,
+                    user_id: user.id,
+                    status: 'active',
+                    source_type: 'paper_converted',
+                    original_paper_code: paperCode,
+                    valid_until: validUntil
+                }]).select().single();
+
+                if (vError) throw vError;
+
+                // 3. Log
+                await supabase.from('voucher_logs').insert([{
+                    voucher_id: voucher.id,
+                    action: 'imported',
+                    memo: `紙券轉入 (原號:${paperCode})`,
+                    operator_name: 'Admin'
+                }]);
+
+                successCount++;
+
+            } catch (err) {
+                console.error(err);
+                failCount++;
+                details.push(`系統錯誤 (${paperCode}): ${err.message}`);
+            }
+        }
+
+        setIsImporting(false);
+        setImportResult({ success: successCount, fail: failCount, details });
+        if (successCount > 0) fetchVouchers();
+    };
+
     // Dashboard Stats
     const totalCount = vouchers.length;
     const activeCount = vouchers.filter(v => v.status === 'active').length;
@@ -588,6 +666,10 @@ function VoucherManagement() {
                     <option value="digital_purchase">線上購買</option>
                     <option value="paper_converted">紙本轉入</option>
                 </select>
+
+                <button onClick={() => setShowImportModal(true)} className="btn" style={{ width: 'auto', marginLeft: 'auto', background: '#eab308', color: '#fff' }}>
+                    📥 紙券批次轉入
+                </button>
             </div>
 
             {/* Voucher List */}
