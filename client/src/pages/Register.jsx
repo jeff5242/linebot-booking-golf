@@ -23,24 +23,41 @@ export function Register() {
             const lineUserId = localStorage.getItem('line_user_id') || mockLiffId;
 
             // 2. Insert or Update into Supabase
-            // First check if phone exists
-            const { data: existingUser } = await supabase
+            // Check by Phone first
+            const { data: existingUserByPhone } = await supabase
                 .from('users')
                 .select('id')
                 .eq('phone', formData.phone)
                 .single();
 
+            // Check by Line ID
+            const { data: existingUserById } = await supabase
+                .from('users')
+                .select('id')
+                .eq('line_user_id', lineUserId)
+                .single();
+
             let error;
 
-            if (existingUser) {
-                // User exists, update line_user_id and name
+            if (existingUserByPhone) {
+                // Phone exists -> Bind this Line ID to this Phone user
                 const { error: updateError } = await supabase
                     .from('users')
                     .update({
                         line_user_id: lineUserId,
                         display_name: formData.name
                     })
-                    .eq('phone', formData.phone);
+                    .eq('id', existingUserByPhone.id);
+                error = updateError;
+            } else if (existingUserById) {
+                // Line ID exists (but phone is different) -> Update phone for this user
+                const { error: updateError } = await supabase
+                    .from('users')
+                    .update({
+                        phone: formData.phone,
+                        display_name: formData.name
+                    })
+                    .eq('id', existingUserById.id);
                 error = updateError;
             } else {
                 // New user
