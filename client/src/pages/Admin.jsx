@@ -5,6 +5,105 @@ import { Calendar } from '../components/Calendar';
 import { generateDailySlots } from '../utils/golfLogic';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 
+// Sub-component: Departure List (New Feature)
+function DepartureList({ bookings, selectedDate }) {
+    // 1. Filter bookings that are checked-in AND have a scheduled departure time
+    const list = bookings.filter(b => b.status === 'checked_in' && b.scheduled_departure_time);
+
+    // 2. Sort by scheduled departure time
+    list.sort((a, b) => a.scheduled_departure_time.localeCompare(b.scheduled_departure_time));
+
+    const now = new Date();
+    // Assuming scheduled_departure_time is HH:MM:SS, we need to compare with today's time
+    // We construct a full Date object for comparison
+    const getDepartureDate = (timeStr) => {
+        const [h, m] = timeStr.split(':');
+        const d = new Date(selectedDate);
+        d.setHours(h, m, 0);
+        return d;
+    };
+
+    return (
+        <div className="card animate-fade-in">
+            <h2 className="title">出發清單 ({list.length})</h2>
+            <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                        <tr style={{ textAlign: 'left', borderBottom: '2px solid #e5e7eb', background: '#f9fafb' }}>
+                            <th style={{ padding: '12px' }}>排定出發</th>
+                            <th style={{ padding: '12px' }}>訂位人</th>
+                            <th style={{ padding: '12px' }}>組員名單</th>
+                            <th style={{ padding: '12px' }}>狀態</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {list.length === 0 ? (
+                            <tr><td colSpan={4} style={{ padding: '20px', textAlign: 'center', color: '#888' }}>尚無已排定出發的組別</td></tr>
+                        ) : list.map(b => {
+                            const departureDate = getDepartureDate(b.scheduled_departure_time);
+                            const hasDeparted = isBefore(departureDate, now);
+
+                            // Style Logic
+                            const rowStyle = hasDeparted ? {
+                                backgroundColor: '#f3f4f6', // Gray
+                                color: '#9ca3af'
+                            } : {
+                                backgroundColor: '#ecfdf5', // Light Green
+                                color: '#065f46'
+                            };
+
+                            return (
+                                <tr key={b.id} style={{ borderBottom: '1px solid #e5e7eb', ...rowStyle }}>
+                                    <td style={{ padding: '12px', fontSize: '1.2rem', fontWeight: 'bold' }}>
+                                        {b.scheduled_departure_time.slice(0, 5)}
+                                    </td>
+                                    <td style={{ padding: '12px', fontWeight: hasDeparted ? 'normal' : 'bold' }}>
+                                        {b.users?.display_name}<br />
+                                        <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>{b.users?.phone}</span>
+                                    </td>
+                                    <td style={{ padding: '12px' }}>
+                                        {b.players_info?.map((p, i) => (
+                                            p.name && <span key={i} style={{
+                                                display: 'inline-block',
+                                                background: hasDeparted ? '#e5e7eb' : 'white',
+                                                border: hasDeparted ? '1px solid #d1d5db' : '1px solid #a7f3d0',
+                                                padding: '2px 6px',
+                                                borderRadius: '4px',
+                                                fontSize: '0.8rem',
+                                                marginRight: '4px',
+                                                marginBottom: '2px'
+                                            }}>
+                                                {p.name}
+                                            </span>
+                                        ))}
+                                    </td>
+                                    <td style={{ padding: '12px' }}>
+                                        {hasDeparted ? (
+                                            <span style={{
+                                                padding: '4px 8px', borderRadius: '12px',
+                                                background: '#d1d5db', color: '#4b5563', fontSize: '0.8rem'
+                                            }}>已出發</span>
+                                        ) : (
+                                            <span style={{
+                                                padding: '4px 8px', borderRadius: '12px',
+                                                background: '#10b981', color: 'white', fontSize: '0.8rem', fontWeight: 'bold'
+                                            }}>準備中</span>
+                                        )}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+
+            <div style={{ marginTop: '10px', fontSize: '0.8rem', color: '#666', textAlign: 'right' }}>
+                * 灰色代表時間已過的組別，綠色代表即將出發的組別
+            </div>
+        </div>
+    );
+}
+
 // Sub-component: Check-in List (New Feature)
 function CheckInList({ bookings, selectedDate }) {
     // Filter only checked-in bookings
@@ -465,14 +564,14 @@ function AdminManagement() {
 }
 
 export function AdminDashboard() {
-    const [activeTab, setActiveTab] = useState('starter'); // starter, scan, checkin_list, users, admins
+    const [activeTab, setActiveTab] = useState('starter'); // starter, scan, checkin_list, departure_list, users, admins
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         // Fetch bookings whenever date changes OR we are in a tab that displays bookings
-        if (activeTab === 'starter' || activeTab === 'checkin_list') fetchBookings();
+        if (['starter', 'checkin_list', 'departure_list'].includes(activeTab)) fetchBookings();
     }, [selectedDate, activeTab]);
 
     const fetchBookings = async () => {
@@ -560,6 +659,21 @@ export function AdminDashboard() {
                     📋 報到清單
                 </button>
                 <button
+                    onClick={() => setActiveTab('departure_list')}
+                    style={{
+                        padding: '10px 16px',
+                        whiteSpace: 'nowrap',
+                        border: 'none',
+                        background: 'none',
+                        borderBottom: activeTab === 'departure_list' ? '3px solid var(--primary-color)' : '3px solid transparent',
+                        fontWeight: activeTab === 'departure_list' ? 'bold' : 'normal',
+                        cursor: 'pointer',
+                        color: activeTab === 'departure_list' ? 'var(--primary-color)' : '#6b7280'
+                    }}
+                >
+                    🚩 出發清單
+                </button>
+                <button
                     onClick={() => setActiveTab('users')}
                     style={{
                         padding: '10px 16px',
@@ -605,6 +719,13 @@ export function AdminDashboard() {
 
             {activeTab === 'checkin_list' && (
                 <CheckInList
+                    bookings={bookings}
+                    selectedDate={selectedDate}
+                />
+            )}
+
+            {activeTab === 'departure_list' && (
+                <DepartureList
                     bookings={bookings}
                     selectedDate={selectedDate}
                 />
