@@ -22,17 +22,39 @@ export function Register() {
             // In production, use liff.getProfile().userId
             const lineUserId = localStorage.getItem('line_user_id') || mockLiffId;
 
-            // 2. Insert into Supabase
-            const { data, error } = await supabase
+            // 2. Insert or Update into Supabase
+            // First check if phone exists
+            const { data: existingUser } = await supabase
                 .from('users')
-                .insert([
-                    {
+                .select('id')
+                .eq('phone', formData.phone)
+                .single();
+
+            let error;
+
+            if (existingUser) {
+                // User exists, update line_user_id and name
+                const { error: updateError } = await supabase
+                    .from('users')
+                    .update({
                         line_user_id: lineUserId,
-                        display_name: formData.name,
-                        phone: formData.phone
-                    }
-                ])
-                .select();
+                        display_name: formData.name
+                    })
+                    .eq('phone', formData.phone);
+                error = updateError;
+            } else {
+                // New user
+                const { error: insertError } = await supabase
+                    .from('users')
+                    .insert([
+                        {
+                            line_user_id: lineUserId,
+                            display_name: formData.name,
+                            phone: formData.phone
+                        }
+                    ]);
+                error = insertError;
+            }
 
             if (error) {
                 console.error('Registration error:', error);
