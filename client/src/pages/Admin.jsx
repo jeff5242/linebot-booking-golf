@@ -24,6 +24,42 @@ export function AdminDashboard() {
         setLoading(false);
     };
 
+    const handleResetDatabase = async () => {
+        if (!window.confirm('警告：這將會刪除「所有」使用者與預約資料！此動作無法復原。確定要執行嗎？')) {
+            return;
+        }
+
+        const prompt = window.prompt('為了確認，請輸入 "DELETE"');
+        if (prompt !== 'DELETE') return;
+
+        setLoading(true);
+        try {
+            // 1. Delete all bookings
+            const { error: bookingError } = await supabase
+                .from('bookings')
+                .delete()
+                .neq('id', 0); // Delete all rows hack
+
+            if (bookingError) throw bookingError;
+
+            // 2. Delete all users
+            const { error: userError } = await supabase
+                .from('users')
+                .delete()
+                .neq('phone', '0000000000'); // Hacky way to match all
+
+            if (userError) throw userError;
+
+            alert('資料庫已清空');
+            window.location.reload();
+        } catch (err) {
+            console.error('Reset failed:', err);
+            alert('清空失敗 (可能權限不足): ' + err.message + '\n建議使用 Supabase SQL Editor 執行 reset_db_data.sql');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const slots = generateDailySlots(selectedDate);
 
     // Helper to find booking at a specific time
@@ -38,8 +74,6 @@ export function AdminDashboard() {
             if (b.holes !== 18) return false;
 
             // Calculate expected turn time
-            // We need to parse b.time (HH:mm:ss) + 150m
-            // Simple string comparison might fail if not careful, but let's try to match logic
             const [h, m] = b.time.split(':');
             const bookTime = new Date(selectedDate);
             bookTime.setHours(parseInt(h), parseInt(m), 0);
@@ -80,11 +114,30 @@ export function AdminDashboard() {
         if (!error) fetchBookings();
     };
 
+    if (loading) return <div>Loading...</div>;
+
     return (
         <div className="container" style={{ maxWidth: '800px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h1 className="title">出發台看板 (Starter)</h1>
-                <button onClick={() => location.reload()} className="btn" style={{ width: 'auto', padding: '8px 16px' }}>↻</button>
+                <h1 className="title" style={{ marginBottom: 0 }}>出發台看板 (Starter)</h1>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                        onClick={handleResetDatabase}
+                        style={{
+                            backgroundColor: '#dc2626',
+                            color: 'white',
+                            border: 'none',
+                            padding: '8px 12px',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontWeight: 'bold',
+                            fontSize: '0.8rem'
+                        }}
+                    >
+                        ⚠️ 清空資料庫
+                    </button>
+                    <button onClick={() => location.reload()} className="btn" style={{ width: 'auto', padding: '8px 16px' }}>↻</button>
+                </div>
             </div>
 
             <Calendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
