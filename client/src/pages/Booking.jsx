@@ -16,6 +16,7 @@ export function Booking() {
     // Player Details State
     const [showPlayerModal, setShowPlayerModal] = useState(false);
     const [pendingTime, setPendingTime] = useState(null);
+    const [playersCount, setPlayersCount] = useState(4);
     const [players, setPlayers] = useState([
         { name: '', phone: '' },
         { name: '', phone: '' },
@@ -168,9 +169,9 @@ export function Booking() {
                     date: format(selectedDate, 'yyyy-MM-dd'),
                     time: format(pendingTime, 'HH:mm:ss'),
                     holes: selectedHoles,
-                    players_count: 4,
+                    players_count: playersCount,
                     status: 'confirmed',
-                    players_info: players,
+                    players_info: players.slice(0, playersCount),
                     needs_cart: needsCart,
                     needs_caddie: needsCaddie
                 }
@@ -367,9 +368,34 @@ export function Booking() {
                                         <span>桿弟</span>
                                     </label>
                                 </div>
+
+                                <div style={{ marginTop: '16px', borderTop: '1px solid #e5e7eb', paddingTop: '12px' }}>
+                                    <h4 style={{ marginBottom: '8px', fontSize: '0.9rem', fontWeight: 'bold' }}>預約人數</h4>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        {[1, 2, 3, 4].map(num => (
+                                            <button
+                                                key={num}
+                                                type="button"
+                                                onClick={() => setPlayersCount(num)}
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '6px',
+                                                    borderRadius: '6px',
+                                                    border: playersCount === num ? '2px solid var(--primary-color)' : '1px solid #d1d5db',
+                                                    backgroundColor: playersCount === num ? 'var(--primary-color)' : 'white',
+                                                    color: playersCount === num ? 'white' : '#374151',
+                                                    fontWeight: 'bold',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                {num}位
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
 
-                            {players.map((player, index) => (
+                            {players.slice(0, playersCount).map((player, index) => (
                                 <div key={index} style={{ marginBottom: '16px', padding: '10px', backgroundColor: '#f9fafb', borderRadius: '8px' }}>
                                     <h4 style={{ marginBottom: '8px', fontSize: '0.9rem', color: '#4b5563' }}>
                                         {index === 0 ? '主訂位人 (您)' : `組員 ${index + 1}`}
