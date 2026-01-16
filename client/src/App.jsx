@@ -42,50 +42,57 @@ function ProtectedRoute({ children }) {
       }
 
       await liff.init({ liffId: import.meta.env.VITE_LIFF_ID });
+
+      // Auto login logic
       if (!liff.isLoggedIn()) {
-        // check if we are in dev mode or mock mode
-        // For now, auto login is only possible in LINE browser
-        // In external browser, we might rely on mock ID if not redirecting
-        // liff.login();
-      } else {
-        const profile = await liff.getProfile();
-        localStorage.setItem('line_user_id', profile.userId);
-
-        // Check if registered
-        const { data: user } = await supabase
-          .from('users')
-          .select('phone, display_name')
-          .eq('line_user_id', profile.userId)
-          .single();
-
-        if (user) {
-          localStorage.setItem('golf_user_phone', user.phone);
-          localStorage.setItem('golf_user_name', user.display_name);
-          setIsRegistered(true); // Set registered if user found
+        if (liff.isInClient()) {
+          // In LINE App: Auto login
+          liff.login();
         } else {
-          // Not registered, but logged in LINE
-          setIsRegistered(false); // Explicitly set to false if not registered
+          // External Browser: Auto redirect to login
+          // Use current URL as redirect destination
+          liff.login({ redirectUri: window.location.href });
         }
+        return; // Stop execution to wait for redirect
       }
-    } catch (error) {
-      console.error('LIFF Init Error:', error);
-      // Fallback for local testing if LIFF fails (e.g. browser)
-      // Check if we have mock in local storage
-      if (localStorage.getItem('golf_user_phone')) {
-        setIsRegistered(true);
+      const profile = await liff.getProfile();
+      localStorage.setItem('line_user_id', profile.userId);
+
+      // Check if registered
+      const { data: user } = await supabase
+        .from('users')
+        .select('phone, display_name')
+        .eq('line_user_id', profile.userId)
+        .single();
+
+      if (user) {
+        localStorage.setItem('golf_user_phone', user.phone);
+        localStorage.setItem('golf_user_name', user.display_name);
+        setIsRegistered(true); // Set registered if user found
+      } else {
+        // Not registered, but logged in LINE
+        setIsRegistered(false); // Explicitly set to false if not registered
       }
-    } finally {
-      setLoading(false);
     }
+    } catch (error) {
+    console.error('LIFF Init Error:', error);
+    // Fallback for local testing if LIFF fails (e.g. browser)
+    // Check if we have mock in local storage
+    if (localStorage.getItem('golf_user_phone')) {
+      setIsRegistered(true);
+    }
+  } finally {
+    setLoading(false);
   }
+}
 
-  if (loading) return <div>Loading...</div>;
+if (loading) return <div>Loading...</div>;
 
-  if (!isRegistered) {
-    return <Navigate to="/register" replace />;
-  }
+if (!isRegistered) {
+  return <Navigate to="/register" replace />;
+}
 
-  return children;
+return children;
 }
 
 function App() {
