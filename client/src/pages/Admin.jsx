@@ -600,7 +600,7 @@ function VoucherManagement() {
                 await supabase.from('voucher_logs').insert([{
                     voucher_id: voucher.id,
                     action: 'imported',
-                    memo: `紙券轉入 (原號:${paperCode})`,
+                    memo: `紙券轉入 (原號:${paperCode}, $${price})`,
                     operator_name: 'Admin'
                 }]);
 
@@ -609,7 +609,7 @@ function VoucherManagement() {
             } catch (err) {
                 console.error(err);
                 failCount++;
-                details.push(`系統錯誤 (${paperCode}): ${err.message}`);
+                details.push(`系統錯誤: ${err.message}`);
             }
         }
 
@@ -617,280 +617,299 @@ function VoucherManagement() {
         setImportResult({ success: successCount, fail: failCount, details });
         if (successCount > 0) fetchVouchers();
     };
+    voucher_id: voucher.id,
+        action: 'imported',
+            memo: `紙券轉入 (原號:${paperCode})`,
+                operator_name: 'Admin'
+}]);
 
-    // Dashboard Stats
-    const totalCount = vouchers.length;
-    const activeCount = vouchers.filter(v => v.status === 'active').length;
-    const redeemedCount = vouchers.filter(v => v.status === 'redeemed').length;
+successCount++;
 
-    return (
-        <div className="card animate-fade-in">
-            {/* Dashboard Widgets */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '20px' }}>
-                <div style={{ background: '#f0f9ff', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
-                    <h4 style={{ margin: '0 0 5px 0', color: '#0369a1' }}>總發行量</h4>
-                    <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#0ea5e9' }}>{totalCount}</span>
-                </div>
-                <div style={{ background: '#ecfdf5', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
-                    <h4 style={{ margin: '0 0 5px 0', color: '#047857' }}>流通中 (Active)</h4>
-                    <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#10b981' }}>{activeCount}</span>
-                </div>
-                <div style={{ background: '#f5f3ff', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
-                    <h4 style={{ margin: '0 0 5px 0', color: '#6d28d9' }}>已核銷 (Redeemed)</h4>
-                    <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#8b5cf6' }}>{redeemedCount}</span>
-                </div>
+            } catch (err) {
+    console.error(err);
+    failCount++;
+    details.push(`系統錯誤 (${paperCode}): ${err.message}`);
+}
+        }
+
+setIsImporting(false);
+setImportResult({ success: successCount, fail: failCount, details });
+if (successCount > 0) fetchVouchers();
+    };
+
+// Dashboard Stats
+const totalCount = vouchers.length;
+const activeCount = vouchers.filter(v => v.status === 'active').length;
+const redeemedCount = vouchers.filter(v => v.status === 'redeemed').length;
+
+return (
+    <div className="card animate-fade-in">
+        {/* Dashboard Widgets */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '20px' }}>
+            <div style={{ background: '#f0f9ff', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
+                <h4 style={{ margin: '0 0 5px 0', color: '#0369a1' }}>總發行量</h4>
+                <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#0ea5e9' }}>{totalCount}</span>
             </div>
-
-            {/* Filters */}
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px', alignItems: 'center' }}>
-                <input
-                    placeholder="搜尋序號、手機、姓名..."
-                    className="form-input"
-                    style={{ width: '200px' }}
-                    value={keyword}
-                    onChange={e => setKeyword(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && fetchVouchers()}
-                />
-                <button onClick={fetchVouchers} className="btn btn-primary" style={{ width: 'auto' }}>搜尋</button>
-
-                <select className="form-input" style={{ width: 'auto' }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-                    <option value="all">所有狀態</option>
-                    <option value="active">未使用 (Active)</option>
-                    <option value="redeemed">已核銷 (Redeemed)</option>
-                    <option value="void">已作廢 (Void)</option>
-                    <option value="expired">已過期 (Expired)</option>
-                </select>
-
-                <select className="form-input" style={{ width: 'auto' }} value={filterSource} onChange={e => setFilterSource(e.target.value)}>
-                    <option value="all">所有來源</option>
-                    <option value="digital_purchase">線上購買</option>
-                    <option value="paper_converted">紙本轉入</option>
-                </select>
-
-                <button onClick={() => setShowImportModal(true)} className="btn" style={{ width: 'auto', marginLeft: 'auto', background: '#eab308', color: '#fff' }}>
-                    📥 紙券批次轉入
-                </button>
+            <div style={{ background: '#ecfdf5', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
+                <h4 style={{ margin: '0 0 5px 0', color: '#047857' }}>流通中 (Active)</h4>
+                <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#10b981' }}>{activeCount}</span>
             </div>
-
-            {/* Voucher List */}
-            <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr style={{ textAlign: 'left', borderBottom: '2px solid #e5e7eb', background: '#f9fafb' }}>
-                            <th style={{ padding: '12px' }}>序號 (Code)</th>
-                            <th style={{ padding: '12px' }}>商品名稱</th>
-                            <th style={{ padding: '12px' }}>會員</th>
-                            <th style={{ padding: '12px' }}>狀態</th>
-                            <th style={{ padding: '12px' }}>來源</th>
-                            <th style={{ padding: '12px' }}>效期</th>
-                            <th style={{ padding: '12px' }}>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {vouchers.map(v => {
-                            let statusColor = '#6b7280';
-                            let statusBg = '#f3f4f6';
-                            if (v.status === 'active') { statusColor = '#059669'; statusBg = '#d1fae5'; }
-                            if (v.status === 'redeemed') { statusColor = '#2563eb'; statusBg = '#dbeafe'; }
-                            if (v.status === 'void') { statusColor = '#9ca3af'; statusBg = '#e5e7eb'; textDecoration = 'line-through'; }
-                            if (v.status === 'expired') { statusColor = '#dc2626'; statusBg = '#fee2e2'; }
-
-                            return (
-                                <tr key={v.id} style={{ borderBottom: '1px solid #eee' }}>
-                                    <td style={{ padding: '12px', fontWeight: 'bold', fontFamily: 'monospace' }}>{v.code}</td>
-                                    <td style={{ padding: '12px' }}>{v.product_name}</td>
-                                    <td style={{ padding: '12px' }}>
-                                        {v.users?.display_name}<br />
-                                        <span style={{ fontSize: '0.8rem', color: '#666' }}>{v.users?.phone}</span>
-                                    </td>
-                                    <td style={{ padding: '12px' }}>
-                                        <span style={{ padding: '4px 8px', borderRadius: '4px', backgroundColor: statusBg, color: statusColor, fontSize: '0.85rem', fontWeight: 'bold' }}>
-                                            {v.status.toUpperCase()}
-                                        </span>
-                                    </td>
-                                    <td style={{ padding: '12px' }}>
-                                        {v.source_type === 'paper_converted' ? '📄 紙本轉入' : '📱 線上購買'}
-                                    </td>
-                                    <td style={{ padding: '12px', fontSize: '0.9rem' }}>
-                                        {v.valid_until ? new Date(v.valid_until).toLocaleDateString() : '-'}
-                                    </td>
-                                    <td style={{ padding: '12px' }}>
-                                        <button onClick={() => handleOpenDetail(v)} style={{ border: '1px solid #ddd', background: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>
-                                            查看
-                                        </button>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+            <div style={{ background: '#f5f3ff', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
+                <h4 style={{ margin: '0 0 5px 0', color: '#6d28d9' }}>已核銷 (Redeemed)</h4>
+                <span style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#8b5cf6' }}>{redeemedCount}</span>
             </div>
+        </div>
 
-            {/* Detail Modal */}
-            {selectedVoucher && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
-                    display: 'flex', justifyContent: 'center', alignItems: 'center'
-                }} onClick={() => setSelectedVoucher(null)}>
-                    <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                            <h2 style={{ margin: 0 }}>票券詳情</h2>
-                            <button onClick={() => setSelectedVoucher(null)} style={{ border: 'none', background: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
-                        </div>
+        {/* Filters */}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px', alignItems: 'center' }}>
+            <input
+                placeholder="搜尋序號、手機、姓名..."
+                className="form-input"
+                style={{ width: '200px' }}
+                value={keyword}
+                onChange={e => setKeyword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && fetchVouchers()}
+            />
+            <button onClick={fetchVouchers} className="btn btn-primary" style={{ width: 'auto' }}>搜尋</button>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
-                            <div>
-                                <label style={{ color: '#666', fontSize: '0.85rem' }}>票券序號</label>
-                                <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{selectedVoucher.code}</div>
-                            </div>
-                            <div>
-                                <label style={{ color: '#666', fontSize: '0.85rem' }}>商品名稱</label>
-                                <div style={{ fontWeight: 'bold' }}>{selectedVoucher.product_name}</div>
-                            </div>
-                            <div>
-                                <label style={{ color: '#666', fontSize: '0.85rem' }}>目前狀態</label>
-                                <div>{selectedVoucher.status.toUpperCase()}</div>
-                            </div>
-                            <div>
-                                <label style={{ color: '#666', fontSize: '0.85rem' }}>有效期限</label>
-                                <div>{new Date(selectedVoucher.valid_until).toLocaleDateString()}</div>
-                            </div>
-                            {selectedVoucher.source_type === 'paper_converted' && (
-                                <div style={{ gridColumn: 'span 2', background: '#fffbeb', padding: '10px', borderRadius: '6px' }}>
-                                    <label style={{ color: '#d97706', fontSize: '0.85rem', fontWeight: 'bold' }}>⚠️ 原紙本票號</label>
-                                    <div style={{ color: '#b45309' }}>{selectedVoucher.original_paper_code}</div>
-                                </div>
-                            )}
-                        </div>
+            <select className="form-input" style={{ width: 'auto' }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                <option value="all">所有狀態</option>
+                <option value="active">未使用 (Active)</option>
+                <option value="redeemed">已核銷 (Redeemed)</option>
+                <option value="void">已作廢 (Void)</option>
+                <option value="expired">已過期 (Expired)</option>
+            </select>
 
-                        {/* Actions Area */}
-                        <div style={{ borderTop: '1px solid #eee', marginTop: '20px', paddingTop: '20px' }}>
-                            <h4 style={{ margin: '0 0 10px 0' }}>管理操作</h4>
+            <select className="form-input" style={{ width: 'auto' }} value={filterSource} onChange={e => setFilterSource(e.target.value)}>
+                <option value="all">所有來源</option>
+                <option value="digital_purchase">線上購買</option>
+                <option value="paper_converted">紙本轉入</option>
+            </select>
 
-                            {/* Action Buttons */}
-                            {!actionMode && (
-                                <div style={{ display: 'flex', gap: '10px' }}>
-                                    {selectedVoucher.status === 'active' && (
-                                        <>
-                                            <button onClick={() => setActionMode('void')} className="btn" style={{ background: '#fee2e2', color: '#ef4444' }}>作廢票券</button>
-                                            <button onClick={() => setActionMode('extend')} className="btn" style={{ background: '#e0f2fe', color: '#0369a1' }}>延展效期</button>
-                                        </>
-                                    )}
-                                    {(selectedVoucher.status === 'redeemed' || selectedVoucher.status === 'void') && (
-                                        <button onClick={() => setActionMode('reset')} className="btn" style={{ background: '#f3f4f6', color: '#374151' }}>重置狀態 (Admin)</button>
-                                    )}
-                                </div>
-                            )}
+            <button onClick={() => setShowImportModal(true)} className="btn" style={{ width: 'auto', marginLeft: 'auto', background: '#eab308', color: '#fff' }}>
+                📥 紙券批次轉入
+            </button>
+        </div>
 
-                            {/* Action Forms */}
-                            {actionMode === 'void' && (
-                                <div style={{ background: '#fef2f2', padding: '15px', borderRadius: '8px' }}>
-                                    <label style={{ display: 'block', marginBottom: '5px', color: '#991b1b' }}>請輸入作廢原因/備註：</label>
-                                    <input className="form-input" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="例：客戶退款" />
-                                    <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                                        <button onClick={handleAction} className="btn" style={{ background: '#ef4444', color: 'white' }}>確認作廢</button>
-                                        <button onClick={() => setActionMode(null)} className="btn" style={{ background: 'white', color: '#666' }}>取消</button>
-                                    </div>
-                                </div>
-                            )}
+        {/* Voucher List */}
+        <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: '2px solid #e5e7eb', background: '#f9fafb' }}>
+                        <th style={{ padding: '12px' }}>序號 (Code)</th>
+                        <th style={{ padding: '12px' }}>商品名稱</th>
+                        <th style={{ padding: '12px' }}>會員</th>
+                        <th style={{ padding: '12px' }}>狀態</th>
+                        <th style={{ padding: '12px' }}>來源</th>
+                        <th style={{ padding: '12px' }}>效期</th>
+                        <th style={{ padding: '12px' }}>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {vouchers.map(v => {
+                        let statusColor = '#6b7280';
+                        let statusBg = '#f3f4f6';
+                        if (v.status === 'active') { statusColor = '#059669'; statusBg = '#d1fae5'; }
+                        if (v.status === 'redeemed') { statusColor = '#2563eb'; statusBg = '#dbeafe'; }
+                        if (v.status === 'void') { statusColor = '#9ca3af'; statusBg = '#e5e7eb'; textDecoration = 'line-through'; }
+                        if (v.status === 'expired') { statusColor = '#dc2626'; statusBg = '#fee2e2'; }
 
-                            {actionMode === 'extend' && (
-                                <div style={{ background: '#f0f9ff', padding: '15px', borderRadius: '8px' }}>
-                                    <label style={{ display: 'block', marginBottom: '5px', color: '#075985' }}>選擇新有效期限：</label>
-                                    <input type="date" className="form-input" value={newExpiryDate} onChange={e => setNewExpiryDate(e.target.value)} />
-                                    <input className="form-input" style={{ marginTop: '5px' }} value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="延期原因 (選填)" />
-                                    <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                                        <button onClick={handleAction} className="btn" style={{ background: '#0ea5e9', color: 'white' }}>確認延期</button>
-                                        <button onClick={() => setActionMode(null)} className="btn" style={{ background: 'white', color: '#666' }}>取消</button>
-                                    </div>
-                                </div>
-                            )}
+                        return (
+                            <tr key={v.id} style={{ borderBottom: '1px solid #eee' }}>
+                                <td style={{ padding: '12px', fontWeight: 'bold', fontFamily: 'monospace' }}>{v.code}</td>
+                                <td style={{ padding: '12px' }}>{v.product_name}</td>
+                                <td style={{ padding: '12px' }}>
+                                    {v.users?.display_name}<br />
+                                    <span style={{ fontSize: '0.8rem', color: '#666' }}>{v.users?.phone}</span>
+                                </td>
+                                <td style={{ padding: '12px' }}>
+                                    <span style={{ padding: '4px 8px', borderRadius: '4px', backgroundColor: statusBg, color: statusColor, fontSize: '0.85rem', fontWeight: 'bold' }}>
+                                        {v.status.toUpperCase()}
+                                    </span>
+                                </td>
+                                <td style={{ padding: '12px' }}>
+                                    {v.source_type === 'paper_converted' ? '📄 紙本轉入' : '📱 線上購買'}
+                                </td>
+                                <td style={{ padding: '12px', fontSize: '0.9rem' }}>
+                                    {v.valid_until ? new Date(v.valid_until).toLocaleDateString() : '-'}
+                                </td>
+                                <td style={{ padding: '12px' }}>
+                                    <button onClick={() => handleOpenDetail(v)} style={{ border: '1px solid #ddd', background: 'white', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}>
+                                        查看
+                                    </button>
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
 
-                            {actionMode === 'reset' && (
-                                <div style={{ background: '#f3f4f6', padding: '15px', borderRadius: '8px' }}>
-                                    <p style={{ color: '#374151', marginTop: 0 }}>確定要將此票券重置為 <b>Active</b> 狀態嗎？</p>
-                                    <input className="form-input" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="重置原因 (選填)" />
-                                    <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                                        <button onClick={handleAction} className="btn" style={{ background: '#4b5563', color: 'white' }}>確認重置</button>
-                                        <button onClick={() => setActionMode(null)} className="btn" style={{ background: 'white', color: '#666' }}>取消</button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Logs */}
-                        <div style={{ marginTop: '25px' }}>
-                            <h4 style={{ margin: '0 0 10px 0', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>操作履歷</h4>
-                            {logs.length === 0 ? <p style={{ color: '#999' }}>無紀錄</p> : (
-                                <ul style={{ listStyle: 'none', padding: 0, fontSize: '0.9rem' }}>
-                                    {logs.map(log => (
-                                        <li key={log.id} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>
-                                                <span style={{ fontWeight: 'bold', marginRight: '8px' }}>[{log.action.toUpperCase()}]</span>
-                                                {log.memo}
-                                                {log.operator_name && <span style={{ marginLeft: '5px', color: '#666', background: '#f3f4f6', padding: '2px 5px', borderRadius: '4px' }}>{log.operator_name}</span>}
-                                            </span>
-                                            <span style={{ color: '#888', fontSize: '0.8rem' }}>{new Date(log.created_at).toLocaleString()}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
-                        </div>
+        {/* Detail Modal */}
+        {selectedVoucher && (
+            <div style={{
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
+                display: 'flex', justifyContent: 'center', alignItems: 'center'
+            }} onClick={() => setSelectedVoucher(null)}>
+                <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                        <h2 style={{ margin: 0 }}>票券詳情</h2>
+                        <button onClick={() => setSelectedVoucher(null)} style={{ border: 'none', background: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
                     </div>
-                </div>
-            )}
 
-            {/* Import Modal */}
-            {showImportModal && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
-                    display: 'flex', justifyContent: 'center', alignItems: 'center'
-                }} onClick={() => setShowImportModal(false)}>
-                    <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-                        <h2 style={{ margin: '0 0 15px 0' }}>📥 紙券批次轉入</h2>
-                        <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '10px' }}>
-                            請輸入票券資料，每行一筆。格式：<br />
-                            <b>用戶手機, 紙券編號, 商品名稱, 有效日期(YYYY-MM-DD, 可選)</b><br />
-                            範例：<br />
-                            <code style={{ background: '#f3f4f6', padding: '2px 5px' }}>0912345678, P-1001, 平日果嶺券, 2026-12-31</code>
-                        </p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+                        <div>
+                            <label style={{ color: '#666', fontSize: '0.85rem' }}>票券序號</label>
+                            <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{selectedVoucher.code}</div>
+                        </div>
+                        <div>
+                            <label style={{ color: '#666', fontSize: '0.85rem' }}>商品名稱</label>
+                            <div style={{ fontWeight: 'bold' }}>{selectedVoucher.product_name}</div>
+                        </div>
+                        <div>
+                            <label style={{ color: '#666', fontSize: '0.85rem' }}>目前狀態</label>
+                            <div>{selectedVoucher.status.toUpperCase()}</div>
+                        </div>
+                        <div>
+                            <label style={{ color: '#666', fontSize: '0.85rem' }}>有效期限</label>
+                            <div>{new Date(selectedVoucher.valid_until).toLocaleDateString()}</div>
+                        </div>
+                        {selectedVoucher.source_type === 'paper_converted' && (
+                            <div style={{ gridColumn: 'span 2', background: '#fffbeb', padding: '10px', borderRadius: '6px' }}>
+                                <label style={{ color: '#d97706', fontSize: '0.85rem', fontWeight: 'bold' }}>⚠️ 原紙本票號</label>
+                                <div style={{ color: '#b45309' }}>{selectedVoucher.original_paper_code}</div>
+                            </div>
+                        )}
+                    </div>
 
-                        <textarea
-                            className="form-input"
-                            style={{ width: '100%', height: '200px', fontFamily: 'monospace', fontSize: '14px' }}
-                            placeholder="在此貼上 csv 資料..."
-                            value={importText}
-                            onChange={e => setImportText(e.target.value)}
-                        />
+                    {/* Actions Area */}
+                    <div style={{ borderTop: '1px solid #eee', marginTop: '20px', paddingTop: '20px' }}>
+                        <h4 style={{ margin: '0 0 10px 0' }}>管理操作</h4>
 
-                        {importResult && (
-                            <div style={{ marginTop: '15px', padding: '10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px' }}>
-                                <div style={{ fontWeight: 'bold', color: '#166534' }}>處理完成</div>
-                                <div>成功: {importResult.success} 筆</div>
-                                {importResult.fail > 0 && (
-                                    <div style={{ color: '#991b1b', marginTop: '5px' }}>
-                                        失敗: {importResult.fail} 筆
-                                        <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px', fontSize: '0.85rem' }}>
-                                            {importResult.details.map((d, i) => <li key={i}>{d}</li>)}
-                                        </ul>
-                                    </div>
+                        {/* Action Buttons */}
+                        {!actionMode && (
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                {selectedVoucher.status === 'active' && (
+                                    <>
+                                        <button onClick={() => setActionMode('void')} className="btn" style={{ background: '#fee2e2', color: '#ef4444' }}>作廢票券</button>
+                                        <button onClick={() => setActionMode('extend')} className="btn" style={{ background: '#e0f2fe', color: '#0369a1' }}>延展效期</button>
+                                    </>
+                                )}
+                                {(selectedVoucher.status === 'redeemed' || selectedVoucher.status === 'void') && (
+                                    <button onClick={() => setActionMode('reset')} className="btn" style={{ background: '#f3f4f6', color: '#374151' }}>重置狀態 (Admin)</button>
                                 )}
                             </div>
                         )}
 
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-                            <button onClick={() => setShowImportModal(false)} className="btn" style={{ background: 'white', color: '#666', width: 'auto' }}>關閉</button>
-                            <button onClick={handleBulkImport} disabled={isImporting} className="btn" style={{ background: isImporting ? '#ccc' : '#eab308', color: 'white', width: 'auto' }}>
-                                {isImporting ? '處理中...' : '開始轉入'}
-                            </button>
-                        </div>
+                        {/* Action Forms */}
+                        {actionMode === 'void' && (
+                            <div style={{ background: '#fef2f2', padding: '15px', borderRadius: '8px' }}>
+                                <label style={{ display: 'block', marginBottom: '5px', color: '#991b1b' }}>請輸入作廢原因/備註：</label>
+                                <input className="form-input" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="例：客戶退款" />
+                                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                                    <button onClick={handleAction} className="btn" style={{ background: '#ef4444', color: 'white' }}>確認作廢</button>
+                                    <button onClick={() => setActionMode(null)} className="btn" style={{ background: 'white', color: '#666' }}>取消</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {actionMode === 'extend' && (
+                            <div style={{ background: '#f0f9ff', padding: '15px', borderRadius: '8px' }}>
+                                <label style={{ display: 'block', marginBottom: '5px', color: '#075985' }}>選擇新有效期限：</label>
+                                <input type="date" className="form-input" value={newExpiryDate} onChange={e => setNewExpiryDate(e.target.value)} />
+                                <input className="form-input" style={{ marginTop: '5px' }} value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="延期原因 (選填)" />
+                                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                                    <button onClick={handleAction} className="btn" style={{ background: '#0ea5e9', color: 'white' }}>確認延期</button>
+                                    <button onClick={() => setActionMode(null)} className="btn" style={{ background: 'white', color: '#666' }}>取消</button>
+                                </div>
+                            </div>
+                        )}
+
+                        {actionMode === 'reset' && (
+                            <div style={{ background: '#f3f4f6', padding: '15px', borderRadius: '8px' }}>
+                                <p style={{ color: '#374151', marginTop: 0 }}>確定要將此票券重置為 <b>Active</b> 狀態嗎？</p>
+                                <input className="form-input" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="重置原因 (選填)" />
+                                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                                    <button onClick={handleAction} className="btn" style={{ background: '#4b5563', color: 'white' }}>確認重置</button>
+                                    <button onClick={() => setActionMode(null)} className="btn" style={{ background: 'white', color: '#666' }}>取消</button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Logs */}
+                    <div style={{ marginTop: '25px' }}>
+                        <h4 style={{ margin: '0 0 10px 0', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>操作履歷</h4>
+                        {logs.length === 0 ? <p style={{ color: '#999' }}>無紀錄</p> : (
+                            <ul style={{ listStyle: 'none', padding: 0, fontSize: '0.9rem' }}>
+                                {logs.map(log => (
+                                    <li key={log.id} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                                        <span>
+                                            <span style={{ fontWeight: 'bold', marginRight: '8px' }}>[{log.action.toUpperCase()}]</span>
+                                            {log.memo}
+                                            {log.operator_name && <span style={{ marginLeft: '5px', color: '#666', background: '#f3f4f6', padding: '2px 5px', borderRadius: '4px' }}>{log.operator_name}</span>}
+                                        </span>
+                                        <span style={{ color: '#888', fontSize: '0.8rem' }}>{new Date(log.created_at).toLocaleString()}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </div>
                 </div>
-            )}
-        </div>
-    );
+            </div>
+        )}
+
+        {/* Import Modal */}
+        {showImportModal && (
+            <div style={{
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
+                display: 'flex', justifyContent: 'center', alignItems: 'center'
+            }} onClick={() => setShowImportModal(false)}>
+                <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                    <h2 style={{ margin: '0 0 15px 0' }}>📥 紙券批次轉入</h2>
+                    <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '10px' }}>
+                        請輸入票券資料，每行一筆。格式：<br />
+                        <b>用戶手機, 紙券編號, 商品名稱, 有效日期(YYYY-MM-DD, 可選)</b><br />
+                        範例：<br />
+                        <code style={{ background: '#f3f4f6', padding: '2px 5px' }}>0912345678, P-1001, 平日果嶺券, 2026-12-31</code>
+                    </p>
+
+                    <textarea
+                        className="form-input"
+                        style={{ width: '100%', height: '200px', fontFamily: 'monospace', fontSize: '14px' }}
+                        placeholder="在此貼上 csv 資料..."
+                        value={importText}
+                        onChange={e => setImportText(e.target.value)}
+                    />
+
+                    {importResult && (
+                        <div style={{ marginTop: '15px', padding: '10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px' }}>
+                            <div style={{ fontWeight: 'bold', color: '#166534' }}>處理完成</div>
+                            <div>成功: {importResult.success} 筆</div>
+                            {importResult.fail > 0 && (
+                                <div style={{ color: '#991b1b', marginTop: '5px' }}>
+                                    失敗: {importResult.fail} 筆
+                                    <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px', fontSize: '0.85rem' }}>
+                                        {importResult.details.map((d, i) => <li key={i}>{d}</li>)}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                        <button onClick={() => setShowImportModal(false)} className="btn" style={{ background: 'white', color: '#666', width: 'auto' }}>關閉</button>
+                        <button onClick={handleBulkImport} disabled={isImporting} className="btn" style={{ background: isImporting ? '#ccc' : '#eab308', color: 'white', width: 'auto' }}>
+                            {isImporting ? '處理中...' : '開始轉入'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+    </div>
+);
 }
 
 // Sub-component: StarterDashboard (Existing)
