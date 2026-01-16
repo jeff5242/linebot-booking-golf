@@ -5,6 +5,7 @@ import { Booking } from './pages/Booking';
 import { MyBookings } from './pages/MyBookings';
 import { AdminDashboard } from './pages/Admin';
 import { HealthCheck } from './pages/HealthCheck';
+import { AdminLogin } from './pages/AdminLogin';
 import { supabase } from './supabase';
 
 import liff from '@line/liff';
@@ -96,12 +97,28 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+function AdminRoute({ children }) {
+  const isAdmin = sessionStorage.getItem('admin_token');
+  if (!isAdmin) {
+    return <Navigate to="/admin/login" replace />;
+  }
+  return children;
+}
+
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/register" element={<Register />} />
-        <Route path="/admin" element={<AdminDashboard />} />
+
+        {/* Admin Routes */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/admin" element={
+          <AdminRoute>
+            <AdminDashboard />
+          </AdminRoute>
+        } />
+
         <Route path="/health" element={<HealthCheck />} />
         <Route path="/my-bookings" element={
           <ProtectedRoute>
