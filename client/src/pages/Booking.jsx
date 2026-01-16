@@ -123,7 +123,29 @@ export function Booking() {
 
         try {
             const userPhone = localStorage.getItem('golf_user_phone');
-            const { data: user } = await supabase.from('users').select('id').eq('phone', userPhone).single();
+            const userName = localStorage.getItem('golf_user_name');
+            const lineUserId = localStorage.getItem('line_user_id') || 'temp_' + Date.now();
+
+            // Try to find user
+            let { data: user } = await supabase.from('users').select('id').eq('phone', userPhone).single();
+
+            // If user not found but we have local info, try to register/restore user seamlessly
+            if (!user && userPhone && userName) {
+                console.log('User not found in DB, attempting auto-restore...');
+                const { data: newUser, error: createError } = await supabase
+                    .from('users')
+                    .insert([{
+                        line_user_id: lineUserId,
+                        phone: userPhone,
+                        display_name: userName
+                    }])
+                    .select('id')
+                    .single();
+
+                if (newUser && !createError) {
+                    user = newUser;
+                }
+            }
 
             if (!user) {
                 alert('找不到使用者資料，請重新註冊');
