@@ -1,14 +1,132 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { format, addMinutes } from 'date-fns';
 import { supabase } from '../supabase';
 import { Calendar } from '../components/Calendar';
 import { generateDailySlots } from '../utils/golfLogic';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 
-// Sub-component: Starter Dashboard (The original functionality)
+// Sub-component: Scanner Tab
+function QRScannerTab() {
+    const [scanResult, setScanResult] = useState(null);
+    const [lastScanned, setLastScanned] = useState('');
+
+    useEffect(() => {
+        const scanner = new Html5QrcodeScanner(
+            "reader",
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            /* verbose= */ false
+        );
+
+        scanner.render(onScanSuccess, onScanFailure);
+
+        async function onScanSuccess(decodedText) {
+            if (decodedText === lastScanned) return; // Prevent double scan
+            setLastScanned(decodedText);
+
+            // Beep sound
+            // const audio = new Audio('/beep.mp3'); audio.play().catch(e=>{});
+
+            try {
+                let phone = decodedText;
+                try {
+                    const json = JSON.parse(decodedText);
+                    if (json.phone) phone = json.phone;
+                } catch (e) { }
+
+                // Perform server check-in
+                const dateStr = format(new Date(), 'yyyy-MM-dd');
+
+                // Find user
+                const { data: users } = await supabase.from('users').select('id, display_name').eq('phone', phone).limit(1);
+                if (!users || users.length === 0) {
+                    setScanResult({ error: `找不到用戶 (電話: ${phone})` });
+                    return;
+                }
+                const user = users[0];
+
+                // Find booking
+                const { data: booking } = await supabase
+                    .from('bookings')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .eq('date', dateStr)
+                    .neq('status', 'cancelled')
+                    .limit(1)
+                    .maybeSingle();
+
+                if (booking) {
+                    if (booking.status === 'checked_in') {
+                        setScanResult({
+                            warning: '已重複報到',
+                            user: user.display_name,
+                            time: booking.time,
+                            msg: '此用戶今日已完成報到'
+                        });
+                    } else {
+                        await supabase.from('bookings').update({ status: 'checked_in', checkin_time: new Date() }).eq('id', booking.id);
+                        setScanResult({
+                            success: true,
+                            user: user.display_name,
+                            time: booking.time,
+                            msg: '報到成功！'
+                        });
+                    }
+                } else {
+                    setScanResult({
+                        error: '無今日預約',
+                        user: user.display_name,
+                        msg: `該用戶今日 (${dateStr}) 無有效預約`
+                    });
+                }
+
+                // Clear after 3 seconds so they can scan next
+                setTimeout(() => {
+                    setScanResult(null);
+                    setLastScanned('');
+                }, 5000);
+
+            } catch (err) {
+                console.error(err);
+                setScanResult({ error: '掃描處理錯誤' });
+            }
+        }
+
+        function onScanFailure(error) { }
+
+        return () => {
+            scanner.clear().catch(e => console.error(e));
+        };
+    }, []);
+
+    return (
+        <div className="card animate-fade-in" style={{ textAlign: 'center', minHeight: '400px' }}>
+            <h2 className="title">QR Code 掃碼報到</h2>
+            <p style={{ color: '#666', marginBottom: '20px' }}>請將用戶手機 QR Code 對準下方鏡頭</p>
+
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <div id="reader" style={{ width: '100%', maxWidth: '500px' }}></div>
+            </div>
+
+            {scanResult && (
+                <div className="animate-fade-in" style={{
+                    marginTop: '20px', padding: '20px', borderRadius: '12px',
+                    backgroundColor: scanResult.success ? '#dcfce7' : (scanResult.change ? '#fef3c7' : '#fee2e2'),
+                    border: `2px solid ${scanResult.success ? '#166534' : (scanResult.warning ? '#d97706' : '#991b1b')}`
+                }}>
+                    {scanResult.user && <h3 style={{ margin: 0, fontSize: '1.5rem' }}>{scanResult.user}</h3>}
+                    <p style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '10px 0' }}>
+                        {scanResult.msg || scanResult.error || scanResult.warning}
+                    </p>
+                    {scanResult.time && <p>預約時間: {scanResult.time.slice(0, 5)}</p>}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// Sub-component: Starter Dashboard
 function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookings }) {
     const slots = generateDailySlots(selectedDate);
-    const [showScanner, setShowScanner] = useState(false);
 
     // Logic for linking bookings (18 holes turn)
     const getBookingAt = (timeStr) => bookings.find(b => b.time === timeStr && b.status !== 'cancelled');
@@ -40,116 +158,9 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
         }
     };
 
-    // Scanner Logic
-    useEffect(() => {
-        if (showScanner) {
-            const scanner = new Html5QrcodeScanner(
-                "reader",
-                { fps: 10, qrbox: { width: 250, height: 250 } },
-                /* verbose= */ false
-            );
-
-            scanner.render(onScanSuccess, onScanFailure);
-
-            async function onScanSuccess(decodedText) {
-                // Handle scanned code
-                scanner.clear();
-                setShowScanner(false);
-
-                try {
-                    let phone = decodedText;
-                    // Try parsing JSON if applicable
-                    try {
-                        const json = JSON.parse(decodedText);
-                        if (json.phone) phone = json.phone;
-                    } catch (e) {
-                        // assume text is phone
-                    }
-
-                    // Perform server check-in
-                    const dateStr = format(new Date(), 'yyyy-MM-dd'); // Check-in is always for TODAY
-
-                    // Find user first
-                    const { data: users } = await supabase.from('users').select('id, display_name').eq('phone', phone).limit(1);
-                    if (!users || users.length === 0) {
-                        alert('找不到此手機號碼之用戶: ' + phone);
-                        return;
-                    }
-                    const user = users[0];
-
-                    // Find booking for today
-                    const { data: booking } = await supabase
-                        .from('bookings')
-                        .select('*')
-                        .eq('user_id', user.id)
-                        .eq('date', dateStr)
-                        .neq('status', 'cancelled')
-                        .limit(1)
-                        .maybeSingle();
-
-                    if (booking) {
-                        if (booking.status === 'checked_in') {
-                            alert(`用戶 ${user.display_name} 今日已報到過！`);
-                        } else {
-                            await supabase.from('bookings').update({ status: 'checked_in', checkin_time: new Date() }).eq('id', booking.id);
-                            alert(`✅ 報到成功！\n用戶: ${user.display_name}\n時間: ${booking.time}`);
-                            fetchBookings(); // Refresh UI
-                        }
-                    } else {
-                        alert(`用戶 ${user.display_name} 今日 (${dateStr}) 無有效預約！`);
-                    }
-
-                } catch (err) {
-                    console.error(err);
-                    alert('掃描處理錯誤');
-                }
-            }
-
-            function onScanFailure(error) {
-                // handle scan failure, usually better to ignore and keep scanning.
-                // console.warn(`Code scan error = ${error}`);
-            }
-
-            return () => {
-                scanner.clear().catch(error => console.error("Failed to clear html5-qrcode scanner. ", error));
-            };
-        }
-    }, [showScanner]);
-
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <Calendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
-
-                <button
-                    onClick={() => setShowScanner(true)}
-                    style={{
-                        padding: '10px 15px',
-                        backgroundColor: '#3b82f6', color: 'white',
-                        border: 'none', borderRadius: '6px', cursor: 'pointer',
-                        fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '5px',
-                        whiteSpace: 'nowrap', height: 'fit-content'
-                    }}
-                >
-                    📷 掃碼報到
-                </button>
-            </div>
-
-            {/* Scanner Modal */}
-            {showScanner && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999,
-                    display: 'flex', justifyContent: 'center', alignItems: 'center'
-                }}>
-                    <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '10px', width: '90%', maxWidth: '500px' }}>
-                        <h3 style={{ marginTop: 0 }}>掃描用戶 QR Code</h3>
-                        <div id="reader" style={{ width: '100%' }}></div>
-                        <button onClick={() => setShowScanner(false)} className="btn" style={{ marginTop: '15px', color: 'red', borderColor: 'red' }}>取消關閉</button>
-                    </div>
-                </div>
-            )}
-
+            <Calendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
             <div className="card" style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
@@ -346,7 +357,7 @@ function AdminManagement() {
 }
 
 export function AdminDashboard() {
-    const [activeTab, setActiveTab] = useState('starter'); // starter, users, admins
+    const [activeTab, setActiveTab] = useState('starter'); // starter, bg-checkin, users, admins
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -392,11 +403,12 @@ export function AdminDashboard() {
             </div>
 
             {/* Tabs */}
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e5e7eb', overflowX: 'auto' }}>
                 <button
                     onClick={() => setActiveTab('starter')}
                     style={{
-                        padding: '10px 20px',
+                        padding: '10px 16px',
+                        whiteSpace: 'nowrap',
                         border: 'none',
                         background: 'none',
                         borderBottom: activeTab === 'starter' ? '3px solid var(--primary-color)' : '3px solid transparent',
@@ -408,9 +420,26 @@ export function AdminDashboard() {
                     出發台看板
                 </button>
                 <button
+                    onClick={() => setActiveTab('scan')}
+                    style={{
+                        padding: '10px 16px',
+                        whiteSpace: 'nowrap',
+                        border: 'none',
+                        background: 'none',
+                        borderBottom: activeTab === 'scan' ? '3px solid var(--primary-color)' : '3px solid transparent',
+                        fontWeight: activeTab === 'scan' ? 'bold' : 'normal',
+                        cursor: 'pointer',
+                        color: activeTab === 'scan' ? 'var(--primary-color)' : '#6b7280',
+                        display: 'flex', alignItems: 'center', gap: '5px'
+                    }}
+                >
+                    📷 掃碼報到
+                </button>
+                <button
                     onClick={() => setActiveTab('users')}
                     style={{
-                        padding: '10px 20px',
+                        padding: '10px 16px',
+                        whiteSpace: 'nowrap',
                         border: 'none',
                         background: 'none',
                         borderBottom: activeTab === 'users' ? '3px solid var(--primary-color)' : '3px solid transparent',
@@ -424,7 +453,8 @@ export function AdminDashboard() {
                 <button
                     onClick={() => setActiveTab('admins')}
                     style={{
-                        padding: '10px 20px',
+                        padding: '10px 16px',
+                        whiteSpace: 'nowrap',
                         border: 'none',
                         background: 'none',
                         borderBottom: activeTab === 'admins' ? '3px solid var(--primary-color)' : '3px solid transparent',
@@ -446,6 +476,8 @@ export function AdminDashboard() {
                     fetchBookings={fetchBookings}
                 />
             )}
+
+            {activeTab === 'scan' && <QRScannerTab />}
 
             {activeTab === 'users' && <UserManagement />}
 
