@@ -463,6 +463,7 @@ function VoucherManagement() {
     const [importText, setImportText] = useState('');
     const [importResult, setImportResult] = useState(null);
     const [isImporting, setIsImporting] = useState(false);
+    const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
 
     useEffect(() => {
         fetchVouchers();
@@ -551,70 +552,202 @@ function VoucherManagement() {
         setIsImporting(true);
         setImportResult(null);
 
-        const lines = importText.split('\n').filter(l => l.trim());
+        // --- Robust Excel Parser (Handles quoted newlines) ---
+        const parseExcelText = (text) => {
+            const rows = [];
+            let currentRow = [];
+            let currentCell = '';
+            let inQuote = false;
+
+            // Normalize line endings
+            text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const nextChar = text[i + 1];
+
+                if (inQuote) {
+                    if (char === '"') {
+                        if (nextChar === '"') {
+                            currentCell += '"'; // Escaped quote
+                            i++;
+                        } else {
+                            inQuote = false; // End quote
+                        }
+                    } else {
+                        currentCell += char;
+                    }
+                } else {
+                    if (char === '"') {
+                        inQuote = true;
+                    } else if (char === '\t') {
+                        currentRow.push(currentCell.trim()); // Cell complete
+                        currentCell = '';
+                    } else if (char === '\n') {
+                        currentRow.push(currentCell.trim()); // Row complete
+                        if (currentRow.length > 0 && currentRow.some(c => c)) { // Skip empty rows
+                            rows.push(currentRow);
+                        }
+                        currentRow = [];
+                        currentCell = '';
+                    } else {
+                        currentCell += char;
+                    }
+                }
+            }
+            // Add last cell/row
+            if (currentCell || currentRow.length > 0) {
+                currentRow.push(currentCell.trim());
+                if (currentRow.length > 0 && currentRow.some(c => c)) {
+                    rows.push(currentRow);
+                }
+            }
+            return rows;
+        };
+
+        // Use the new parser
+        const rows = parseExcelText(importText);
+        const totalLines = rows.length;
+        setImportProgress({ current: 0, total: totalLines });
+
         let successCount = 0;
         let failCount = 0;
-        let details = [];
+        let errors = [];
+        let newUsers = [];
 
-        for (const line of lines) {
-            // Format: Phone, PaperCode, ProductName, ValidUntil
-            const parts = line.split(',').map(s => s.trim());
-            if (parts.length < 3) {
+        // Helper function to convert ROC date (民國年) to AD date
+        const parseROCDate = (rocDateStr) => {
+            try {
+                if (!rocDateStr) return null;
+                // Format: 114/07/04 (YYY/MM/DD in ROC calendar)
+                const parts = rocDateStr.split('/');
+                if (parts.length === 3) {
+                    const rocYear = parseInt(parts[0]);
+                    const month = parseInt(parts[1]);
+                    const day = parseInt(parts[2]);
+                    const adYear = rocYear + 1911; // Convert ROC year to AD year
+                    return new Date(adYear, month - 1, day).toISOString();
+                }
+            } catch (e) {
+                console.error('Date parse error:', e);
+            }
+            return null;
+        };
+
+        // Retry helper
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+        const retryOperation = async (operation, maxRetries = 3) => {
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    return await operation();
+                } catch (err) {
+                    if (i === maxRetries - 1) throw err;
+                    await sleep(500 * (i + 1)); // Backoff
+                }
+            }
+        };
+
+        for (let i = 0; i < rows.length; i++) {
+            const rowData = rows[i];
+            setImportProgress({ current: i + 1, total: totalLines });
+
+            // Allow UI to update
+            await sleep(50);
+
+            // Validate minimum columns (Excel headers: 票券日期, 客戶編號, 客戶全稱, 發票號碼, 產品金額...)
+            // Actually our parser returns array of cells directly.
+
+            if (rowData.length < 4) {
                 failCount++;
-                details.push(`格式錯誤: ${line}`);
+                errors.push(`第 ${i + 1} 行格式錯誤 (欄位不足): ${rowData.join(', ').substring(0, 30)}...`);
                 continue;
             }
 
-            const [phone, paperCode, productName, dateStr] = parts;
-            const validUntil = dateStr ? new Date(dateStr).toISOString() : addMinutes(new Date(), 525600).toISOString(); // Default 1 year
+            // Extract fields
+            const rocDate = rowData[0];           // 票券日期
+            const customerCode = rowData[1];      // 客戶編號
+            const name = rowData[2];              // 客戶全稱
+            const paperCode = rowData[3];         // 發票號碼
+            const priceStr = rowData[4] || '0';   // 產品金額
+            const productName = rowData[6] || '果嶺券'; // 分錄備註 (index 6)
+
+            // Use customer code as phone number
+            const phone = customerCode;
+
+            // Parse fields
+            const purchaseDate = parseROCDate(rocDate);
+            const price = parseFloat(priceStr.replace(/,/g, '')) || 0;
+            const baseDate = purchaseDate ? new Date(purchaseDate) : new Date();
+            const validUntil = new Date(baseDate.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
             try {
-                // 1. Find User
-                const { data: users } = await supabase.from('users').select('id, display_name').eq('phone', phone).limit(1);
+                // 1. Find or Create User by phone
+                let user;
 
-                if (!users || users.length === 0) {
-                    failCount++;
-                    details.push(`找不到用戶 (${phone})`);
-                    continue;
-                }
-                const user = users[0];
+                await retryOperation(async () => {
+                    let { data: users } = await supabase.from('users').select('id, display_name').eq('phone', phone).limit(1);
+
+                    if (!users || users.length === 0) {
+                        const { data: newUser, error: userError } = await supabase.from('users').insert([{
+                            phone: phone,
+                            display_name: name,
+                            line_user_id: null,
+                            created_at: new Date().toISOString()
+                        }]).select().single();
+
+                        if (userError) throw userError;
+                        user = newUser;
+                        if (!newUsers.includes(`${name} (${phone})`)) {
+                            newUsers.push(`${name} (${phone})`);
+                        }
+                    } else {
+                        user = users[0];
+                    }
+                });
 
                 // 2. Insert Voucher
-                // Generate a unique digital code: EV-{Timestamp}-{Random4}
                 const digitalCode = `EV-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
+                let insertedVoucher;
 
-                const { data: voucher, error: vError } = await supabase.from('vouchers').insert([{
-                    code: digitalCode,
-                    product_id: 0, // Placeholder
-                    product_name: productName,
-                    user_id: user.id,
-                    status: 'active',
-                    source_type: 'paper_converted',
-                    original_paper_code: paperCode,
-                    valid_until: validUntil
-                }]).select().single();
+                await retryOperation(async () => {
+                    const { data: voucher, error: vError } = await supabase.from('vouchers').insert([{
+                        code: digitalCode,
+                        product_id: 0,
+                        product_name: productName,
+                        user_id: user.id,
+                        status: 'active',
+                        source_type: 'paper_converted',
+                        original_paper_code: paperCode,
+                        valid_until: validUntil,
+                        purchase_date: purchaseDate,
+                        price: price
+                    }]).select().single(); // Ensure .select().single() to get the inserted data
 
-                if (vError) throw vError;
+                    if (vError) throw vError;
+                    insertedVoucher = voucher;
+                });
 
-                // 3. Log
-                await supabase.from('voucher_logs').insert([{
-                    voucher_id: voucher.id,
-                    action: 'imported',
-                    memo: `紙券轉入 (原號:${paperCode}, $${price})`,
-                    operator_name: 'Admin'
-                }]);
+                // 3. Log Action
+                await retryOperation(async () => {
+                    await supabase.from('voucher_logs').insert([{
+                        voucher_id: insertedVoucher.id, // Use the ID from the inserted voucher
+                        action: 'imported',
+                        memo: `紙券轉入 (原號:${paperCode}, $${price}, 購買人:${name})`,
+                        operator_name: 'Admin'
+                    }]);
+                });
 
                 successCount++;
 
             } catch (err) {
                 console.error(err);
                 failCount++;
-                details.push(`系統錯誤: ${err.message}`);
+                errors.push(`第 ${i + 1} 行系統錯誤 (${phone} - ${name}): ${err.message}`);
             }
         }
 
         setIsImporting(false);
-        setImportResult({ success: successCount, fail: failCount, details });
+        setImportResult({ success: successCount, fail: failCount, errors, newUsers });
         if (successCount > 0) fetchVouchers();
     };
 
@@ -852,10 +985,10 @@ function VoucherManagement() {
                     <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
                         <h2 style={{ margin: '0 0 15px 0' }}>📥 紙券批次轉入</h2>
                         <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '10px' }}>
-                            請輸入票券資料，每行一筆。格式：<br />
-                            <b>用戶手機, 紙券編號, 商品名稱, 有效日期(YYYY-MM-DD, 可選)</b><br />
+                            請直接從 Excel 複製貼上資料（支援 Tab 分隔）<br />
+                            <b>欄位：票券日期 客戶編號 客戶全稱 發票號碼 產品金額 資料金額 分錄備註 本幣金額</b><br />
                             範例：<br />
-                            <code style={{ background: '#f3f4f6', padding: '2px 5px' }}>0912345678, P-1001, 平日果嶺券, 2026-12-31</code>
+                            <code style={{ background: '#f3f4f6', padding: '2px 5px', fontSize: '0.85rem' }}>114/07/04	0936627522	黃寶雲	PX18750376	3,000	3,000	@2024*15度	2,857</code>
                         </p>
 
                         <textarea
@@ -866,15 +999,49 @@ function VoucherManagement() {
                             onChange={e => setImportText(e.target.value)}
                         />
 
+                        {/* Progress Bar */}
+                        {isImporting && importProgress.total > 0 && (
+                            <div style={{ marginTop: '15px', padding: '10px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem', color: '#0369a1' }}>
+                                    <span>處理進度</span>
+                                    <span>{importProgress.current} / {importProgress.total} ({Math.round((importProgress.current / importProgress.total) * 100)}%)</span>
+                                </div>
+                                <div style={{ width: '100%', height: '8px', background: '#e0f2fe', borderRadius: '4px', overflow: 'hidden' }}>
+                                    <div style={{
+                                        width: `${(importProgress.current / importProgress.total) * 100}%`,
+                                        height: '100%',
+                                        background: 'linear-gradient(90deg, #0ea5e9, #06b6d4)',
+                                        transition: 'width 0.3s ease'
+                                    }}></div>
+                                </div>
+                            </div>
+                        )}
+
                         {importResult && (
                             <div style={{ marginTop: '15px', padding: '10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px' }}>
-                                <div style={{ fontWeight: 'bold', color: '#166534' }}>處理完成</div>
-                                <div>成功: {importResult.success} 筆</div>
+                                <div style={{ fontWeight: 'bold', color: '#166534', marginBottom: '5px' }}>處理完成</div>
+
+                                {/* 成功統計 */}
+                                <div style={{ marginBottom: '5px' }}>
+                                    ✅ 成功匯入: <b>{importResult.success}</b> 筆
+                                </div>
+
+                                {/* 自動建立新用戶清單 */}
+                                {importResult.newUsers && importResult.newUsers.length > 0 && (
+                                    <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#0369a1' }}>
+                                        <div style={{ fontWeight: 'bold' }}>✨ 自動建立新用戶 ({importResult.newUsers.length}):</div>
+                                        <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px', maxHeight: '100px', overflowY: 'auto' }}>
+                                            {importResult.newUsers.map((u, i) => <li key={i}>{u}</li>)}
+                                        </ul>
+                                    </div>
+                                )}
+
+                                {/* 失敗統計與明細 */}
                                 {importResult.fail > 0 && (
-                                    <div style={{ color: '#991b1b', marginTop: '5px' }}>
-                                        失敗: {importResult.fail} 筆
+                                    <div style={{ color: '#991b1b', marginTop: '10px', borderTop: '1px solid #fee2e2', paddingTop: '10px' }}>
+                                        <div style={{ fontWeight: 'bold' }}>❌ 失敗: {importResult.fail} 筆</div>
                                         <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px', fontSize: '0.85rem' }}>
-                                            {importResult.details.map((d, i) => <li key={i}>{d}</li>)}
+                                            {importResult.errors.map((d, i) => <li key={i}>{d}</li>)}
                                         </ul>
                                     </div>
                                 )}
