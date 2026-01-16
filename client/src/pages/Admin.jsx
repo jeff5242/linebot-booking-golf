@@ -114,6 +114,14 @@ export function AdminDashboard() {
         if (!error) fetchBookings();
     };
 
+    const handleLogout = () => {
+        if (confirm('確定要登出嗎？')) {
+            sessionStorage.removeItem('admin_token');
+            sessionStorage.removeItem('admin_name');
+            window.location.href = '/admin/login';
+        }
+    };
+
     if (loading) return <div>Loading...</div>;
 
     return (
@@ -137,6 +145,13 @@ export function AdminDashboard() {
                         ⚠️ 清空資料庫
                     </button>
                     <button onClick={() => location.reload()} className="btn" style={{ width: 'auto', padding: '8px 16px' }}>↻</button>
+                    <button
+                        onClick={handleLogout}
+                        className="btn"
+                        style={{ width: 'auto', padding: '8px 16px', backgroundColor: '#6b7280', color: 'white' }}
+                    >
+                        登出
+                    </button>
                 </div>
             </div>
 
