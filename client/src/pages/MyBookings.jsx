@@ -16,8 +16,15 @@ export function MyBookings() {
         const phone = localStorage.getItem('golf_user_phone');
         if (!phone) return;
 
-        const { data: user } = await supabase.from('users').select('id').eq('phone', phone).single();
-        if (!user) return;
+        const { data: users } = await supabase
+            .from('users')
+            .select('id')
+            .eq('phone', phone)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        if (!users || users.length === 0) return;
+        const user = users[0];
 
         const { data } = await supabase
             .from('bookings')
