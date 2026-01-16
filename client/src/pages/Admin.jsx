@@ -840,6 +840,55 @@ function VoucherManagement() {
                     </div>
                 </div>
             )}
+
+            {/* Import Modal */}
+            {showImportModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
+                    display: 'flex', justifyContent: 'center', alignItems: 'center'
+                }} onClick={() => setShowImportModal(false)}>
+                    <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                        <h2 style={{ margin: '0 0 15px 0' }}>📥 紙券批次轉入</h2>
+                        <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '10px' }}>
+                            請輸入票券資料，每行一筆。格式：<br />
+                            <b>用戶手機, 紙券編號, 商品名稱, 有效日期(YYYY-MM-DD, 可選)</b><br />
+                            範例：<br />
+                            <code style={{ background: '#f3f4f6', padding: '2px 5px' }}>0912345678, P-1001, 平日果嶺券, 2026-12-31</code>
+                        </p>
+
+                        <textarea
+                            className="form-input"
+                            style={{ width: '100%', height: '200px', fontFamily: 'monospace', fontSize: '14px' }}
+                            placeholder="在此貼上 csv 資料..."
+                            value={importText}
+                            onChange={e => setImportText(e.target.value)}
+                        />
+
+                        {importResult && (
+                            <div style={{ marginTop: '15px', padding: '10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px' }}>
+                                <div style={{ fontWeight: 'bold', color: '#166534' }}>處理完成</div>
+                                <div>成功: {importResult.success} 筆</div>
+                                {importResult.fail > 0 && (
+                                    <div style={{ color: '#991b1b', marginTop: '5px' }}>
+                                        失敗: {importResult.fail} 筆
+                                        <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px', fontSize: '0.85rem' }}>
+                                            {importResult.details.map((d, i) => <li key={i}>{d}</li>)}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                            <button onClick={() => setShowImportModal(false)} className="btn" style={{ background: 'white', color: '#666', width: 'auto' }}>關閉</button>
+                            <button onClick={handleBulkImport} disabled={isImporting} className="btn" style={{ background: isImporting ? '#ccc' : '#eab308', color: 'white', width: 'auto' }}>
+                                {isImporting ? '處理中...' : '開始轉入'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
