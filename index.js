@@ -36,15 +36,29 @@ const linePayConfig = {
 
 const app = express();
 
-// 設定 CORS
+// 設定 CORS - 必須放在所有路由之前，包括 Webhook
 app.use(cors({
-  origin: [
-    'http://localhost:5173', // Vite local development
-    'https://linebot-booking-golf-q3wo.vercel.app', // Production Vercel
-    /\.vercel\.app$/ // Allow all Vercel previews
-  ],
+  origin: function (origin, callback) {
+    // 允許沒有 origin 的請求（例如：curl 或行動裝置 App）
+    if (!origin) return callback(null, true);
+
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'https://linebot-booking-golf-q3wo.vercel.app'
+    ];
+
+    const isVercelPreview = /\.vercel\.app$/.test(origin);
+
+    if (allowedOrigins.indexOf(origin) !== -1 || isVercelPreview) {
+      callback(null, true);
+    } else {
+      console.log('CORS Blocked for origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: true
 }));
 
 // LINE Webhook 端點 - 必須放在 express.json() 之前，因為它需要原始 Request Body 進行簽章驗證
