@@ -3,6 +3,7 @@
 require('dotenv').config();
 
 const express = require('express');
+const cors = require('cors');
 const line = require('@line/bot-sdk');
 
 // LINE Bot 設定
@@ -34,6 +35,17 @@ const linePayConfig = {
 };
 
 const app = express();
+
+// 設定 CORS
+app.use(cors({
+  origin: [
+    'http://localhost:5173', // Vite local development
+    'https://linebot-booking-golf-q3wo.vercel.app', // Production Vercel
+    /\.vercel\.app$/ // Allow all Vercel previews
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // LINE Webhook 端點 - 必須放在 express.json() 之前，因為它需要原始 Request Body 進行簽章驗證
 app.post('/webhook', line.middleware(config), (req, res) => {
