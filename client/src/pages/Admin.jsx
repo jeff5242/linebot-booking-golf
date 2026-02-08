@@ -1644,7 +1644,8 @@ function UserManagement() {
             if (filters.golfer_type) params.append('golfer_type', filters.golfer_type);
             if (filters.line_bound) params.append('line_bound', filters.line_bound);
 
-            const res = await fetch(`/api/users?${params.toString()}`);
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${apiUrl}/api/users?${params.toString()}`);
             const data = await res.json();
             setUsers(data.users || []);
             setTotal(data.total || 0);
@@ -1665,7 +1666,8 @@ function UserManagement() {
         if (!confirm('確定要執行 Google Sheets 會員資料同步嗎？這可能需要幾秒鐘。')) return;
         setLoading(true);
         try {
-            const res = await fetch('/api/users/sync', { method: 'POST' });
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${apiUrl}/api/users/sync`, { method: 'POST' });
             const data = await res.json();
             if (data.success) {
                 alert(`同步成功！\n新增/更新: ${data.synced} 筆\n失敗: ${data.failed} 筆`);

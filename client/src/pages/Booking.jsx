@@ -185,7 +185,8 @@ export function Booking() {
 
             // Trigger LINE Pay Payment
             setLoading(true);
-            const response = await fetch('/api/payment/request', {
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const response = await fetch(`${apiUrl}/api/payment/request`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
