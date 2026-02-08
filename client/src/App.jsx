@@ -6,6 +6,8 @@ import { MyBookings } from './pages/MyBookings';
 import { AdminDashboard } from './pages/Admin';
 import { HealthCheck } from './pages/HealthCheck';
 import { AdminLogin } from './pages/AdminLogin';
+import { PaymentSuccess } from './pages/PaymentSuccess';
+import { PaymentFailure } from './pages/PaymentFailure';
 import { supabase } from './supabase';
 
 import liff from '@line/liff';
@@ -21,6 +23,34 @@ function ProtectedRoute({ children }) {
 
   async function initLiffAndCheckUser() {
     try {
+      // DEVELOPMENT BYPASS
+      if (import.meta.env.DEV) {
+        console.log('Running in Development Mode: Using Mock User');
+        const mockProfile = {
+          userId: 'test_user_001',
+          displayName: '測試管理員'
+        };
+        localStorage.setItem('line_user_id', mockProfile.userId);
+
+        // Ensure mock user exists in DB
+        const { data: user } = await supabase
+          .from('users')
+          .select('phone, display_name')
+          .eq('line_user_id', mockProfile.userId)
+          .maybeSingle();
+
+        if (user) {
+          localStorage.setItem('golf_user_phone', user.phone);
+          localStorage.setItem('golf_user_name', user.display_name);
+          setIsRegistered(true);
+        } else {
+          // If not in DB, we'll let ProtectedRoute redirect to /register
+          setIsRegistered(false);
+        }
+        setLoading(false);
+        return;
+      }
+
       // First, check if local user applies to DB
       // If DB is wiped but LocalStorage remains, we need to clear LocalStorage
       const localPhone = localStorage.getItem('golf_user_phone');
@@ -123,6 +153,16 @@ function App() {
         <Route path="/my-bookings" element={
           <ProtectedRoute>
             <MyBookings />
+          </ProtectedRoute>
+        } />
+        <Route path="/payment/success" element={
+          <ProtectedRoute>
+            <PaymentSuccess />
+          </ProtectedRoute>
+        } />
+        <Route path="/payment/failure" element={
+          <ProtectedRoute>
+            <PaymentFailure />
           </ProtectedRoute>
         } />
         <Route path="/" element={

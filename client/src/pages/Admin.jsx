@@ -798,8 +798,9 @@ function VoucherManagement() {
                 <select className="form-input" style={{ width: 'auto' }} value={filterSource} onChange={e => setFilterSource(e.target.value)}>
                     <option value="all">所有來源</option>
                     <option value="digital_purchase">線上購買</option>
-                    <option value="paper_converted">紙本轉入</option>
+                    <option value="paper_converted">紙券轉入</option>
                 </select>
+
 
                 <button onClick={() => setShowImportModal(true)} className="btn" style={{ width: 'auto', marginLeft: 'auto', background: '#eab308', color: '#fff' }}>
                     📥 紙券批次轉入
@@ -861,203 +862,207 @@ function VoucherManagement() {
             </div>
 
             {/* Detail Modal */}
-            {selectedVoucher && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
-                    display: 'flex', justifyContent: 'center', alignItems: 'center'
-                }} onClick={() => setSelectedVoucher(null)}>
-                    <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                            <h2 style={{ margin: 0 }}>票券詳情</h2>
-                            <button onClick={() => setSelectedVoucher(null)} style={{ border: 'none', background: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
-                        </div>
+            {
+                selectedVoucher && (
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
+                        display: 'flex', justifyContent: 'center', alignItems: 'center'
+                    }} onClick={() => setSelectedVoucher(null)}>
+                        <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                                <h2 style={{ margin: 0 }}>票券詳情</h2>
+                                <button onClick={() => setSelectedVoucher(null)} style={{ border: 'none', background: 'none', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+                            </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
-                            <div>
-                                <label style={{ color: '#666', fontSize: '0.85rem' }}>票券序號</label>
-                                <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{selectedVoucher.code}</div>
-                            </div>
-                            <div>
-                                <label style={{ color: '#666', fontSize: '0.85rem' }}>商品名稱</label>
-                                <div style={{ fontWeight: 'bold' }}>{selectedVoucher.product_name}</div>
-                            </div>
-                            <div>
-                                <label style={{ color: '#666', fontSize: '0.85rem' }}>目前狀態</label>
-                                <div>{selectedVoucher.status.toUpperCase()}</div>
-                            </div>
-                            <div>
-                                <label style={{ color: '#666', fontSize: '0.85rem' }}>有效期限</label>
-                                <div>{new Date(selectedVoucher.valid_until).toLocaleDateString()}</div>
-                            </div>
-                            {selectedVoucher.source_type === 'paper_converted' && (
-                                <div style={{ gridColumn: 'span 2', background: '#fffbeb', padding: '10px', borderRadius: '6px' }}>
-                                    <label style={{ color: '#d97706', fontSize: '0.85rem', fontWeight: 'bold' }}>⚠️ 原紙本票號</label>
-                                    <div style={{ color: '#b45309' }}>{selectedVoucher.original_paper_code}</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
+                                <div>
+                                    <label style={{ color: '#666', fontSize: '0.85rem' }}>票券序號</label>
+                                    <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{selectedVoucher.code}</div>
                                 </div>
-                            )}
-                        </div>
-
-                        {/* Actions Area */}
-                        <div style={{ borderTop: '1px solid #eee', marginTop: '20px', paddingTop: '20px' }}>
-                            <h4 style={{ margin: '0 0 10px 0' }}>管理操作</h4>
-
-                            {/* Action Buttons */}
-                            {!actionMode && (
-                                <div style={{ display: 'flex', gap: '10px' }}>
-                                    {selectedVoucher.status === 'active' && (
-                                        <>
-                                            <button onClick={() => setActionMode('void')} className="btn" style={{ background: '#fee2e2', color: '#ef4444' }}>作廢票券</button>
-                                            <button onClick={() => setActionMode('extend')} className="btn" style={{ background: '#e0f2fe', color: '#0369a1' }}>延展效期</button>
-                                        </>
-                                    )}
-                                    {(selectedVoucher.status === 'redeemed' || selectedVoucher.status === 'void') && (
-                                        <button onClick={() => setActionMode('reset')} className="btn" style={{ background: '#f3f4f6', color: '#374151' }}>重置狀態 (Admin)</button>
-                                    )}
+                                <div>
+                                    <label style={{ color: '#666', fontSize: '0.85rem' }}>商品名稱</label>
+                                    <div style={{ fontWeight: 'bold' }}>{selectedVoucher.product_name}</div>
                                 </div>
-                            )}
-
-                            {/* Action Forms */}
-                            {actionMode === 'void' && (
-                                <div style={{ background: '#fef2f2', padding: '15px', borderRadius: '8px' }}>
-                                    <label style={{ display: 'block', marginBottom: '5px', color: '#991b1b' }}>請輸入作廢原因/備註：</label>
-                                    <input className="form-input" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="例：客戶退款" />
-                                    <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                                        <button onClick={handleAction} className="btn" style={{ background: '#ef4444', color: 'white' }}>確認作廢</button>
-                                        <button onClick={() => setActionMode(null)} className="btn" style={{ background: 'white', color: '#666' }}>取消</button>
+                                <div>
+                                    <label style={{ color: '#666', fontSize: '0.85rem' }}>目前狀態</label>
+                                    <div>{selectedVoucher.status.toUpperCase()}</div>
+                                </div>
+                                <div>
+                                    <label style={{ color: '#666', fontSize: '0.85rem' }}>有效期限</label>
+                                    <div>{new Date(selectedVoucher.valid_until).toLocaleDateString()}</div>
+                                </div>
+                                {selectedVoucher.source_type === 'paper_converted' && (
+                                    <div style={{ gridColumn: 'span 2', background: '#fffbeb', padding: '10px', borderRadius: '6px' }}>
+                                        <label style={{ color: '#d97706', fontSize: '0.85rem', fontWeight: 'bold' }}>⚠️ 原紙本票號</label>
+                                        <div style={{ color: '#b45309' }}>{selectedVoucher.original_paper_code}</div>
                                     </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
 
-                            {actionMode === 'extend' && (
-                                <div style={{ background: '#f0f9ff', padding: '15px', borderRadius: '8px' }}>
-                                    <label style={{ display: 'block', marginBottom: '5px', color: '#075985' }}>選擇新有效期限：</label>
-                                    <input type="date" className="form-input" value={newExpiryDate} onChange={e => setNewExpiryDate(e.target.value)} />
-                                    <input className="form-input" style={{ marginTop: '5px' }} value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="延期原因 (選填)" />
-                                    <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                                        <button onClick={handleAction} className="btn" style={{ background: '#0ea5e9', color: 'white' }}>確認延期</button>
-                                        <button onClick={() => setActionMode(null)} className="btn" style={{ background: 'white', color: '#666' }}>取消</button>
+                            {/* Actions Area */}
+                            <div style={{ borderTop: '1px solid #eee', marginTop: '20px', paddingTop: '20px' }}>
+                                <h4 style={{ margin: '0 0 10px 0' }}>管理操作</h4>
+
+                                {/* Action Buttons */}
+                                {!actionMode && (
+                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                        {selectedVoucher.status === 'active' && (
+                                            <>
+                                                <button onClick={() => setActionMode('void')} className="btn" style={{ background: '#fee2e2', color: '#ef4444' }}>作廢票券</button>
+                                                <button onClick={() => setActionMode('extend')} className="btn" style={{ background: '#e0f2fe', color: '#0369a1' }}>延展效期</button>
+                                            </>
+                                        )}
+                                        {(selectedVoucher.status === 'redeemed' || selectedVoucher.status === 'void') && (
+                                            <button onClick={() => setActionMode('reset')} className="btn" style={{ background: '#f3f4f6', color: '#374151' }}>重置狀態 (Admin)</button>
+                                        )}
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                            {actionMode === 'reset' && (
-                                <div style={{ background: '#f3f4f6', padding: '15px', borderRadius: '8px' }}>
-                                    <p style={{ color: '#374151', marginTop: 0 }}>確定要將此票券重置為 <b>Active</b> 狀態嗎？</p>
-                                    <input className="form-input" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="重置原因 (選填)" />
-                                    <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                                        <button onClick={handleAction} className="btn" style={{ background: '#4b5563', color: 'white' }}>確認重置</button>
-                                        <button onClick={() => setActionMode(null)} className="btn" style={{ background: 'white', color: '#666' }}>取消</button>
+                                {/* Action Forms */}
+                                {actionMode === 'void' && (
+                                    <div style={{ background: '#fef2f2', padding: '15px', borderRadius: '8px' }}>
+                                        <label style={{ display: 'block', marginBottom: '5px', color: '#991b1b' }}>請輸入作廢原因/備註：</label>
+                                        <input className="form-input" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="例：客戶退款" />
+                                        <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                                            <button onClick={handleAction} className="btn" style={{ background: '#ef4444', color: 'white' }}>確認作廢</button>
+                                            <button onClick={() => setActionMode(null)} className="btn" style={{ background: 'white', color: '#666' }}>取消</button>
+                                        </div>
                                     </div>
-                                </div>
-                            )}
-                        </div>
+                                )}
 
-                        {/* Logs */}
-                        <div style={{ marginTop: '25px' }}>
-                            <h4 style={{ margin: '0 0 10px 0', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>操作履歷</h4>
-                            {logs.length === 0 ? <p style={{ color: '#999' }}>無紀錄</p> : (
-                                <ul style={{ listStyle: 'none', padding: 0, fontSize: '0.9rem' }}>
-                                    {logs.map(log => (
-                                        <li key={log.id} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                                            <span>
-                                                <span style={{ fontWeight: 'bold', marginRight: '8px' }}>[{log.action.toUpperCase()}]</span>
-                                                {log.memo}
-                                                {log.operator_name && <span style={{ marginLeft: '5px', color: '#666', background: '#f3f4f6', padding: '2px 5px', borderRadius: '4px' }}>{log.operator_name}</span>}
-                                            </span>
-                                            <span style={{ color: '#888', fontSize: '0.8rem' }}>{new Date(log.created_at).toLocaleString()}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
+                                {actionMode === 'extend' && (
+                                    <div style={{ background: '#f0f9ff', padding: '15px', borderRadius: '8px' }}>
+                                        <label style={{ display: 'block', marginBottom: '5px', color: '#075985' }}>選擇新有效期限：</label>
+                                        <input type="date" className="form-input" value={newExpiryDate} onChange={e => setNewExpiryDate(e.target.value)} />
+                                        <input className="form-input" style={{ marginTop: '5px' }} value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="延期原因 (選填)" />
+                                        <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                                            <button onClick={handleAction} className="btn" style={{ background: '#0ea5e9', color: 'white' }}>確認延期</button>
+                                            <button onClick={() => setActionMode(null)} className="btn" style={{ background: 'white', color: '#666' }}>取消</button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {actionMode === 'reset' && (
+                                    <div style={{ background: '#f3f4f6', padding: '15px', borderRadius: '8px' }}>
+                                        <p style={{ color: '#374151', marginTop: 0 }}>確定要將此票券重置為 <b>Active</b> 狀態嗎？</p>
+                                        <input className="form-input" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="重置原因 (選填)" />
+                                        <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                                            <button onClick={handleAction} className="btn" style={{ background: '#4b5563', color: 'white' }}>確認重置</button>
+                                            <button onClick={() => setActionMode(null)} className="btn" style={{ background: 'white', color: '#666' }}>取消</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Logs */}
+                            <div style={{ marginTop: '25px' }}>
+                                <h4 style={{ margin: '0 0 10px 0', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>操作履歷</h4>
+                                {logs.length === 0 ? <p style={{ color: '#999' }}>無紀錄</p> : (
+                                    <ul style={{ listStyle: 'none', padding: 0, fontSize: '0.9rem' }}>
+                                        {logs.map(log => (
+                                            <li key={log.id} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                                                <span>
+                                                    <span style={{ fontWeight: 'bold', marginRight: '8px' }}>[{log.action.toUpperCase()}]</span>
+                                                    {log.memo}
+                                                    {log.operator_name && <span style={{ marginLeft: '5px', color: '#666', background: '#f3f4f6', padding: '2px 5px', borderRadius: '4px' }}>{log.operator_name}</span>}
+                                                </span>
+                                                <span style={{ color: '#888', fontSize: '0.8rem' }}>{new Date(log.created_at).toLocaleString()}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Import Modal */}
-            {showImportModal && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
-                    display: 'flex', justifyContent: 'center', alignItems: 'center'
-                }} onClick={() => setShowImportModal(false)}>
-                    <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
-                        <h2 style={{ margin: '0 0 15px 0' }}>📥 紙券批次轉入</h2>
-                        <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '10px' }}>
-                            請直接從 Excel 複製貼上資料（支援 Tab 分隔）<br />
-                            <b>欄位：票券日期 客戶編號 客戶全稱 發票號碼 產品金額 資料金額 分錄備註 本幣金額</b><br />
-                            範例：<br />
-                            <code style={{ background: '#f3f4f6', padding: '2px 5px', fontSize: '0.85rem' }}>114/07/04	0936627522	黃寶雲	PX18750376	3,000	3,000	@2024*15度	2,857</code>
-                        </p>
+            {
+                showImportModal && (
+                    <div style={{
+                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999,
+                        display: 'flex', justifyContent: 'center', alignItems: 'center'
+                    }} onClick={() => setShowImportModal(false)}>
+                        <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                            <h2 style={{ margin: '0 0 15px 0' }}>📥 紙券批次轉入</h2>
+                            <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '10px' }}>
+                                請直接從 Excel 複製貼上資料（支援 Tab 分隔）<br />
+                                <b>欄位：票券日期 客戶編號 客戶全稱 發票號碼 產品金額 資料金額 分錄備註 本幣金額</b><br />
+                                範例：<br />
+                                <code style={{ background: '#f3f4f6', padding: '2px 5px', fontSize: '0.85rem' }}>114/07/04	0936627522	黃寶雲	PX18750376	3,000	3,000	@2024*15度	2,857</code>
+                            </p>
 
-                        <textarea
-                            className="form-input"
-                            style={{ width: '100%', height: '200px', fontFamily: 'monospace', fontSize: '14px' }}
-                            placeholder="在此貼上 csv 資料..."
-                            value={importText}
-                            onChange={e => setImportText(e.target.value)}
-                        />
+                            <textarea
+                                className="form-input"
+                                style={{ width: '100%', height: '200px', fontFamily: 'monospace', fontSize: '14px' }}
+                                placeholder="在此貼上 csv 資料..."
+                                value={importText}
+                                onChange={e => setImportText(e.target.value)}
+                            />
 
-                        {/* Progress Bar */}
-                        {isImporting && importProgress.total > 0 && (
-                            <div style={{ marginTop: '15px', padding: '10px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem', color: '#0369a1' }}>
-                                    <span>處理進度</span>
-                                    <span>{importProgress.current} / {importProgress.total} ({Math.round((importProgress.current / importProgress.total) * 100)}%)</span>
-                                </div>
-                                <div style={{ width: '100%', height: '8px', background: '#e0f2fe', borderRadius: '4px', overflow: 'hidden' }}>
-                                    <div style={{
-                                        width: `${(importProgress.current / importProgress.total) * 100}%`,
-                                        height: '100%',
-                                        background: 'linear-gradient(90deg, #0ea5e9, #06b6d4)',
-                                        transition: 'width 0.3s ease'
-                                    }}></div>
-                                </div>
-                            </div>
-                        )}
-
-                        {importResult && (
-                            <div style={{ marginTop: '15px', padding: '10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px' }}>
-                                <div style={{ fontWeight: 'bold', color: '#166534', marginBottom: '5px' }}>處理完成</div>
-
-                                {/* 成功統計 */}
-                                <div style={{ marginBottom: '5px' }}>
-                                    ✅ 成功匯入: <b>{importResult.success}</b> 筆
-                                </div>
-
-                                {/* 自動建立新用戶清單 */}
-                                {importResult.newUsers && importResult.newUsers.length > 0 && (
-                                    <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#0369a1' }}>
-                                        <div style={{ fontWeight: 'bold' }}>✨ 自動建立新用戶 ({importResult.newUsers.length}):</div>
-                                        <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px', maxHeight: '100px', overflowY: 'auto' }}>
-                                            {importResult.newUsers.map((u, i) => <li key={i}>{u}</li>)}
-                                        </ul>
+                            {/* Progress Bar */}
+                            {isImporting && importProgress.total > 0 && (
+                                <div style={{ marginTop: '15px', padding: '10px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '6px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem', color: '#0369a1' }}>
+                                        <span>處理進度</span>
+                                        <span>{importProgress.current} / {importProgress.total} ({Math.round((importProgress.current / importProgress.total) * 100)}%)</span>
                                     </div>
-                                )}
-
-                                {/* 失敗統計與明細 */}
-                                {importResult.fail > 0 && (
-                                    <div style={{ color: '#991b1b', marginTop: '10px', borderTop: '1px solid #fee2e2', paddingTop: '10px' }}>
-                                        <div style={{ fontWeight: 'bold' }}>❌ 失敗: {importResult.fail} 筆</div>
-                                        <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px', fontSize: '0.85rem' }}>
-                                            {importResult.errors.map((d, i) => <li key={i}>{d}</li>)}
-                                        </ul>
+                                    <div style={{ width: '100%', height: '8px', background: '#e0f2fe', borderRadius: '4px', overflow: 'hidden' }}>
+                                        <div style={{
+                                            width: `${(importProgress.current / importProgress.total) * 100}%`,
+                                            height: '100%',
+                                            background: 'linear-gradient(90deg, #0ea5e9, #06b6d4)',
+                                            transition: 'width 0.3s ease'
+                                        }}></div>
                                     </div>
-                                )}
-                            </div>
-                        )}
+                                </div>
+                            )}
 
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-                            <button onClick={() => setShowImportModal(false)} className="btn" style={{ background: 'white', color: '#666', width: 'auto' }}>關閉</button>
-                            <button onClick={handleBulkImport} disabled={isImporting} className="btn" style={{ background: isImporting ? '#ccc' : '#eab308', color: 'white', width: 'auto' }}>
-                                {isImporting ? '處理中...' : '開始轉入'}
-                            </button>
+                            {importResult && (
+                                <div style={{ marginTop: '15px', padding: '10px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px' }}>
+                                    <div style={{ fontWeight: 'bold', color: '#166534', marginBottom: '5px' }}>處理完成</div>
+
+                                    {/* 成功統計 */}
+                                    <div style={{ marginBottom: '5px' }}>
+                                        ✅ 成功匯入: <b>{importResult.success}</b> 筆
+                                    </div>
+
+                                    {/* 自動建立新用戶清單 */}
+                                    {importResult.newUsers && importResult.newUsers.length > 0 && (
+                                        <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#0369a1' }}>
+                                            <div style={{ fontWeight: 'bold' }}>✨ 自動建立新用戶 ({importResult.newUsers.length}):</div>
+                                            <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px', maxHeight: '100px', overflowY: 'auto' }}>
+                                                {importResult.newUsers.map((u, i) => <li key={i}>{u}</li>)}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {/* 失敗統計與明細 */}
+                                    {importResult.fail > 0 && (
+                                        <div style={{ color: '#991b1b', marginTop: '10px', borderTop: '1px solid #fee2e2', paddingTop: '10px' }}>
+                                            <div style={{ fontWeight: 'bold' }}>❌ 失敗: {importResult.fail} 筆</div>
+                                            <ul style={{ margin: '5px 0 0 0', paddingLeft: '20px', fontSize: '0.85rem' }}>
+                                                {importResult.errors.map((d, i) => <li key={i}>{d}</li>)}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+                                <button onClick={() => setShowImportModal(false)} className="btn" style={{ background: 'white', color: '#666', width: 'auto' }}>關閉</button>
+                                <button onClick={handleBulkImport} disabled={isImporting} className="btn" style={{ background: isImporting ? '#ccc' : '#eab308', color: 'white', width: 'auto' }}>
+                                    {isImporting ? '處理中...' : '開始轉入'}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }
 
@@ -1095,9 +1100,247 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
         }
     };
 
+    // Manual Booking State
+    const [showManualModal, setShowManualModal] = useState(false);
+    const [manualData, setManualData] = useState({ time: '', holes: 18, players: [] });
+    const [currentFriend, setCurrentFriend] = useState({ name: '', phone: '' });
+    const [isSaving, setIsSaving] = useState(false);
+
+    // Details Modal State
+    const [viewingBooking, setViewingBooking] = useState(null);
+
+    const openManualBooking = (time) => {
+        // Restriction: 18 holes only before 13:30
+        const [h, m] = time.split(':').map(Number);
+        const isLate = h > 13 || (h === 13 && m >= 30);
+        setManualData({ ...manualData, time, holes: isLate ? 9 : 18, players: [] });
+        setCurrentFriend({ name: '', phone: '' });
+        setShowManualModal(true);
+    };
+
+    const addFriendToList = () => {
+        if (!currentFriend.name || !currentFriend.phone) {
+            alert('請填寫姓名與電話');
+            return;
+        }
+        if (manualData.players.length >= 4) {
+            alert('最多只能加入 4 位球友');
+            return;
+        }
+        setManualData({
+            ...manualData,
+            players: [...manualData.players, { ...currentFriend }]
+        });
+        setCurrentFriend({ name: '', phone: '' });
+    };
+
+    const removeFriendFromList = (index) => {
+        const newList = [...manualData.players];
+        newList.splice(index, 1);
+        setManualData({ ...manualData, players: newList });
+    };
+
+    const handleManualSubmit = async (e) => {
+        e.preventDefault();
+        if (manualData.players.length === 0) {
+            alert('請至少加入一位球友資訊');
+            return;
+        }
+        setIsSaving(true);
+        try {
+            // Process all players
+            const playerUserIds = [];
+            for (const p of manualData.players) {
+                let { data: users } = await supabase.from('users').select('id').eq('phone', p.phone).limit(1);
+                let userId;
+                if (!users || users.length === 0) {
+                    const { data: newUser, error: uErr } = await supabase.from('users').insert([{
+                        phone: p.phone,
+                        display_name: p.name,
+                        created_at: new Date().toISOString()
+                    }]).select().single();
+                    if (uErr) throw uErr;
+                    userId = newUser.id;
+                } else {
+                    userId = users[0].id;
+                    await supabase.from('users').update({ display_name: p.name }).eq('id', userId);
+                }
+                playerUserIds.push(userId);
+            }
+
+            // 2. Create booking for the primary user (first one)
+            const dateStr = format(selectedDate, 'yyyy-MM-dd');
+
+            // Persist player details in notes for the "Details" view
+            const playerDetailsNotes = manualData.players.map(p => `${p.name} (${p.phone})`).join('\n');
+
+            const { error: bErr } = await supabase.from('bookings').insert([{
+                user_id: playerUserIds[0],
+                date: dateStr,
+                time: manualData.time,
+                holes: manualData.holes,
+                players_count: manualData.players.length,
+                status: 'confirmed',
+                payment_status: 'pending',
+                players_info: manualData.players, // Also save to players_info for consistency
+                notes: `手動預約球友清單:\n${playerDetailsNotes}`
+            }]);
+            if (bErr) throw bErr;
+
+            alert('手動預約成功');
+            setShowManualModal(false);
+            fetchBookings();
+        } catch (err) {
+            console.error(err);
+            alert('建立失敗: ' + err.message);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handlePhoneBlur = async () => {
+        if (!currentFriend.phone) return;
+        const { data } = await supabase.from('users').select('display_name').eq('phone', currentFriend.phone).limit(1);
+        if (data && data.length > 0) {
+            setCurrentFriend({ ...currentFriend, name: data[0].display_name });
+        }
+    };
+
+    const handleExportSheet = () => {
+        const dateStr = format(selectedDate, 'yyyy-MM-dd');
+        const dayOfWeek = format(selectedDate, 'EEEE', { locale: undefined }); // Monday, Tuesday...
+
+        // Helper to generate time list
+        const generateTimeList = (startHour, startMin, endHour, endMin, step) => {
+            const list = [];
+            let curr = new Date(selectedDate);
+            curr.setHours(startHour, startMin, 0, 0);
+            const end = new Date(selectedDate);
+            end.setHours(endHour, endMin, 0, 0);
+
+            while (curr <= end) {
+                list.push(format(curr, 'HH:mm'));
+                curr = addMinutes(curr, step);
+            }
+            return list;
+        };
+
+        const leftTimes = generateTimeList(5, 30, 10, 24, 6);   // 05:30 - 10:24
+        const rightTimes = generateTimeList(10, 30, 15, 54, 6); // 10:30 - 15:54
+
+        const maxRows = Math.max(leftTimes.length, rightTimes.length);
+
+        // Use HTML for Excel styling support
+        let html = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+            <meta http-equiv="content-type" content="text/plain; charset=UTF-8"/>
+            <style>
+                table { border-collapse: collapse; width: 100%; }
+                td { border: 1px solid #000000; text-align: center; width: 100px; height: 30px; font-family: "Microsoft JhengHei", sans-serif; }
+                .header { font-weight: bold; background-color: #f3f4f6; }
+                .time-col { background-color: #e5e7eb; font-weight: bold; }
+                .row-even { background-color: #ffffff; }
+                .row-odd { background-color: #f9fafb; }
+                .title-row { font-size: 20pt; font-weight: bold; border: none; height: 50px; }
+            </style>
+        </head>
+        <body>
+            <table>
+                <tr>
+                    <td colspan="10" class="title-row">擊球預約表</td>
+                </tr>
+                <tr>
+                    <td colspan="10" style="font-size: 12pt; border: none; text-align: left;">
+                        日期: ${dateStr} (${dayOfWeek})
+                    </td>
+                </tr>
+                <tr class="header">
+                    <td>時間（備註）</td><td>球友 1</td><td>球友 2</td><td>球友 3</td><td>球友 4</td>
+                    <td>時間（備註）</td><td>球友 1</td><td>球友 2</td><td>球友 3</td><td>球友 4</td>
+                </tr>
+        `;
+
+        for (let i = 0; i < maxRows; i++) {
+            const rowClass = i % 2 === 0 ? 'row-even' : 'row-odd';
+            html += `<tr class="${rowClass}">`;
+
+            // Helper to get player columns
+            const getPlayerCols = (booking) => {
+                if (!booking) return `<td></td><td></td><td></td><td></td>`;
+
+                let players = [];
+                // 1. Try players_info (Regular bookings and modern manual)
+                if (booking.players_info && Array.isArray(booking.players_info) && booking.players_info.length > 0) {
+                    players = booking.players_info.map(p => p.phone ? `${p.name} (${p.phone})` : p.name);
+                }
+                // 2. Fallback to notes (Legacy manual bookings)
+                else if (booking.notes?.includes('手動預約球友清單:')) {
+                    const lines = booking.notes.split('手動預約球友清單:\n')[1].split('\n').filter(l => l.trim());
+                    players = lines.map(l => l.trim());
+                }
+                // 3. Last fallback: primary user info
+                else {
+                    const name = booking.users?.display_name || '';
+                    const phone = booking.users?.phone || '';
+                    players = [phone ? `${name} (${phone})` : name];
+                }
+
+                let cols = '';
+                for (let pIdx = 0; pIdx < 4; pIdx++) {
+                    cols += `<td style="font-size: 9pt;">${players[pIdx] || ''}</td>`;
+                }
+                return cols;
+            };
+
+            // Left Group
+            if (i < leftTimes.length) {
+                const t = leftTimes[i];
+                html += `<td class="time-col">${t}</td>`;
+                const b = bookings.find(bk => bk.time.startsWith(t) && bk.status !== 'cancelled');
+                html += getPlayerCols(b);
+            } else {
+                html += `<td></td><td></td><td></td><td></td><td></td>`;
+            }
+
+            // Right Group
+            if (i < rightTimes.length) {
+                const t = rightTimes[i];
+                html += `<td class="time-col">${t}</td>`;
+                const b = bookings.find(bk => bk.time.startsWith(t) && bk.status !== 'cancelled');
+                html += getPlayerCols(b);
+            } else {
+                html += `<td></td><td></td><td></td><td></td><td></td>`;
+            }
+            html += `</tr>`;
+        }
+
+        html += `</table></body></html>`;
+
+        const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `booking_sheet_${dateStr}.xls`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div>
-            <Calendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '15px' }}>
+                <button
+                    onClick={handleExportSheet}
+                    className="btn"
+                    style={{ width: 'auto', background: '#10b981', color: 'white', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 'bold' }}
+                >
+                    📊 匯出擊球預約表
+                </button>
+            </div>
+            <div style={{ marginBottom: '10px' }}>
+                <Calendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+            </div>
             <div className="card" style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
@@ -1132,22 +1375,44 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                                             <td style={{ padding: '12px' }}>{booking.holes}洞</td>
                                             <td style={{ padding: '12px' }}>{booking.players_count}人</td>
                                             <td style={{ padding: '12px' }}>
-                                                {!booking.checkin_time ? (
-                                                    <button onClick={() => handleCheckIn(booking.id)} style={{ marginRight: '5px' }}>報到</button>
-                                                ) : (
-                                                    <small>{format(new Date(booking.checkin_time), 'HH:mm')}</small>
-                                                )}
-                                                {booking.status === 'checked_in' && (
-                                                    <button onClick={() => handleScheduleDeparture(booking.id, booking.scheduled_departure_time?.slice(0, 5))} style={{ marginLeft: '5px', color: 'blue' }}>
-                                                        {booking.scheduled_departure_time?.slice(0, 5) || '排定'}
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                                                    {!booking.checkin_time ? (
+                                                        <button onClick={() => handleCheckIn(booking.id)} className="btn" style={{ padding: '4px 8px', fontSize: '0.8rem', width: 'auto' }}>報到</button>
+                                                    ) : (
+                                                        <div style={{ background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                                            {format(new Date(booking.checkin_time), 'HH:mm')}
+                                                        </div>
+                                                    )}
+                                                    <button
+                                                        onClick={() => setViewingBooking(booking)}
+                                                        className="btn"
+                                                        style={{ padding: '4px 8px', background: '#f3f4f6', color: '#4b5563', border: '1px solid #d1d5db', fontSize: '0.8rem', width: 'auto' }}
+                                                    >
+                                                        詳情
                                                     </button>
-                                                )}
+                                                    {booking.status === 'checked_in' && (
+                                                        <button
+                                                            onClick={() => handleScheduleDeparture(booking.id, booking.scheduled_departure_time?.slice(0, 5))}
+                                                            className="btn"
+                                                            style={{ padding: '4px 8px', color: '#2563eb', border: '1px solid #bfdbfe', background: '#eff6ff', fontSize: '0.8rem', width: 'auto' }}
+                                                        >
+                                                            {booking.scheduled_departure_time?.slice(0, 5) || '排定'}
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </>
                                     ) : linkedBooking ? (
                                         <td colSpan={5} style={{ padding: '12px', color: '#d97706' }}>轉場 (來自 {linkedBooking.time.slice(0, 5)}) - {linkedBooking.users?.display_name}</td>
                                     ) : (
-                                        <td colSpan={5}></td>
+                                        <td colSpan={5} style={{ padding: '12px' }}>
+                                            <button
+                                                onClick={() => openManualBooking(timeStr)}
+                                                style={{ padding: '4px 10px', background: '#f3f4f6', border: '1px dashed #ccc', color: '#666', borderRadius: '4px', cursor: 'pointer' }}
+                                            >
+                                                + 手動預約
+                                            </button>
+                                        </td>
                                     )}
                                 </tr>
                             )
@@ -1155,6 +1420,187 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                     </tbody>
                 </table>
             </div>
+
+            {/* Manual Booking Modal */}
+            {showManualModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 10000,
+                    display: 'flex', justifyContent: 'center', alignItems: 'center'
+                }}>
+                    <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+                        <h2 style={{ margin: '0 0 20px 0', fontSize: '1.25rem', fontWeight: 'bold' }}>手動建立預約 ({manualData.time.slice(0, 5)})</h2>
+                        <form onSubmit={handleManualSubmit}>
+                            <div style={{ marginBottom: '15px', padding: '10px', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '5px' }}>新增球友 (最多 4 位)</label>
+                                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                                    <input
+                                        className="form-input"
+                                        style={{ flex: 1, marginBottom: 0 }}
+                                        value={currentFriend.phone}
+                                        onChange={e => setCurrentFriend({ ...currentFriend, phone: e.target.value })}
+                                        onBlur={handlePhoneBlur}
+                                        placeholder="手機號碼"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={addFriendToList}
+                                        className="btn"
+                                        style={{ width: 'auto', background: '#3b82f6', color: 'white', border: 'none', padding: '0 15px' }}
+                                    >
+                                        加入
+                                    </button>
+                                </div>
+                                <input
+                                    className="form-input"
+                                    style={{ width: '100%', marginBottom: '5px' }}
+                                    value={currentFriend.name}
+                                    onChange={e => setCurrentFriend({ ...currentFriend, name: e.target.value })}
+                                    placeholder="球友人名"
+                                />
+                            </div>
+
+                            {manualData.players.length > 0 && (
+                                <div style={{ marginBottom: '15px' }}>
+                                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '5px' }}>已加入球友:</label>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                        {manualData.players.map((p, idx) => (
+                                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 10px', background: '#f3f4f6', borderRadius: '4px', fontSize: '0.875rem' }}>
+                                                <span>{p.name} ({p.phone})</span>
+                                                <button type="button" onClick={() => removeFriendFromList(idx)} style={{ color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer', padding: '2px 5px' }}>✕</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="form-group" style={{ marginBottom: '15px' }}>
+                                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 'bold', marginBottom: '5px' }}>洞數</label>
+                                <select
+                                    className="form-input"
+                                    value={manualData.holes}
+                                    onChange={e => setManualData({ ...manualData, holes: parseInt(e.target.value) })}
+                                >
+                                    {/* Only show 18 holes if before 13:30 */}
+                                    {(() => {
+                                        const [h, m] = manualData.time.split(':').map(Number);
+                                        const isLate = h > 13 || (h === 13 && m >= 30);
+                                        return (
+                                            <>
+                                                {!isLate && <option value={18}>18洞</option>}
+                                                <option value={9}>9洞</option>
+                                            </>
+                                        );
+                                    })()}
+                                </select>
+                                {(() => {
+                                    const [h, m] = manualData.time.split(':').map(Number);
+                                    if (h > 13 || (h === 13 && m >= 30)) {
+                                        return <small style={{ color: '#d97706' }}>13:30之後僅限預約9洞</small>;
+                                    }
+                                    return null;
+                                })()}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '15px', marginTop: '25px' }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowManualModal(false)}
+                                    className="btn"
+                                    style={{ flex: 1, background: '#f3f4f6', color: '#666', border: 'none', padding: '12px 0' }}
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSaving || manualData.players.length === 0}
+                                    className="btn btn-primary"
+                                    style={{ flex: 1, padding: '12px 0' }}
+                                >
+                                    {isSaving ? '儲存中...' : '確認建立'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Booking Details Modal */}
+            {viewingBooking && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 10000,
+                    display: 'flex', justifyContent: 'center', alignItems: 'center'
+                }}>
+                    <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+                        <h2 style={{ margin: '0 0 15px 0', fontSize: '1.25rem', fontWeight: 'bold', borderBottom: '2px solid #f3f4f6', paddingBottom: '10px' }}>預約內容詳情</h2>
+
+                        <div style={{ display: 'grid', gap: '15px' }}>
+                            <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px' }}>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '4px' }}>預約日期與時間</label>
+                                <div style={{ fontWeight: 'bold' }}>{viewingBooking.date} {viewingBooking.time.slice(0, 5)}</div>
+                            </div>
+
+                            <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px' }}>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '4px' }}>主訂位人</label>
+                                <div style={{ fontWeight: 'bold' }}>{viewingBooking.users?.display_name}</div>
+                                <div style={{ color: '#666' }}>{viewingBooking.users?.phone}</div>
+                            </div>
+
+                            <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px' }}>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '10px' }}>球友清單 (共 {viewingBooking.players_count} 位)</label>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    {(() => {
+                                        let playerList = [];
+                                        if (viewingBooking.players_info && Array.isArray(viewingBooking.players_info) && viewingBooking.players_info.length > 0) {
+                                            playerList = viewingBooking.players_info;
+                                        } else if (viewingBooking.notes?.includes('手動預約球友清單:')) {
+                                            const lines = viewingBooking.notes.split('手動預約球友清單:\n')[1].split('\n').filter(l => l.trim());
+                                            playerList = lines.map(line => {
+                                                const match = line.match(/(.+) \((.+)\)/);
+                                                return { name: match ? match[1] : line, phone: match ? match[2] : '' };
+                                            });
+                                        } else {
+                                            playerList = [{ name: viewingBooking.users?.display_name, phone: viewingBooking.users?.phone }];
+                                        }
+
+                                        return playerList.map((p, idx) => (
+                                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '8px 12px', borderRadius: '6px', border: '1px solid #eee' }}>
+                                                <div style={{ fontWeight: '500' }}>
+                                                    <span style={{ color: '#9ca3af', marginRight: '8px' }}>{idx + 1}</span>
+                                                    {p.name}
+                                                </div>
+                                                <div style={{ color: '#4b5563', fontSize: '0.875rem' }}>{p.phone}</div>
+                                            </div>
+                                        ));
+                                    })()}
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px' }}>
+                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '4px' }}>洞數</label>
+                                    <div style={{ fontWeight: 'bold' }}>{viewingBooking.holes}洞</div>
+                                </div>
+                                <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px' }}>
+                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '4px' }}>狀態</label>
+                                    <div style={{ fontWeight: 'bold' }}>{viewingBooking.status === 'confirmed' ? '已預約' : (viewingBooking.status === 'checked_in' ? '已報到' : '已取消')}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ marginTop: '25px' }}>
+                            <button
+                                onClick={() => setViewingBooking(null)}
+                                className="btn btn-primary"
+                                style={{ width: '100%', padding: '12px 0' }}
+                            >
+                                關閉內容
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -1162,35 +1608,192 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
 // Sub-component: User Management (Existing)
 function UserManagement() {
     const [users, setUsers] = useState([]);
-    useEffect(() => { fetchUsers(); }, []);
+    const [loading, setLoading] = useState(false);
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
+    const [total, setTotal] = useState(0);
+
+    // Filter states
+    const [filters, setFilters] = useState({
+        member_no: '',
+        display_name: '',
+        phone: '',
+        golfer_type: '',
+        line_bound: ''
+    });
+
+    // Debounce timer ref
+    const timerRef = useRef(null);
+
+    useEffect(() => {
+        // Debounce filter changes
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
+            fetchUsers();
+        }, 300);
+        return () => clearTimeout(timerRef.current);
+    }, [filters, page]);
+
     const fetchUsers = async () => {
-        const { data } = await supabase.from('users').select('*').order('created_at', { ascending: false });
-        setUsers(data || []);
+        setLoading(true);
+        try {
+            const params = new URLSearchParams({ page, limit: 100 });
+            if (filters.member_no) params.append('member_no', filters.member_no);
+            if (filters.display_name) params.append('display_name', filters.display_name);
+            if (filters.phone) params.append('phone', filters.phone);
+            if (filters.golfer_type) params.append('golfer_type', filters.golfer_type);
+            if (filters.line_bound) params.append('line_bound', filters.line_bound);
+
+            const res = await fetch(`/api/users?${params.toString()}`);
+            const data = await res.json();
+            setUsers(data.users || []);
+            setTotal(data.total || 0);
+            setTotalPages(data.totalPages || 1);
+        } catch (e) {
+            console.error('Fetch users error:', e);
+        } finally {
+            setLoading(false);
+        }
     };
+
+    const handleFilterChange = (key, value) => {
+        setFilters(prev => ({ ...prev, [key]: value }));
+        setPage(1); // Reset to first page on filter change
+    };
+
+    const handleSyncUsers = async () => {
+        if (!confirm('確定要執行 Google Sheets 會員資料同步嗎？這可能需要幾秒鐘。')) return;
+        setLoading(true);
+        try {
+            const res = await fetch('/api/users/sync', { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                alert(`同步成功！\n新增/更新: ${data.synced} 筆\n失敗: ${data.failed} 筆`);
+                fetchUsers();
+            } else {
+                alert('同步失敗: ' + (data.message || data.error));
+            }
+        } catch (e) {
+            alert('同步請求錯誤: ' + e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const golferTypes = ['白金會員', '社區會員', 'VIP-A', '一桿進洞', '金卡會員', '來賓'];
+
     return (
         <div className="card animate-fade-in">
-            <h2 className="title" style={{ fontSize: '1.2rem' }}>平台用戶管理 ({users.length})</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+                <h2 className="title" style={{ fontSize: '1.2rem', marginBottom: 0 }}>平台用戶管理 ({total})</h2>
+                <button
+                    onClick={handleSyncUsers}
+                    className="btn"
+                    disabled={loading}
+                    style={{ width: 'auto', background: '#0d9488', color: 'white', display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                    {loading ? '處理中...' : '🔄 同步會員資料'}
+                </button>
+            </div>
+
+            {/* Filters */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '15px', padding: '15px', background: '#f9fafb', borderRadius: '8px' }}>
+                <input
+                    type="text"
+                    placeholder="🔍 會員編號"
+                    value={filters.member_no}
+                    onChange={e => handleFilterChange('member_no', e.target.value)}
+                    style={{ padding: '8px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.9rem' }}
+                />
+                <input
+                    type="text"
+                    placeholder="🔍 名稱"
+                    value={filters.display_name}
+                    onChange={e => handleFilterChange('display_name', e.target.value)}
+                    style={{ padding: '8px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.9rem' }}
+                />
+                <input
+                    type="text"
+                    placeholder="🔍 電話"
+                    value={filters.phone}
+                    onChange={e => handleFilterChange('phone', e.target.value)}
+                    style={{ padding: '8px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.9rem' }}
+                />
+                <select
+                    value={filters.golfer_type}
+                    onChange={e => handleFilterChange('golfer_type', e.target.value)}
+                    style={{ padding: '8px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.9rem', background: 'white' }}
+                >
+                    <option value="">全部擊球身分</option>
+                    {golferTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <select
+                    value={filters.line_bound}
+                    onChange={e => handleFilterChange('line_bound', e.target.value)}
+                    style={{ padding: '8px 12px', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.9rem', background: 'white' }}
+                >
+                    <option value="">全部 LINE 狀態</option>
+                    <option value="true">已綁定</option>
+                    <option value="false">未綁定</option>
+                </select>
+            </div>
+
             <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr style={{ textAlign: 'left', borderBottom: '1px solid #ddd' }}>
+                            <th style={{ padding: '10px' }}>會員編號</th>
                             <th style={{ padding: '10px' }}>名稱</th>
                             <th style={{ padding: '10px' }}>電話</th>
+                            <th style={{ padding: '10px' }}>擊球身分</th>
+                            <th style={{ padding: '10px' }}>有效日期</th>
                             <th style={{ padding: '10px' }}>LINE ID</th>
-                            <th style={{ padding: '10px' }}>註冊時間</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {users.map(u => (
+                        {loading ? (
+                            <tr><td colSpan={6} style={{ padding: '20px', textAlign: 'center', color: '#666' }}>載入中...</td></tr>
+                        ) : users.length === 0 ? (
+                            <tr><td colSpan={6} style={{ padding: '20px', textAlign: 'center', color: '#666' }}>無符合條件的用戶</td></tr>
+                        ) : users.map(u => (
                             <tr key={u.id} style={{ borderBottom: '1px solid #eee' }}>
-                                <td style={{ padding: '10px' }}>{u.display_name || '-'}</td>
+                                <td style={{ padding: '10px', color: '#666' }}>{u.member_no || '-'}</td>
+                                <td style={{ padding: '10px', fontWeight: 'bold' }}>{u.display_name || '-'}</td>
                                 <td style={{ padding: '10px' }}>{u.phone}</td>
-                                <td style={{ padding: '10px', fontSize: '0.8rem', color: '#666' }}>{u.line_user_id}</td>
-                                <td style={{ padding: '10px', fontSize: '0.8rem' }}>{new Date(u.created_at).toLocaleDateString()}</td>
+                                <td style={{ padding: '10px' }}>
+                                    {u.golfer_type && <span style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px', fontSize: '0.85rem' }}>{u.golfer_type}</span>}
+                                </td>
+                                <td style={{ padding: '10px', fontSize: '0.9rem', color: u.member_valid_until && new Date(u.member_valid_until) < new Date() ? 'red' : 'inherit' }}>
+                                    {u.member_valid_until || '-'}
+                                </td>
+                                <td style={{ padding: '10px', fontSize: '0.8rem', color: '#666' }}>
+                                    {u.line_user_id ? '✅ 已綁定' : '未綁定'}
+                                </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
+            </div>
+
+            {/* Pagination */}
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginTop: '20px', padding: '10px' }}>
+                <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page <= 1 || loading}
+                    style={{ padding: '8px 16px', border: '1px solid #ddd', borderRadius: '6px', background: page <= 1 ? '#f3f4f6' : 'white', cursor: page <= 1 ? 'not-allowed' : 'pointer' }}
+                >
+                    ← 上一頁
+                </button>
+                <span style={{ fontSize: '0.9rem', color: '#666' }}>
+                    第 {page} / {totalPages} 頁 (共 {total} 筆)
+                </span>
+                <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages || loading}
+                    style={{ padding: '8px 16px', border: '1px solid #ddd', borderRadius: '6px', background: page >= totalPages ? '#f3f4f6' : 'white', cursor: page >= totalPages ? 'not-allowed' : 'pointer' }}
+                >
+                    下一頁 →
+                </button>
             </div>
         </div>
     );

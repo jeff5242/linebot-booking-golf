@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "sync-users": "node scripts/syncUsers.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "install": "cd client && npm install",
     "build": "cd client && npm run build && rm -rf ../dist && cp -r dist ../dist",
@@ -19,8 +20,12 @@
   "description": "LINE Bot for golf booking",
   "dependencies": {
     "@line/bot-sdk": "^10.5.0",
+    "@supabase/supabase-js": "^2.94.1",
+    "axios": "^1.13.4",
     "concurrently": "^9.2.1",
     "dotenv": "^17.2.3",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "googleapis": "^171.4.0",
+    "uuid": "^13.0.0"
   }
 }

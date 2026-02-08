@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { Calendar } from '../components/Calendar';
-import { generateDailySlots, isSlotAvailable } from '../utils/golfLogic';
+import { generateDailySlots, isSlotAvailable, calculateBookingPrice } from '../utils/golfLogic';
 import { supabase } from '../supabase';
 import { useNavigate } from 'react-router-dom';
 
@@ -163,7 +163,9 @@ export function Booking() {
                 return;
             }
 
-            const { error } = await supabase.from('bookings').insert([
+            const pricing = calculateBookingPrice(selectedHoles, playersCount, needsCart, needsCaddie);
+
+            const { data: booking, error } = await supabase.from('bookings').insert([
                 {
                     user_id: user.id,
                     date: format(selectedDate, 'yyyy-MM-dd'),
@@ -173,19 +175,38 @@ export function Booking() {
                     status: 'confirmed',
                     players_info: players.slice(0, playersCount),
                     needs_cart: needsCart,
-                    needs_caddie: needsCaddie
+                    needs_caddie: needsCaddie,
+                    amount: pricing.total,
+                    payment_status: 'pending'
                 }
-            ]);
+            ]).select('id').single();
 
             if (error) throw error;
 
-            alert('預約成功!');
-            setShowPlayerModal(false);
-            setPendingTime(null);
-            fetchBookings();
+            // Trigger LINE Pay Payment
+            setLoading(true);
+            const response = await fetch('/api/payment/request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    amount: pricing.total,
+                    bookingId: booking.id,
+                    productName: `${selectedHoles}洞高爾夫預約 (${playersCount}人)`
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Payment request failed');
+            }
+
+            const paymentUrl = await response.json();
+            window.location.href = paymentUrl;
 
         } catch (e) {
             alert('預約失敗: ' + e.message);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -340,9 +361,39 @@ export function Booking() {
                         margin: 0
                     }} onClick={e => e.stopPropagation()}>
                         <h2 className="title" style={{ marginBottom: '16px' }}>確認預約資訊</h2>
-                        <p style={{ marginBottom: '16px', fontWeight: 'bold' }}>
-                            {format(selectedDate, 'yyyy-MM-dd')} {pendingTime && format(pendingTime, 'HH:mm')} ({selectedHoles}洞)
-                        </p>
+                        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                            <p style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '8px' }}>
+                                {format(selectedDate, 'yyyy-MM-dd')} {pendingTime && format(pendingTime, 'HH:mm')} ({selectedHoles}洞)
+                            </p>
+
+                            {(() => {
+                                const pricing = calculateBookingPrice(selectedHoles, playersCount, needsCart, needsCaddie);
+                                return (
+                                    <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                            <span>果嶺費 ({pricing.breakdown.greenFee.unit} x {pricing.breakdown.greenFee.count})</span>
+                                            <span>${pricing.breakdown.greenFee.total}</span>
+                                        </div>
+                                        {pricing.breakdown.cartFee && (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                <span>球車費 ({pricing.breakdown.cartFee.unit} x {pricing.breakdown.cartFee.count})</span>
+                                                <span>${pricing.breakdown.cartFee.total}</span>
+                                            </div>
+                                        )}
+                                        {pricing.breakdown.caddieFee && (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                <span>桿弟費 ({pricing.breakdown.caddieFee.unit} x {pricing.breakdown.caddieFee.count})</span>
+                                                <span>${pricing.breakdown.caddieFee.total}</span>
+                                            </div>
+                                        )}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #cbd5e1', color: '#1e293b', fontWeight: 'bold', fontSize: '1rem' }}>
+                                            <span>總計金額</span>
+                                            <span style={{ color: 'var(--primary-color)' }}>${pricing.total}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </div>
 
                         <form onSubmit={confirmBooking}>
                             {/* Service Options */}

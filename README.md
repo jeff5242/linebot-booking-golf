@@ -97,6 +97,28 @@ linebot-booking-golf/
 └── supabase_*.sql         # 資料庫遷移檔案
 ```
 
+## 會員資料同步 (Google Sheets Sync)
+
+本系統支援從指定的 Google Sheet 同步會員資料到資料庫。
+
+### 前置作業
+1.  **Google Sheet**: 確保試算表已分享給 Service Account (見 `google-service-account.json` 中的 client_email)。
+2.  **格式要求**:
+    -   Column B (第 2 欄): 姓名
+    -   Column F (第 6 欄): 手機號碼
+
+### 使用方式
+在終端機執行以下指令即可手動同步：
+
+```bash
+npm run sync-users
+```
+
+程式將會：
+1.  讀取 Google Sheet 資料。
+2.  比對手機號碼，更新現有會員或建立新會員。
+3.  顯示成功同步的筆數。
+
 ## License
 
 ISC

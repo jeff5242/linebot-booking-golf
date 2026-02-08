@@ -21,6 +21,9 @@ create table public.bookings (
   holes int not null check (holes in (9, 18)),
   players_count int not null default 1,
   status text default 'confirmed' check (status in ('confirmed', 'checked_in', 'cancelled')),
+  amount numeric(10, 2),
+  payment_status text default 'pending' check (payment_status in ('pending', 'paid', 'failed', 'refunded')),
+  line_pay_transaction_id text,
   notes text
 );
 

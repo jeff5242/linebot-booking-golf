@@ -33,6 +33,12 @@ export function Register() {
 
     const checkLineLogin = async () => {
         try {
+            if (import.meta.env.DEV) {
+                console.log('Dev mode: Mocking LIFF login');
+                setIsLineLoggedIn(true);
+                localStorage.setItem('line_user_id', 'test_user_001');
+                return;
+            }
             await liff.init({ liffId: import.meta.env.VITE_LIFF_ID });
             if (liff.isLoggedIn()) {
                 setIsLineLoggedIn(true);

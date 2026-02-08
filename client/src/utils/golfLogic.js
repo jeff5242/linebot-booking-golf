@@ -96,3 +96,38 @@ export function isTooLateFor18(dateObj) {
     // 13:10 + 2.5h = 15:40 Turn (Too late).
     return dateObj > cutoffTime;
 }
+
+/**
+ * Calculates the total booking price based on selected options.
+ * @param {number} holes - 9 or 18
+ * @param {number} playersCount - Number of players
+ * @param {boolean} needsCart - If golf cart is needed
+ * @param {boolean} needsCaddie - If caddie service is needed
+ * @returns {Object} - Breakdown and total amount
+ */
+export function calculateBookingPrice(holes, playersCount, needsCart, needsCaddie) {
+    // Current rates (Placeholders - to be confirmed by user)
+    const RATES = {
+        GREEN_FEE_9: 1000,
+        GREEN_FEE_18: 1800,
+        CART_FEE: 500, // Per player? Or per cart? Assuming per person for now.
+        CADDIE_FEE: 800 // Per player? Or per group? Assuming per person for now.
+    };
+
+    const greenFeeUnit = holes === 9 ? RATES.GREEN_FEE_9 : RATES.GREEN_FEE_18;
+    const greenFeeTotal = greenFeeUnit * playersCount;
+
+    const cartFeeTotal = needsCart ? RATES.CART_FEE * playersCount : 0;
+    const caddieFeeTotal = needsCaddie ? RATES.CADDIE_FEE * playersCount : 0;
+
+    const total = greenFeeTotal + cartFeeTotal + caddieFeeTotal;
+
+    return {
+        breakdown: {
+            greenFee: { unit: greenFeeUnit, count: playersCount, total: greenFeeTotal },
+            cartFee: needsCart ? { unit: RATES.CART_FEE, count: playersCount, total: cartFeeTotal } : null,
+            caddieFee: needsCaddie ? { unit: RATES.CADDIE_FEE, count: playersCount, total: caddieFeeTotal } : null
+        },
+        total: total
+    };
+}
