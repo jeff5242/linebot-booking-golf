@@ -38,28 +38,17 @@ const app = express();
 
 // 設定 CORS - 必須放在所有路由之前，包括 Webhook
 app.use(cors({
-  origin: function (origin, callback) {
-    // 允許沒有 origin 的請求（例如：curl 或行動裝置 App）
-    if (!origin) return callback(null, true);
-
-    const allowedOrigins = [
-      'http://localhost:5173',
-      'https://linebot-booking-golf-q3wo.vercel.app'
-    ];
-
-    const isVercelPreview = /\.vercel\.app$/.test(origin);
-
-    if (allowedOrigins.indexOf(origin) !== -1 || isVercelPreview) {
-      callback(null, true);
-    } else {
-      console.log('CORS Blocked for origin:', origin);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true, // 暫時允許所有來源以進行除錯，或自動反映請求的 Origin
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: true
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+// 除錯用的 Middleware，記錄收到的請求來源
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.url} - Origin: ${req.get('origin')}`);
+  next();
+});
 
 // LINE Webhook 端點 - 必須放在 express.json() 之前，因為它需要原始 Request Body 進行簽章驗證
 app.post('/webhook', line.middleware(config), (req, res) => {
