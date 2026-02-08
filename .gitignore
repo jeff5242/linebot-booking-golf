@@ -35,3 +35,17 @@ logs/
 # Temporary files
 *.tmp
 *.temp
+
+# Secrets
+google-service-account.json
+.env*
+!.env.example
+
+# Development artifacts
+*.md
+!README.md
+!RENDER_DEPLOY.md
+scripts/debugSheets.js
+.claude/
+.cursorrules
+stateDiagram-v2.txt
