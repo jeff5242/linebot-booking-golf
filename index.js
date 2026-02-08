@@ -34,7 +34,18 @@ const linePayConfig = {
 };
 
 const app = express();
-app.use(express.json()); // For handling payment API bodies
+
+// LINE Webhook 端點 - 必須放在 express.json() 之前，因為它需要原始 Request Body 進行簽章驗證
+app.post('/webhook', line.middleware(config), (req, res) => {
+  Promise.all(req.body.events.map(handleEvent))
+    .then((result) => res.json(result))
+    .catch((err) => {
+      console.error('Error handling events:', err);
+      res.status(500).end();
+    });
+});
+
+app.use(express.json()); // For handling payment API bodies and other JSON requests
 
 // 健康檢查端點
 app.get('/health', (req, res) => {
@@ -231,15 +242,7 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-// LINE Webhook 端點
-app.post('/webhook', line.middleware(config), (req, res) => {
-  Promise.all(req.body.events.map(handleEvent))
-    .then((result) => res.json(result))
-    .catch((err) => {
-      console.error('Error handling events:', err);
-      res.status(500).end();
-    });
-});
+// Get Users Endpoint with Filtering and Pagination
 
 // 處理 LINE 事件
 async function handleEvent(event) {
