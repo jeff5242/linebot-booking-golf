@@ -363,9 +363,13 @@ export function Booking() {
     const slots = generateDailySlots(selectedDate, settings);
     const { peakACount, peakBCount } = countPeakBookings();
 
-    // Check if peaks are full
-    const isPeakAFull = peakACount >= (settings.peak_a?.max_groups || 0);
-    const isPeakBFull = peakBCount >= (settings.peak_b?.max_groups || 0);
+    // Check if peaks are full (考慮保留名額)
+    // 可用名額 = 最大組數 - 保留組數
+    const peakAAvailable = (settings.peak_a?.max_groups || 0) - (settings.peak_a?.reserved || 0);
+    const peakBAvailable = (settings.peak_b?.max_groups || 0) - (settings.peak_b?.reserved || 0);
+
+    const isPeakAFull = peakACount >= peakAAvailable;
+    const isPeakBFull = peakBCount >= peakBAvailable;
     const areBothPeaksFull = isPeakAFull && isPeakBFull;
 
     return (
