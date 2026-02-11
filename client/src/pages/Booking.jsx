@@ -220,7 +220,7 @@ export function Booking() {
                     needs_cart: needsCart,
                     needs_caddie: needsCaddie,
                     amount: pricing.total,
-                    payment_status: 'unpaid' // 現場付款
+                    payment_status: 'pending' // 現場付款（待付款）
                 }
             ]).select('id').single();
 
