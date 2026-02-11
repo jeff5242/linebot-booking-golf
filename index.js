@@ -23,6 +23,8 @@ const { createClient } = require('@supabase/supabase-js');
 const { getSettings, updateSettings } = require('./services/SystemSettings');
 const { generateTimeSlots, processWaitlist } = require('./services/BookingLogic');
 const OperationalCalendar = require('./services/OperationalCalendar');
+const CaddyManagement = require('./services/CaddyManagement');
+const ChargeCard = require('./services/ChargeCard');
 
 // Supabase 設定
 const supabase = createClient(
@@ -576,6 +578,82 @@ app.post('/api/rates/:id/activate', async (req, res) => {
 app.post('/api/rates/calculate', async (req, res) => {
   try {
     const result = await RateManagement.calculateTotalFee(req.body);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// ============================================
+// 桿弟管理 API (Caddy Management)
+// ============================================
+
+// 取得所有桿弟
+app.get('/api/caddies', async (req, res) => {
+  try {
+    const caddies = await CaddyManagement.getAllCaddies();
+    res.json(caddies);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 新增桿弟
+app.post('/api/caddies', async (req, res) => {
+  try {
+    const caddy = await CaddyManagement.createCaddy(req.body);
+    res.json(caddy);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 更新桿弟
+app.put('/api/caddies/:id', async (req, res) => {
+  try {
+    const caddy = await CaddyManagement.updateCaddy(req.params.id, req.body);
+    res.json(caddy);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// ============================================
+// 收費卡 API (Charge Cards)
+// ============================================
+
+// 產生收費卡
+app.post('/api/charge-cards', async (req, res) => {
+  try {
+    const result = await ChargeCard.generateChargeCard(req.body.bookingId, {
+      caddyId: req.body.caddyId,
+      caddyRatio: req.body.caddyRatio,
+      course: req.body.course,
+      tierOverrides: req.body.tierOverrides
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 查詢預約的收費卡
+app.get('/api/charge-cards/booking/:bookingId', async (req, res) => {
+  try {
+    const card = await ChargeCard.getChargeCardByBooking(req.params.bookingId);
+    if (!card) {
+      return res.status(404).json({ error: '尚未產生收費卡' });
+    }
+    res.json(card);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 發送 LINE 通知
+app.post('/api/charge-cards/:id/notify', async (req, res) => {
+  try {
+    const result = await ChargeCard.sendChargeCardNotification(req.params.id);
     res.json(result);
   } catch (error) {
     res.status(400).json({ error: error.message });

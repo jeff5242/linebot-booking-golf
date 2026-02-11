@@ -116,3 +116,21 @@ export function calculateBookingPrice(holes, playersCount, needsCart, needsCaddi
         total: total
     };
 }
+
+/**
+ * Maps golfer type display names to rate tier codes.
+ * @param {string} golferType - The display name (e.g. '白金會員')
+ * @returns {string} - The rate tier code (e.g. 'platinum')
+ */
+export function golferTypeToTier(golferType) {
+    const mapping = {
+        '白金會員': 'platinum',
+        '金卡會員': 'gold',
+        '社區會員': 'gold',
+        'VIP-A': 'gold',
+        'VIP-B': 'gold',
+        '團友': 'team_friend',
+        '來賓': 'guest',
+    };
+    return mapping[golferType] || 'guest';
+}

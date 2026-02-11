@@ -8,6 +8,8 @@ import { AdminSettings } from '../components/AdminSettings';
 import { WaitlistMonitor } from '../components/WaitlistMonitor';
 import { RateManagement } from '../components/RateManagement';
 import { OperationalCalendar } from '../components/OperationalCalendar';
+import ChargeCardModal from '../components/ChargeCardModal';
+import CaddyManagement from '../components/CaddyManagement';
 
 // ... (DepartureList, CheckInList components remain unchanged)
 // Sub-component: Departure List (Existing)
@@ -1403,6 +1405,25 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                                                             {booking.scheduled_departure_time?.slice(0, 5) || '排定'}
                                                         </button>
                                                     )}
+                                                    {booking.status === 'checked_in' && (
+                                                        booking.charge_cards?.length > 0 && booking.charge_cards[0].status !== 'voided' ? (
+                                                            <button
+                                                                onClick={() => setChargeCardBooking(booking)}
+                                                                className="btn"
+                                                                style={{ padding: '4px 8px', color: '#2e7d32', border: '1px solid #a5d6a7', background: '#e8f5e9', fontSize: '0.8rem', width: 'auto' }}
+                                                            >
+                                                                查看收費卡
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => setChargeCardBooking(booking)}
+                                                                className="btn"
+                                                                style={{ padding: '4px 8px', color: '#e65100', border: '1px solid #ffcc80', background: '#fff3e0', fontSize: '0.8rem', width: 'auto' }}
+                                                            >
+                                                                產生收費卡
+                                                            </button>
+                                                        )
+                                                    )}
                                                 </div>
                                             </td>
                                         </>
@@ -1872,10 +1893,11 @@ function AdminManagement() {
 }
 
 export function AdminDashboard() {
-    const [activeTab, setActiveTab] = useState('starter'); // starter, scan, checkin_list, departure_list, vouchers, users, admins, settings, waitlist
+    const [activeTab, setActiveTab] = useState('starter'); // starter, scan, checkin_list, departure_list, vouchers, users, admins, settings, waitlist, caddy_management
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [chargeCardBooking, setChargeCardBooking] = useState(null);
 
     useEffect(() => {
         if (['starter', 'checkin_list', 'departure_list'].includes(activeTab)) fetchBookings();
@@ -1884,7 +1906,7 @@ export function AdminDashboard() {
     const fetchBookings = async () => {
         setLoading(true);
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
-        const { data } = await supabase.from('bookings').select('*, users(display_name, phone)').eq('date', dateStr);
+        const { data } = await supabase.from('bookings').select('*, users(display_name, phone, golfer_type, line_user_id, member_no), charge_cards(id, status)').eq('date', dateStr);
         setBookings(data || []);
         setLoading(false);
     };
@@ -1929,6 +1951,7 @@ export function AdminDashboard() {
                 <button onClick={() => setActiveTab('settings')} style={getTabStyle(activeTab === 'settings')}>參數設定</button>
                 <button onClick={() => setActiveTab('operational_calendar')} style={getTabStyle(activeTab === 'operational_calendar')}>📅 營運日曆</button>
                 <button onClick={() => setActiveTab('rate_management')} style={getTabStyle(activeTab === 'rate_management')}>💰 費率管理</button>
+                <button onClick={() => setActiveTab('caddy_management')} style={getTabStyle(activeTab === 'caddy_management')}>🏌️ 桿弟管理</button>
                 <button onClick={() => setActiveTab('admins')} style={getTabStyle(activeTab === 'admins')}>後台權限</button>
             </div>
 
@@ -1944,6 +1967,16 @@ export function AdminDashboard() {
             {activeTab === 'settings' && <AdminSettings />}
             {activeTab === 'operational_calendar' && <OperationalCalendar />}
             {activeTab === 'rate_management' && <RateManagement />}
+            {activeTab === 'caddy_management' && <CaddyManagement />}
+
+            {/* 收費卡彈窗 */}
+            {chargeCardBooking && (
+                <ChargeCardModal
+                    booking={chargeCardBooking}
+                    onClose={() => setChargeCardBooking(null)}
+                    onGenerated={() => fetchBookings()}
+                />
+            )}
         </div>
     );
 }
