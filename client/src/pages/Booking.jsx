@@ -298,7 +298,7 @@ export function Booking() {
                     desired_time_start: peakConfig.start,
                     desired_time_end: peakConfig.end,
                     players_count: playersCount,
-                    status: 'pending',
+                    status: 'queued',
                     peak_type: waitlistPeakType
                 }]);
 
