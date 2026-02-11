@@ -12,6 +12,7 @@ export function Booking() {
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(false);
     const [userName, setUserName] = useState('');
+    const [settings, setSettings] = useState(null); // System settings
 
     // Player Details State
     const [showPlayerModal, setShowPlayerModal] = useState(false);
@@ -24,17 +25,39 @@ export function Booking() {
         { name: '', phone: '' }
     ]);
 
+    // Error/Success Message Modal
+    const [showMessageModal, setShowMessageModal] = useState(false);
+    const [messageContent, setMessageContent] = useState({ type: 'error', message: '' });
+
     // Service Options
     const [needsCart, setNeedsCart] = useState(true);
     const [needsCaddie, setNeedsCaddie] = useState(true);
 
-    // Load Main User Info
+    // Load Main User Info and Settings
     useEffect(() => {
         loadMainUser();
+        fetchSettings();
         // Load user name for header
         const name = localStorage.getItem('golf_user_name');
         if (name) setUserName(name);
     }, []);
+
+    const fetchSettings = async () => {
+        try {
+            const res = await fetch('/api/settings');
+            const data = await res.json();
+            if (res.ok) setSettings(data);
+        } catch (err) {
+            console.error('Failed to load settings:', err);
+            // Fallback to defaults
+            setSettings({
+                interval: 10,
+                turn_time: 120,
+                peak_a: { start: '05:30', end: '07:30' },
+                peak_b: { start: '11:30', end: '12:30' }
+            });
+        }
+    };
 
     const loadMainUser = async () => {
         try {
@@ -120,7 +143,8 @@ export function Booking() {
 
         // Validate main booker phone
         if (!validatePhone(players[0].phone)) {
-            alert('請輸入正確的台灣手機號碼格式 (09開頭，共10碼)');
+            setMessageContent({ type: 'error', message: '請輸入正確的台灣手機號碼格式 (09開頭，共10碼)' });
+            setShowMessageModal(true);
             return;
         }
 
@@ -158,8 +182,11 @@ export function Booking() {
             }
 
             if (!user) {
-                alert('找不到使用者資料，請重新註冊');
-                navigate('/register');
+                setMessageContent({ type: 'error', message: '找不到使用者資料，請重新註冊' });
+                setShowMessageModal(true);
+                setTimeout(() => {
+                    navigate('/register');
+                }, 2000);
                 return;
             }
 
@@ -205,13 +232,58 @@ export function Booking() {
             window.location.href = paymentUrl;
 
         } catch (e) {
-            alert('預約失敗: ' + e.message);
+            console.error('Booking error:', e);
+            setMessageContent({ type: 'error', message: '預約失敗: ' + e.message });
+            setShowMessageModal(true);
         } finally {
             setLoading(false);
         }
     };
 
-    const slots = generateDailySlots(selectedDate);
+    // Helper: Check if a time is within a peak period
+    const isInPeak = (slot, peakConfig) => {
+        if (!peakConfig?.start || !peakConfig?.end) return false;
+        const timeStr = format(slot, 'HH:mm');
+        return timeStr >= peakConfig.start && timeStr <= peakConfig.end;
+    };
+
+    // Helper: Check if a slot is in Peak A or Peak B
+    const getPeakType = (slot) => {
+        if (isInPeak(slot, settings?.peak_a)) return 'peak_a';
+        if (isInPeak(slot, settings?.peak_b)) return 'peak_b';
+        return null;
+    };
+
+    // Count how many bookings are in each peak period
+    const countPeakBookings = () => {
+        let peakACount = 0;
+        let peakBCount = 0;
+
+        bookings.forEach(booking => {
+            if (booking.status === 'cancelled') return;
+            // Parse booking time and check if it's in peak
+            const bookingDate = new Date(selectedDate);
+            const [hours, minutes] = booking.time.split(':');
+            bookingDate.setHours(parseInt(hours), parseInt(minutes), 0);
+
+            if (isInPeak(bookingDate, settings?.peak_a)) peakACount++;
+            if (isInPeak(bookingDate, settings?.peak_b)) peakBCount++;
+        });
+
+        return { peakACount, peakBCount };
+    };
+
+    if (!settings) {
+        return <div className="container"><p>載入中...</p></div>;
+    }
+
+    const slots = generateDailySlots(selectedDate, settings);
+    const { peakACount, peakBCount } = countPeakBookings();
+
+    // Check if peaks are full
+    const isPeakAFull = peakACount >= (settings.peak_a?.max_groups || 0);
+    const isPeakBFull = peakBCount >= (settings.peak_b?.max_groups || 0);
+    const areBothPeaksFull = isPeakAFull && isPeakBFull;
 
     return (
         <div className="container">
@@ -301,21 +373,31 @@ export function Booking() {
                 ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
                         {slots.map(slot => {
-                            const isAvailable = isSlotAvailable(slot, bookings, selectedHoles);
+                            const peakType = getPeakType(slot);
+                            const isAvailable = isSlotAvailable(slot, bookings, selectedHoles, settings);
                             const timeLabel = format(slot, 'HH:mm');
 
-                            let isTooLateFor18 = false;
+                            // Peak logic: hide non-peak slots if both peaks are not full
+                            if (!peakType && !areBothPeaksFull) {
+                                return null; // Don't show non-peak slots
+                            }
+
+                            let isTooLateFor18Holes = false;
                             if (selectedHoles === 18) {
-                                // Cutoff is 13:00 (15:30 - 2.5h)
-                                // So valid: <= 13:00.
                                 const h = slot.getHours();
                                 const m = slot.getMinutes();
-                                if (h > 13 || (h === 13 && m > 0)) {
-                                    isTooLateFor18 = true;
+                                const turnTime = settings?.turn_time || 120;
+                                // Calculate cutoff: END_HOUR:END_MINUTE - turnTime
+                                // 15:30 - 120min = 13:30
+                                if (h > 13 || (h === 13 && m > 30)) {
+                                    isTooLateFor18Holes = true;
                                 }
                             }
 
-                            const isDisabled = !isAvailable || isTooLateFor18;
+                            const isDisabled = !isAvailable || isTooLateFor18Holes;
+
+                            // Determine if this is a peak slot that's full
+                            const isPeakSlotFull = (peakType === 'peak_a' && isPeakAFull) || (peakType === 'peak_b' && isPeakBFull);
 
                             return (
                                 <button
@@ -325,21 +407,86 @@ export function Booking() {
                                     style={{
                                         padding: '10px 4px',
                                         borderRadius: '8px',
-                                        border: '1px solid #e5e7eb',
-                                        backgroundColor: isDisabled ? '#f3f4f6' : 'white',
-                                        color: isDisabled ? '#9ca3af' : 'var(--primary-color)',
+                                        border: peakType ? '2px solid #f59e0b' : '1px solid #e5e7eb',
+                                        backgroundColor: isDisabled ? '#f3f4f6' : (peakType ? '#fffbeb' : 'white'),
+                                        color: isDisabled ? '#9ca3af' : (peakType ? '#d97706' : 'var(--primary-color)'),
                                         fontWeight: '600',
                                         cursor: isDisabled ? 'not-allowed' : 'pointer',
-                                        boxShadow: isDisabled ? 'none' : '0 1px 2px rgba(0,0,0,0.05)'
+                                        boxShadow: isDisabled ? 'none' : '0 1px 2px rgba(0,0,0,0.05)',
+                                        position: 'relative'
                                     }}
                                 >
                                     {timeLabel}
+                                    {peakType && (
+                                        <span style={{
+                                            position: 'absolute',
+                                            top: '2px',
+                                            right: '2px',
+                                            fontSize: '0.6rem',
+                                            backgroundColor: '#f59e0b',
+                                            color: 'white',
+                                            padding: '1px 3px',
+                                            borderRadius: '3px'
+                                        }}>
+                                            {peakType === 'peak_a' ? 'A' : 'B'}
+                                        </span>
+                                    )}
                                 </button>
                             );
                         })}
                     </div>
                 )}
             </div>
+
+            {/* Waitlist Buttons */}
+            {(isPeakAFull || isPeakBFull) && (
+                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#fef3c7', borderRadius: '8px', border: '1px solid #fbbf24' }}>
+                    <h4 style={{ margin: '0 0 0.5rem 0', color: '#92400e', fontSize: '0.9rem', fontWeight: 'bold' }}>⏰ 尖峰時段已滿 - 加入候補</h4>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        {isPeakAFull && (
+                            <button
+                                onClick={() => {
+                                    alert('候補 Peak A 功能開發中');
+                                    // TODO: Implement waitlist logic
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px',
+                                    backgroundColor: '#3b82f6',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                候補 Peak A (早場)
+                            </button>
+                        )}
+                        {isPeakBFull && (
+                            <button
+                                onClick={() => {
+                                    alert('候補 Peak B 功能開發中');
+                                    // TODO: Implement waitlist logic
+                                }}
+                                style={{
+                                    flex: 1,
+                                    padding: '10px',
+                                    backgroundColor: '#f97316',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                候補 Peak B (午場)
+                            </button>
+                        )}
+                    </div>
+                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.75rem', color: '#78350f' }}>當有人取消預約時，系統會自動通知您</p>
+                </div>
+            )}
 
             {selectedHoles === 18 && (
                 <p style={{ marginTop: '1rem', fontSize: '0.8rem', color: '#666', textAlign: 'center' }}>
@@ -508,6 +655,74 @@ export function Booking() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Message Modal (Error/Success) */}
+            {showMessageModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 2000,
+                    animation: 'fade-in 0.3s ease-in-out'
+                }}>
+                    <div style={{
+                        backgroundColor: 'white',
+                        borderRadius: '16px',
+                        padding: '30px',
+                        maxWidth: '400px',
+                        width: '90%',
+                        boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+                        animation: 'slide-up 0.3s ease-out'
+                    }}>
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{
+                                fontSize: '48px',
+                                marginBottom: '20px'
+                            }}>
+                                {messageContent.type === 'error' ? '⚠️' : '✅'}
+                            </div>
+                            <h2 style={{
+                                fontSize: '1.5rem',
+                                fontWeight: 'bold',
+                                marginBottom: '10px',
+                                color: messageContent.type === 'error' ? '#dc2626' : '#16a34a'
+                            }}>
+                                {messageContent.type === 'error' ? '錯誤' : '成功'}
+                            </h2>
+                            <p style={{
+                                color: '#666',
+                                marginBottom: '30px',
+                                fontSize: '0.95rem',
+                                lineHeight: '1.5'
+                            }}>
+                                {messageContent.message}
+                            </p>
+                            <button
+                                onClick={() => setShowMessageModal(false)}
+                                style={{
+                                    width: '100%',
+                                    padding: '14px',
+                                    backgroundColor: messageContent.type === 'error' ? '#dc2626' : '#16a34a',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    fontSize: '1rem',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                我知道了
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

@@ -4,6 +4,9 @@ import { supabase } from '../supabase';
 import { Calendar } from '../components/Calendar';
 import { generateDailySlots } from '../utils/golfLogic';
 import { Html5QrcodeScanner } from 'html5-qrcode';
+import { AdminSettings } from '../components/AdminSettings';
+import { WaitlistMonitor } from '../components/WaitlistMonitor';
+import { RateManagement } from '../components/RateManagement';
 
 // ... (DepartureList, CheckInList components remain unchanged)
 // Sub-component: Departure List (Existing)
@@ -1868,7 +1871,7 @@ function AdminManagement() {
 }
 
 export function AdminDashboard() {
-    const [activeTab, setActiveTab] = useState('starter'); // starter, scan, checkin_list, departure_list, vouchers, users, admins
+    const [activeTab, setActiveTab] = useState('starter'); // starter, scan, checkin_list, departure_list, vouchers, users, admins, settings, waitlist
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -1917,11 +1920,13 @@ export function AdminDashboard() {
             {/* Tabs */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e5e7eb', overflowX: 'auto' }}>
                 <button onClick={() => setActiveTab('starter')} style={getTabStyle(activeTab === 'starter')}>出發台看板</button>
+                <button onClick={() => setActiveTab('waitlist')} style={getTabStyle(activeTab === 'waitlist')}>候補監控</button>
                 <button onClick={() => setActiveTab('scan')} style={getTabStyle(activeTab === 'scan')}>📷 掃碼 (報到/核銷)</button>
                 <button onClick={() => setActiveTab('checkin_list')} style={getTabStyle(activeTab === 'checkin_list')}>📋 報到清單</button>
-                <button onClick={() => setActiveTab('departure_list')} style={getTabStyle(activeTab === 'departure_list')}>🚩 出發清單</button>
                 <button onClick={() => setActiveTab('vouchers')} style={getTabStyle(activeTab === 'vouchers')}>🎫 票券管理</button>
                 <button onClick={() => setActiveTab('users')} style={getTabStyle(activeTab === 'users')}>用戶管理</button>
+                <button onClick={() => setActiveTab('settings')} style={getTabStyle(activeTab === 'settings')}>參數設定</button>
+                <button onClick={() => setActiveTab('rate_management')} style={getTabStyle(activeTab === 'rate_management')}>💰 費率管理</button>
                 <button onClick={() => setActiveTab('admins')} style={getTabStyle(activeTab === 'admins')}>後台權限</button>
             </div>
 
@@ -1933,6 +1938,9 @@ export function AdminDashboard() {
             {activeTab === 'vouchers' && <VoucherManagement />}
             {activeTab === 'users' && <UserManagement />}
             {activeTab === 'admins' && <AdminManagement />}
+            {activeTab === 'waitlist' && <WaitlistMonitor />}
+            {activeTab === 'settings' && <AdminSettings />}
+            {activeTab === 'rate_management' && <RateManagement />}
         </div>
     );
 }

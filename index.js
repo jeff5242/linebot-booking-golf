@@ -20,6 +20,8 @@ const axios = require('axios');
 const uuid = require('uuid');
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
+const { getSettings, updateSettings } = require('./services/SystemSettings');
+const { generateTimeSlots, processWaitlist } = require('./services/BookingLogic');
 
 // Supabase 設定
 const supabase = createClient(
@@ -92,6 +94,18 @@ function generateLinePayHeaders(uri, body) {
 app.post('/api/payment/request', async (req, res) => {
   try {
     const { amount, bookingId, productName } = req.body;
+
+    // Development Mode: Skip LINE Pay API if credentials are 'development'
+    if (linePayConfig.channelId === 'development') {
+      console.log('🔧 Development Mode: Bypassing LINE Pay API');
+      console.log(`Mock Payment for Booking ${bookingId}: $${amount}`);
+
+      // Return a mock confirmation URL that will directly confirm the booking
+      const mockConfirmUrl = `${process.env.BASE_URL}/api/payment/confirm?transactionId=dev_${Date.now()}&orderId=order_${bookingId}_${Date.now()}`;
+      return res.json(mockConfirmUrl);
+    }
+
+    // Production Mode: Use real LINE Pay API
     const uri = '/v3/payments/request';
     const body = {
       amount: parseInt(amount),
@@ -113,7 +127,7 @@ app.post('/api/payment/request', async (req, res) => {
       ],
       redirectUrls: {
         confirmUrl: `${process.env.BASE_URL}/api/payment/confirm`,
-        cancelUrl: `${process.env.BASE_URL}/payment/failure`,
+        cancelUrl: `${process.env.FRONTEND_URL || process.env.BASE_URL}/payment/failure`,
       },
     };
 
@@ -140,9 +154,31 @@ app.get('/api/payment/confirm', async (req, res) => {
     const bookingId = orderId.split('_')[1];
 
     if (!bookingId) {
-      return res.redirect(`${process.env.BASE_URL}/payment/failure?error=invalid_order`);
+      return res.redirect(`${process.env.FRONTEND_URL || process.env.BASE_URL}/payment/failure?error=invalid_order`);
     }
 
+    // Development Mode: Auto-confirm if transaction ID starts with 'dev_'
+    if (transactionId.startsWith('dev_')) {
+      console.log('🔧 Development Mode: Auto-confirming payment');
+
+      const { error: updateError } = await supabase
+        .from('bookings')
+        .update({
+          payment_status: 'paid',
+          line_pay_transaction_id: transactionId,
+          status: 'confirmed'
+        })
+        .eq('id', bookingId);
+
+      if (updateError) {
+        console.error('Error updating booking status:', updateError);
+        return res.redirect(`${process.env.FRONTEND_URL || process.env.BASE_URL}/payment/failure?error=db_update_failed`);
+      }
+
+      return res.redirect(`${process.env.FRONTEND_URL || process.env.BASE_URL}/payment/success?transactionId=${transactionId}`);
+    }
+
+    // Production Mode: Confirm with LINE Pay API
     // 1. Fetch booking details to get the amount
     const { data: booking, error: fetchError } = await supabase
       .from('bookings')
@@ -152,7 +188,7 @@ app.get('/api/payment/confirm', async (req, res) => {
 
     if (fetchError || !booking) {
       console.error('Error fetching booking:', fetchError);
-      return res.redirect(`${process.env.BASE_URL}/payment/failure?error=booking_not_found`);
+      return res.redirect(`${process.env.FRONTEND_URL || process.env.BASE_URL}/payment/failure?error=booking_not_found`);
     }
 
     // 2. Confirm LINE Pay Transaction
@@ -181,13 +217,13 @@ app.get('/api/payment/confirm', async (req, res) => {
         // Still redirect to success since payment was taken, but log the error
       }
 
-      res.redirect(`${process.env.BASE_URL}/payment/success?transactionId=${transactionId}`);
+      res.redirect(`${process.env.FRONTEND_URL || process.env.BASE_URL}/payment/success?transactionId=${transactionId}`);
     } else {
-      res.redirect(`${process.env.BASE_URL}/payment/failure?code=${response.data.returnCode}`);
+      res.redirect(`${process.env.FRONTEND_URL || process.env.BASE_URL}/payment/failure?code=${response.data.returnCode}`);
     }
   } catch (error) {
     console.error('LINE Pay Confirm Error:', error.response?.data || error.message);
-    res.redirect(`${process.env.BASE_URL}/payment/failure?error=confirm_failed`);
+    res.redirect(`${process.env.FRONTEND_URL || process.env.BASE_URL}/payment/failure?error=confirm_failed`);
   }
 });
 
@@ -258,6 +294,66 @@ app.get('/api/users', async (req, res) => {
 });
 
 // Get Users Endpoint with Filtering and Pagination
+// ... (previous code)
+
+// --- Advanced Booking API ---
+
+// 1. Get System Settings
+app.get('/api/settings', async (req, res) => {
+  try {
+    const settings = await getSettings();
+    res.json(settings);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 2. Update System Settings
+app.post('/api/settings', async (req, res) => {
+  try {
+    const updated = await updateSettings(req.body);
+    res.json(updated);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 3. Get Available Time Slots
+app.get('/api/slots', async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ error: 'Date is required' });
+
+    const slots = await generateTimeSlots(date);
+    res.json(slots);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4. Cancel Booking (Trigger HOP)
+app.post('/api/bookings/:id/cancel', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Update DB
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status: 'cancelled' })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    // Trigger Waitlist Logic
+    await processWaitlist(id);
+
+    res.json({ success: true, message: 'Booking cancelled and waitlist processed' });
+  } catch (error) {
+    console.error('Cancel Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // 處理 LINE 事件
 async function handleEvent(event) {
@@ -285,3 +381,99 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`LINE Bot 伺服器正在運行於 port ${PORT}`);
 });
+
+// ============================================
+// 費率管理 API (Rate Management)
+// ============================================
+const RateManagement = require('./services/RateManagement');
+
+// 取得當前生效的費率配置
+app.get('/api/rates/active', async (req, res) => {
+  try {
+    const rateConfig = await RateManagement.getActiveRateConfig();
+    res.json(rateConfig);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得所有費率配置（含歷史）
+app.get('/api/rates', async (req, res) => {
+  try {
+    const configs = await RateManagement.getAllRateConfigs(req.query);
+    res.json(configs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 創建新費率配置
+app.post('/api/rates', async (req, res) => {
+  try {
+    const config = await RateManagement.createRateConfig(req.body, req.user?.id);
+    res.json(config);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 更新費率配置
+app.put('/api/rates/:id', async (req, res) => {
+  try {
+    const config = await RateManagement.updateRateConfig(req.params.id, req.body, req.user?.id);
+    res.json(config);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 提交審核
+app.post('/api/rates/:id/submit', async (req, res) => {
+  try {
+    const config = await RateManagement.submitForApproval(req.params.id, req.user?.id, req.body.changesSummary);
+    res.json(config);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 批准費率
+app.post('/api/rates/:id/approve', async (req, res) => {
+  try {
+    const config = await RateManagement.approveRateConfig(req.params.id, req.user?.id, req.body.effectiveDate);
+    res.json(config);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 拒絕費率
+app.post('/api/rates/:id/reject', async (req, res) => {
+  try {
+    const config = await RateManagement.rejectRateConfig(req.params.id, req.user?.id, req.body.reason);
+    res.json(config);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 啟用費率
+app.post('/api/rates/:id/activate', async (req, res) => {
+  try {
+    const config = await RateManagement.activateRateConfig(req.params.id, req.user?.id);
+    res.json(config);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 計算費用
+app.post('/api/rates/calculate', async (req, res) => {
+  try {
+    const result = await RateManagement.calculateTotalFee(req.body);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+

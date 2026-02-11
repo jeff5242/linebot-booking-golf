@@ -13,6 +13,7 @@ export function Register() {
     const [otp, setOtp] = useState('');
     const [countdown, setCountdown] = useState(0);
     const [mockServerOtp, setMockServerOtp] = useState(null); // The "correct" OTP
+    const [showSmsModal, setShowSmsModal] = useState(false); // Modal for displaying SMS code
 
     const [formData, setFormData] = useState({
         name: '',
@@ -68,9 +69,9 @@ export function Register() {
         setVerificationSent(true);
         setCountdown(60); // 60s cooldown
 
-        // Simulate SMS arrival
+        // Show SMS modal instead of alert
         setTimeout(() => {
-            alert(`[模擬簡訊] 您的驗證碼是: ${generatedOtp}`);
+            setShowSmsModal(true);
         }, 1000);
     };
 
@@ -274,6 +275,78 @@ export function Register() {
                     </button>
                 </form>
             </div>
+
+            {/* SMS Modal */}
+            {showSmsModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000,
+                    animation: 'fade-in 0.3s ease-in-out'
+                }}>
+                    <div style={{
+                        backgroundColor: 'white',
+                        borderRadius: '16px',
+                        padding: '30px',
+                        maxWidth: '400px',
+                        width: '90%',
+                        boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+                        animation: 'slide-up 0.3s ease-out'
+                    }}>
+                        <div style={{ textAlign: 'center' }}>
+                            <div style={{
+                                fontSize: '48px',
+                                marginBottom: '20px'
+                            }}>📱</div>
+                            <h2 style={{
+                                fontSize: '1.5rem',
+                                fontWeight: 'bold',
+                                marginBottom: '10px',
+                                color: '#333'
+                            }}>模擬簡訊</h2>
+                            <p style={{
+                                color: '#666',
+                                marginBottom: '20px',
+                                fontSize: '0.95rem'
+                            }}>您的驗證碼是</p>
+                            <div style={{
+                                fontSize: '2rem',
+                                fontWeight: 'bold',
+                                color: 'var(--primary-color)',
+                                fontFamily: 'monospace',
+                                letterSpacing: '8px',
+                                marginBottom: '30px',
+                                padding: '15px',
+                                backgroundColor: '#f3f4f6',
+                                borderRadius: '12px'
+                            }}>{mockServerOtp}</div>
+                            <button
+                                onClick={() => setShowSmsModal(false)}
+                                style={{
+                                    width: '100%',
+                                    padding: '14px',
+                                    backgroundColor: 'var(--primary-color)',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    fontSize: '1rem',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                我知道了
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
