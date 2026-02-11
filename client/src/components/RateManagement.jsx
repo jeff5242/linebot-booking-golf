@@ -37,7 +37,8 @@ export function RateManagement() {
 
     const fetchActiveRate = async () => {
         try {
-            const res = await fetch('/api/rates/active');
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${apiUrl}/api/rates/active`);
             const data = await res.json();
             if (res.ok) {
                 setRateConfig(data);
@@ -51,7 +52,8 @@ export function RateManagement() {
 
     const calculateFee = async () => {
         try {
-            const res = await fetch('/api/rates/calculate', {
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${apiUrl}/api/rates/calculate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(calculator)
@@ -111,7 +113,8 @@ export function RateManagement() {
         setLoading(true);
         setMsg('');
         try {
-            const res = await fetch(`/api/rates/${rateConfig.id}`, {
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${apiUrl}/api/rates/${rateConfig.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(rateConfig)
