@@ -48,7 +48,8 @@ export function Booking() {
 
     const fetchSettings = async () => {
         try {
-            const res = await fetch('/api/settings');
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${apiUrl}/api/settings`);
             const data = await res.json();
             if (res.ok) setSettings(data);
         } catch (err) {
