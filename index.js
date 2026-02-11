@@ -22,6 +22,7 @@ const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { getSettings, updateSettings } = require('./services/SystemSettings');
 const { generateTimeSlots, processWaitlist } = require('./services/BookingLogic');
+const OperationalCalendar = require('./services/OperationalCalendar');
 
 // Supabase 設定
 const supabase = createClient(
@@ -375,6 +376,94 @@ async function handleEvent(event) {
     ],
   });
 }
+
+// ============================================
+// 營運日曆 API
+// ============================================
+
+// 取得單日覆蓋設定
+app.get('/api/calendar/override/:date', async (req, res) => {
+  try {
+    const data = await OperationalCalendar.getDateOverride(req.params.date);
+    res.json(data || {});
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得日期區間的覆蓋設定
+app.get('/api/calendar/overrides', async (req, res) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end) {
+      return res.status(400).json({ error: '需要提供 start 和 end 參數' });
+    }
+    const data = await OperationalCalendar.getDateRangeOverrides(start, end);
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 建立或更新單日覆蓋設定
+app.post('/api/calendar/override', async (req, res) => {
+  try {
+    const userId = req.user?.id || null; // 未登入時使用 null（資料庫會接受 NULL 值）
+    const result = await OperationalCalendar.upsertDateOverride(req.body, userId);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 刪除覆蓋設定（恢復全域範本）
+app.delete('/api/calendar/override/:date', async (req, res) => {
+  try {
+    const result = await OperationalCalendar.deleteDateOverride(req.params.date);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 批次設定
+app.post('/api/calendar/batch', async (req, res) => {
+  try {
+    const userId = req.user?.id || null; // 未登入時使用 null
+    const result = await OperationalCalendar.applyBatchSettings(req.body, userId);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 檢查預約衝突
+app.get('/api/calendar/conflicts/:date', async (req, res) => {
+  try {
+    const status = req.query.status || 'closed';
+    const conflicts = await OperationalCalendar.checkBookingConflicts(
+      req.params.date,
+      status
+    );
+    res.json(conflicts);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得日期營運狀態（含全域設定合併）
+app.get('/api/calendar/status/:date', async (req, res) => {
+  try {
+    const globalSettings = await getSettings();
+    const status = await OperationalCalendar.getDateOperationalStatus(
+      req.params.date,
+      globalSettings
+    );
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // 啟動伺服器
 const PORT = process.env.PORT || 3000;

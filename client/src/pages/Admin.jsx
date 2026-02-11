@@ -7,6 +7,7 @@ import { Html5QrcodeScanner } from 'html5-qrcode';
 import { AdminSettings } from '../components/AdminSettings';
 import { WaitlistMonitor } from '../components/WaitlistMonitor';
 import { RateManagement } from '../components/RateManagement';
+import { OperationalCalendar } from '../components/OperationalCalendar';
 
 // ... (DepartureList, CheckInList components remain unchanged)
 // Sub-component: Departure List (Existing)
@@ -1926,6 +1927,7 @@ export function AdminDashboard() {
                 <button onClick={() => setActiveTab('vouchers')} style={getTabStyle(activeTab === 'vouchers')}>🎫 票券管理</button>
                 <button onClick={() => setActiveTab('users')} style={getTabStyle(activeTab === 'users')}>用戶管理</button>
                 <button onClick={() => setActiveTab('settings')} style={getTabStyle(activeTab === 'settings')}>參數設定</button>
+                <button onClick={() => setActiveTab('operational_calendar')} style={getTabStyle(activeTab === 'operational_calendar')}>📅 營運日曆</button>
                 <button onClick={() => setActiveTab('rate_management')} style={getTabStyle(activeTab === 'rate_management')}>💰 費率管理</button>
                 <button onClick={() => setActiveTab('admins')} style={getTabStyle(activeTab === 'admins')}>後台權限</button>
             </div>
@@ -1940,6 +1942,7 @@ export function AdminDashboard() {
             {activeTab === 'admins' && <AdminManagement />}
             {activeTab === 'waitlist' && <WaitlistMonitor />}
             {activeTab === 'settings' && <AdminSettings />}
+            {activeTab === 'operational_calendar' && <OperationalCalendar />}
             {activeTab === 'rate_management' && <RateManagement />}
         </div>
     );

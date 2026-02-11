@@ -34,19 +34,36 @@ export function Register() {
 
     const checkLineLogin = async () => {
         try {
+            let lineUserId;
+
             if (import.meta.env.DEV) {
                 console.log('Dev mode: Mocking LIFF login');
                 setIsLineLoggedIn(true);
-                localStorage.setItem('line_user_id', 'test_user_001');
-                return;
-            }
-            await liff.init({ liffId: import.meta.env.VITE_LIFF_ID });
-            if (liff.isLoggedIn()) {
-                setIsLineLoggedIn(true);
-                const profile = await liff.getProfile();
-                localStorage.setItem('line_user_id', profile.userId);
+                lineUserId = 'test_user_001';
+                localStorage.setItem('line_user_id', lineUserId);
             } else {
-                setIsLineLoggedIn(false);
+                await liff.init({ liffId: import.meta.env.VITE_LIFF_ID });
+                if (liff.isLoggedIn()) {
+                    setIsLineLoggedIn(true);
+                    const profile = await liff.getProfile();
+                    lineUserId = profile.userId;
+                    localStorage.setItem('line_user_id', lineUserId);
+                } else {
+                    setIsLineLoggedIn(false);
+                    return;
+                }
+            }
+
+            // 檢查用戶是否已註冊
+            const { data: existingUser } = await supabase
+                .from('users')
+                .select('id, display_name')
+                .eq('line_user_id', lineUserId)
+                .single();
+
+            if (existingUser) {
+                console.log('用戶已註冊，跳轉到預約頁面');
+                navigate('/booking');
             }
         } catch (err) {
             console.error('LIFF check failed', err);
