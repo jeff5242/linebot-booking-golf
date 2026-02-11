@@ -148,6 +148,18 @@ export function Booking() {
             return;
         }
 
+        // 驗證所有選定人數的人名都必須填寫
+        for (let i = 0; i < playersCount; i++) {
+            if (!players[i].name || players[i].name.trim() === '') {
+                setMessageContent({
+                    type: 'error',
+                    message: `請填寫第 ${i + 1} 位球友的姓名`
+                });
+                setShowMessageModal(true);
+                return;
+            }
+        }
+
         try {
             const userPhone = localStorage.getItem('golf_user_phone');
             const userName = localStorage.getItem('golf_user_name');
@@ -204,32 +216,24 @@ export function Booking() {
                     needs_cart: needsCart,
                     needs_caddie: needsCaddie,
                     amount: pricing.total,
-                    payment_status: 'pending'
+                    payment_status: 'unpaid' // 現場付款
                 }
             ]).select('id').single();
 
             if (error) throw error;
 
-            // Trigger LINE Pay Payment
-            setLoading(true);
-            const apiUrl = import.meta.env.VITE_API_URL || '';
-            const response = await fetch(`${apiUrl}/api/payment/request`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    amount: pricing.total,
-                    bookingId: booking.id,
-                    productName: `${selectedHoles}洞高爾夫預約 (${playersCount}人)`
-                })
+            // 預約成功，顯示成功訊息
+            setShowPlayerModal(false);
+            setMessageContent({
+                type: 'success',
+                message: `預約成功！\n日期：${format(selectedDate, 'yyyy-MM-dd')}\n時間：${format(pendingTime, 'HH:mm')}\n人數：${playersCount}人\n請於現場付款`
             });
+            setShowMessageModal(true);
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Payment request failed');
+            // 重新載入可用時段
+            if (selectedDate) {
+                loadAvailableSlots(selectedDate);
             }
-
-            const paymentUrl = await response.json();
-            window.location.href = paymentUrl;
 
         } catch (e) {
             console.error('Booking error:', e);
