@@ -1073,7 +1073,7 @@ function VoucherManagement() {
 }
 
 // Sub-component: StarterDashboard (Existing)
-function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookings }) {
+function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookings, setChargeCardBooking }) {
     const slots = generateDailySlots(selectedDate);
 
     // Logic for linking bookings (18 holes turn)
@@ -1956,7 +1956,7 @@ export function AdminDashboard() {
             </div>
 
             {/* Content */}
-            {activeTab === 'starter' && <StarterDashboard selectedDate={selectedDate} setSelectedDate={setSelectedDate} bookings={bookings} fetchBookings={fetchBookings} />}
+            {activeTab === 'starter' && <StarterDashboard selectedDate={selectedDate} setSelectedDate={setSelectedDate} bookings={bookings} fetchBookings={fetchBookings} setChargeCardBooking={setChargeCardBooking} />}
             {activeTab === 'scan' && <QRScannerTab />}
             {activeTab === 'checkin_list' && <CheckInList bookings={bookings} selectedDate={selectedDate} />}
             {activeTab === 'departure_list' && <DepartureList bookings={bookings} selectedDate={selectedDate} />}
