@@ -40,8 +40,24 @@ const linePayConfig = {
 const app = express();
 
 // 設定 CORS - 必須放在所有路由之前，包括 Webhook
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'https://linebot-booking-golf-q3wo.vercel.app',
+  'http://localhost:5173', // 本地開發
+  'http://localhost:5174', // 本地開發（備用埠號）
+];
+
 app.use(cors({
-  origin: true, // 暫時允許所有來源以進行除錯，或自動反映請求的 Origin
+  origin: function (origin, callback) {
+    // 允許無 origin 的請求（例如：postman, curl, 或同源請求）
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.warn(`🚫 CORS blocked: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
