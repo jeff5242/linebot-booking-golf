@@ -234,10 +234,8 @@ export function Booking() {
             });
             setShowMessageModal(true);
 
-            // 重新載入可用時段
-            if (selectedDate) {
-                loadAvailableSlots(selectedDate);
-            }
+            // 重新載入預約資料
+            fetchBookings();
 
         } catch (e) {
             console.error('Booking error:', e);
