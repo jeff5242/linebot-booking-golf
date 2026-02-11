@@ -29,6 +29,10 @@ export function Booking() {
     const [showMessageModal, setShowMessageModal] = useState(false);
     const [messageContent, setMessageContent] = useState({ type: 'error', message: '' });
 
+    // Waitlist Modal State
+    const [showWaitlistModal, setShowWaitlistModal] = useState(false);
+    const [waitlistPeakType, setWaitlistPeakType] = useState(null); // 'peak_a' or 'peak_b'
+
     // Service Options
     const [needsCart, setNeedsCart] = useState(true);
     const [needsCaddie, setNeedsCaddie] = useState(true);
@@ -244,6 +248,81 @@ export function Booking() {
         }
     };
 
+    // 候補預約提交
+    const submitWaitlist = async (e) => {
+        e.preventDefault();
+
+        // 驗證第一位球友的人名和電話
+        if (!players[0].name || players[0].name.trim() === '') {
+            setMessageContent({ type: 'error', message: '請填寫主要訂位人姓名' });
+            setShowMessageModal(true);
+            return;
+        }
+
+        if (!validatePhone(players[0].phone)) {
+            setMessageContent({ type: 'error', message: '請輸入正確的台灣手機號碼格式 (09開頭，共10碼)' });
+            setShowMessageModal(true);
+            return;
+        }
+
+        try {
+            setLoading(true);
+            const userPhone = localStorage.getItem('golf_user_phone');
+            const lineUserId = localStorage.getItem('line_user_id') || 'temp_' + Date.now();
+
+            // 找到使用者
+            const { data: users, error: userError } = await supabase
+                .from('users')
+                .select('id')
+                .eq('phone', userPhone)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+            let user = users && users.length > 0 ? users[0] : null;
+
+            if (!user) {
+                setMessageContent({ type: 'error', message: '找不到使用者資料，請重新註冊' });
+                setShowMessageModal(true);
+                return;
+            }
+
+            // 取得尖峰時段設定
+            const peakConfig = waitlistPeakType === 'peak_a' ? settings.peak_a : settings.peak_b;
+
+            // 加入候補清單
+            const { error: waitlistError } = await supabase
+                .from('waitlist')
+                .insert([{
+                    user_id: user.id,
+                    date: format(selectedDate, 'yyyy-MM-dd'),
+                    desired_time_start: peakConfig.start,
+                    desired_time_end: peakConfig.end,
+                    players_count: playersCount,
+                    status: 'pending',
+                    peak_type: waitlistPeakType
+                }]);
+
+            if (waitlistError) {
+                throw new Error(waitlistError.message);
+            }
+
+            // 成功加入候補
+            setShowWaitlistModal(false);
+            setMessageContent({
+                type: 'success',
+                message: `已成功加入候補清單！\n日期：${format(selectedDate, 'yyyy-MM-dd')}\n時段：${waitlistPeakType === 'peak_a' ? 'Peak A (早場)' : 'Peak B (午場)'}\n人數：${playersCount}人\n\n系統會依順序通知，請保持電話暢通`
+            });
+            setShowMessageModal(true);
+
+        } catch (e) {
+            console.error('Waitlist error:', e);
+            setMessageContent({ type: 'error', message: '加入候補失敗: ' + e.message });
+            setShowMessageModal(true);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Helper: Check if a time is within a peak period
     const isInPeak = (slot, peakConfig) => {
         if (!peakConfig?.start || !peakConfig?.end) return false;
@@ -450,8 +529,8 @@ export function Booking() {
                         {isPeakAFull && (
                             <button
                                 onClick={() => {
-                                    alert('候補 Peak A 功能開發中');
-                                    // TODO: Implement waitlist logic
+                                    setWaitlistPeakType('peak_a');
+                                    setShowWaitlistModal(true);
                                 }}
                                 style={{
                                     flex: 1,
@@ -470,8 +549,8 @@ export function Booking() {
                         {isPeakBFull && (
                             <button
                                 onClick={() => {
-                                    alert('候補 Peak B 功能開發中');
-                                    // TODO: Implement waitlist logic
+                                    setWaitlistPeakType('peak_b');
+                                    setShowWaitlistModal(true);
                                 }}
                                 style={{
                                     flex: 1,
@@ -656,6 +735,119 @@ export function Booking() {
                                 </button>
                                 <button type="submit" className="btn btn-primary">
                                     確定預約
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Waitlist Modal */}
+            {showWaitlistModal && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000,
+                    animation: 'fade-in 0.3s ease-in-out'
+                }}>
+                    <div style={{
+                        backgroundColor: 'white',
+                        borderRadius: '12px',
+                        padding: '2rem',
+                        width: '90%',
+                        maxWidth: '500px',
+                        boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
+                    }}>
+                        <h3 style={{ marginTop: 0, marginBottom: '1rem', color: 'var(--primary-color)' }}>
+                            🎯 加入候補清單
+                        </h3>
+
+                        <div style={{
+                            padding: '1rem',
+                            backgroundColor: '#fef3c7',
+                            borderRadius: '8px',
+                            marginBottom: '1.5rem',
+                            border: '1px solid #fbbf24'
+                        }}>
+                            <p style={{ margin: 0, fontSize: '0.9rem', color: '#92400e' }}>
+                                <strong>{waitlistPeakType === 'peak_a' ? 'Peak A (早場)' : 'Peak B (午場)'}</strong> 時段已滿
+                            </p>
+                            <p style={{ margin: '0.5rem 0 0', fontSize: '0.85rem', color: '#92400e' }}>
+                                加入候補後，系統會依順序通知有空位時，請保持電話暢通
+                            </p>
+                        </div>
+
+                        <form onSubmit={submitWaitlist}>
+                            {/* 人數選擇 */}
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label className="form-label" style={{ fontWeight: 'bold' }}>選擇人數</label>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    {[1, 2, 3, 4].map(num => (
+                                        <button
+                                            key={num}
+                                            type="button"
+                                            onClick={() => setPlayersCount(num)}
+                                            style={{
+                                                flex: 1,
+                                                padding: '10px',
+                                                borderRadius: '6px',
+                                                border: playersCount === num ? '2px solid var(--primary-color)' : '1px solid #d1d5db',
+                                                backgroundColor: playersCount === num ? 'var(--primary-light)' : 'white',
+                                                cursor: 'pointer',
+                                                fontWeight: playersCount === num ? 'bold' : 'normal'
+                                            }}
+                                        >
+                                            {num}人
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* 主要訂位人資訊 */}
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label className="form-label" style={{ fontWeight: 'bold' }}>主要訂位人</label>
+                                <input
+                                    type="text"
+                                    className="form-input"
+                                    placeholder="姓名"
+                                    value={players[0].name}
+                                    onChange={(e) => updatePlayer(0, 'name', e.target.value)}
+                                    required
+                                    style={{ marginBottom: '0.5rem' }}
+                                />
+                                <input
+                                    type="tel"
+                                    className="form-input"
+                                    placeholder="手機號碼 (09xxxxxxxx)"
+                                    value={players[0].phone}
+                                    onChange={(e) => updatePlayer(0, 'phone', e.target.value)}
+                                    required
+                                />
+                            </div>
+
+                            {/* 按鈕 */}
+                            <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                                <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => setShowWaitlistModal(false)}
+                                    style={{ backgroundColor: '#e5e7eb', color: '#374151' }}
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="btn btn-primary"
+                                    disabled={loading}
+                                >
+                                    {loading ? '處理中...' : '確定加入候補'}
                                 </button>
                             </div>
                         </form>
