@@ -12,6 +12,8 @@ export default function CaddyManagement() {
     const [editingId, setEditingId] = useState(null);
     const [form, setForm] = useState({ name: '', caddy_number: '', phone: '', grade: '', notes: '' });
     const [error, setError] = useState('');
+    const [sortKey, setSortKey] = useState('caddy_number');
+    const [sortDir, setSortDir] = useState('asc'); // asc | desc
 
     useEffect(() => {
         fetchCaddies();
@@ -81,6 +83,44 @@ export default function CaddyManagement() {
         } catch (err) {
             alert(err.message);
         }
+    };
+
+    const handleSort = (key) => {
+        if (sortKey === key) {
+            setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortKey(key);
+            setSortDir('asc');
+        }
+    };
+
+    const sortedCaddies = [...caddies].sort((a, b) => {
+        const valA = (a[sortKey] ?? '') .toString();
+        const valB = (b[sortKey] ?? '').toString();
+        // 編號用數字比較
+        if (sortKey === 'caddy_number') {
+            const diff = parseInt(valA) - parseInt(valB);
+            return sortDir === 'asc' ? diff : -diff;
+        }
+        const cmp = valA.localeCompare(valB, 'zh-TW');
+        return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    const SortHeader = ({ field, label, align = 'left' }) => {
+        const isActive = sortKey === field;
+        const arrow = isActive ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+        return (
+            <th
+                onClick={() => handleSort(field)}
+                style={{
+                    padding: '10px', textAlign: align, borderBottom: '2px solid #ddd',
+                    cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
+                    color: isActive ? '#1976d2' : undefined
+                }}
+            >
+                {label}{arrow}
+            </th>
+        );
     };
 
     const inputStyle = {
@@ -200,17 +240,17 @@ export default function CaddyManagement() {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr style={{ background: '#f5f5f5' }}>
-                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>編號</th>
-                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>姓名</th>
-                            <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>級別</th>
-                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>電話</th>
-                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>備註</th>
-                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>狀態</th>
+                            <SortHeader field="caddy_number" label="編號" />
+                            <SortHeader field="name" label="姓名" />
+                            <SortHeader field="grade" label="級別" align="center" />
+                            <SortHeader field="phone" label="電話" />
+                            <SortHeader field="notes" label="備註" />
+                            <SortHeader field="status" label="狀態" />
                             <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>操作</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {caddies.map(caddy => (
+                        {sortedCaddies.map(caddy => (
                             <tr key={caddy.id} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '10px', fontWeight: 'bold' }}>{caddy.caddy_number}</td>
                                 <td style={{ padding: '10px' }}>{caddy.name}</td>
