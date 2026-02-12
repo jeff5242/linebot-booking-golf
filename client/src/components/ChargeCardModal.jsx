@@ -241,7 +241,7 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
                                         <span>球車費</span>
                                         <span>{formatMoney(feePreview.breakdown?.cartFee)}</span>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', background: '#fff9c4', padding: '4px 0' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                                         <span>桿弟費 ({caddyRatio})</span>
                                         <span>{formatMoney(feePreview.breakdown?.caddyFee)}</span>
                                     </div>

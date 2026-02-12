@@ -480,6 +480,10 @@ export function RateManagement() {
                                         <span className="text-gray-600">球車費</span>
                                         <span className="font-semibold">${calculatedFee.breakdown.cartFee.toLocaleString()}</span>
                                     </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">桿弟費 ({calculator.caddyRatio})</span>
+                                        <span className="font-semibold">${calculatedFee.breakdown.caddyFee.toLocaleString()}</span>
+                                    </div>
                                     <div className="flex justify-between text-orange-600">
                                         <span>娛樂稅 ({Math.round((calculatedFee.metadata?.taxRate || 0.05) * 100)}%)</span>
                                         <span className="font-semibold">${calculatedFee.breakdown.entertainmentTaxPerPerson.toLocaleString()}</span>
@@ -487,10 +491,6 @@ export function RateManagement() {
                                     <div className="flex justify-between pt-2 border-t border-gray-200 font-semibold text-gray-900">
                                         <span>每人小計</span>
                                         <span>${calculatedFee.breakdown.totalPerPerson.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between mt-2 pt-2 border-t border-dashed border-gray-200">
-                                        <span className="text-gray-600">桿弟費 ({calculator.caddyRatio})</span>
-                                        <span className="font-semibold">${calculatedFee.breakdown.caddyFee.toLocaleString()}</span>
                                     </div>
                                 </div>
                             </div>

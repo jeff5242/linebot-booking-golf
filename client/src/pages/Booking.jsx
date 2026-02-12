@@ -365,7 +365,7 @@ export function Booking() {
             // 球車費（每人）
             const cartFee = needsCart ? (rateConfig.base_fees.cart_per_person[holesKey] || 0) : 0;
 
-            // 桿弟費（依人數對應配比，此為整組費用）
+            // 桿弟費（每人，依人數對應配比）
             let caddyFee = 0;
             if (needsCaddie) {
                 const ratio = `1:${playersCount}`;
@@ -373,7 +373,7 @@ export function Booking() {
             }
 
             // 小計（每人）
-            const subtotalPerPerson = greenFee + cleaningFee + cartFee;
+            const subtotalPerPerson = greenFee + cleaningFee + cartFee + caddyFee;
 
             // 娛樂稅 = (果嶺費 + 球車費) * 5%（每人）
             const taxRate = rateConfig.tax_config?.entertainment_tax || 0.05;
@@ -383,7 +383,7 @@ export function Booking() {
             const totalPerPerson = subtotalPerPerson + entertainmentTaxPerPerson;
 
             // 整組預估總計
-            const groupTotal = totalPerPerson * playersCount + caddyFee;
+            const groupTotal = totalPerPerson * playersCount;
 
             return {
                 breakdown: {
@@ -709,6 +709,12 @@ export function Booking() {
                                                 <span>${pricing.breakdown.cartFee}</span>
                                             </div>
                                         )}
+                                        {pricing.breakdown.caddyFee != null && (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                <span>桿弟費 (1:{pricing.playersCount})</span>
+                                                <span>${pricing.breakdown.caddyFee}</span>
+                                            </div>
+                                        )}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                                             <span>娛樂稅 ({Math.round(pricing.breakdown.taxRate * 100)}%)</span>
                                             <span>${pricing.breakdown.entertainmentTaxPerPerson}</span>
@@ -717,12 +723,6 @@ export function Booking() {
                                             <span>每人小計</span>
                                             <span>${pricing.breakdown.totalPerPerson}</span>
                                         </div>
-                                        {pricing.breakdown.caddyFee != null && (
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', marginTop: '8px', fontSize: '0.85rem' }}>
-                                                <span>桿弟費 (1:{pricing.playersCount})</span>
-                                                <span>${pricing.breakdown.caddyFee}</span>
-                                            </div>
-                                        )}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #cbd5e1', color: '#1e293b', fontWeight: 'bold', fontSize: '1rem' }}>
                                             <span>預計總計金額 ({pricing.playersCount}人)</span>
                                             <span style={{ color: 'var(--primary-color)' }}>${pricing.groupTotal}</span>

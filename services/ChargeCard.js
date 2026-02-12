@@ -94,6 +94,7 @@ async function generateChargeCard(bookingId, { caddyId, caddyRatio, course, tier
     let totalGreenFee = 0;
     let totalCleaningFee = 0;
     let totalCartFee = 0;
+    let totalCaddyFee = 0;
 
     for (let i = 0; i < playersCount; i++) {
         const playerTier = tierOverrides[i] || mainUserTier;
@@ -112,24 +113,16 @@ async function generateChargeCard(bookingId, { caddyId, caddyRatio, course, tier
             greenFee: result.breakdown.greenFee,
             cleaningFee: result.breakdown.cleaningFee,
             cartFee: result.breakdown.cartFee,
+            caddyFee: result.breakdown.caddyFee,
         });
 
         totalGreenFee += result.breakdown.greenFee;
         totalCleaningFee += result.breakdown.cleaningFee;
         totalCartFee += result.breakdown.cartFee;
+        totalCaddyFee += result.breakdown.caddyFee;
     }
 
-    // 桿弟費用（按配比整組計算）
-    const caddyFeeResult = await calculateTotalFee({
-        tier: mainUserTier,
-        holes: booking.holes,
-        isHoliday: holiday,
-        caddyRatio: caddyRatio,
-        numPlayers: 1
-    }, rateConfig);
-    const caddyFee = caddyFeeResult.breakdown.caddyFee;
-
-    const subtotal = totalGreenFee + totalCleaningFee + totalCartFee + caddyFee;
+    const subtotal = totalGreenFee + totalCleaningFee + totalCartFee + totalCaddyFee;
     const taxRate = rateConfig.tax_config?.entertainment_tax || 0.05;
     // 娛樂稅 = (果嶺費 + 球車費) * 稅率
     const entertainmentTax = Math.round((totalGreenFee + totalCartFee) * taxRate);
@@ -139,7 +132,7 @@ async function generateChargeCard(bookingId, { caddyId, caddyRatio, course, tier
         greenFee: totalGreenFee,
         cleaningFee: totalCleaningFee,
         cartFee: totalCartFee,
-        caddyFee: caddyFee,
+        caddyFee: totalCaddyFee,
         subtotal: subtotal,
         entertainmentTax: entertainmentTax,
         taxRate: taxRate,

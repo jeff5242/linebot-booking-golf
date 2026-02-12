@@ -41,11 +41,11 @@ async function calculateTotalFee(params, rateConfig = null) {
     // 3. 球車費（每人）
     const cartFee = rateConfig.base_fees.cart_per_person[holes];
 
-    // 4. 桿弟費（整組）
+    // 4. 桿弟費（每人）
     const caddyFee = rateConfig.caddy_fees[caddyRatio][holes];
 
     // 5. 每人小計
-    const subtotalPerPerson = greenFee + cleaningFee + cartFee;
+    const subtotalPerPerson = greenFee + cleaningFee + cartFee + caddyFee;
 
     // 6. 娛樂稅 = (果嶺費 + 球車費) * 稅率（每人）
     const taxRate = rateConfig.tax_config.entertainment_tax;
@@ -55,7 +55,7 @@ async function calculateTotalFee(params, rateConfig = null) {
     const totalPerPerson = subtotalPerPerson + entertainmentTaxPerPerson;
 
     // 8. 整組預估總計
-    const totalAmount = totalPerPerson * numPlayers + caddyFee;
+    const totalAmount = totalPerPerson * numPlayers;
 
     return {
         breakdown: {
