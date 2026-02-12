@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { Calendar } from '../components/Calendar';
-import { generateDailySlots, isSlotAvailable, calculateBookingPrice } from '../utils/golfLogic';
+import { generateDailySlots, isSlotAvailable, golferTypeToTier } from '../utils/golfLogic';
 import { supabase } from '../supabase';
 import { useNavigate } from 'react-router-dom';
 
@@ -37,10 +37,15 @@ export function Booking() {
     const [needsCart, setNeedsCart] = useState(true);
     const [needsCaddie, setNeedsCaddie] = useState(true);
 
+    // Rate Config & User Tier
+    const [rateConfig, setRateConfig] = useState(null);
+    const [userGolferType, setUserGolferType] = useState('來賓');
+
     // Load Main User Info and Settings
     useEffect(() => {
         loadMainUser();
         fetchSettings();
+        fetchRateConfig();
         // Load user name for header
         const name = localStorage.getItem('golf_user_name');
         if (name) setUserName(name);
@@ -64,6 +69,17 @@ export function Booking() {
         }
     };
 
+    const fetchRateConfig = async () => {
+        try {
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${apiUrl}/api/rates/active`);
+            const data = await res.json();
+            if (res.ok) setRateConfig(data);
+        } catch (err) {
+            console.error('Failed to load rate config:', err);
+        }
+    };
+
     const loadMainUser = async () => {
         try {
             const phone = localStorage.getItem('golf_user_phone');
@@ -73,13 +89,14 @@ export function Booking() {
                 // Try to get from database first - handle multiple records
                 const { data: users, error } = await supabase
                     .from('users')
-                    .select('display_name, phone')
+                    .select('display_name, phone, golfer_type')
                     .eq('phone', phone)
                     .order('created_at', { ascending: false })
                     .limit(1);
 
                 if (users && users.length > 0 && !error) {
                     const data = users[0];
+                    if (data.golfer_type) setUserGolferType(data.golfer_type);
                     setPlayers(prev => {
                         const newPlayers = [...prev];
                         newPlayers[0] = { name: data.display_name || name || '', phone: data.phone };
@@ -207,7 +224,8 @@ export function Booking() {
                 return;
             }
 
-            const pricing = calculateBookingPrice(selectedHoles, playersCount, needsCart, needsCaddie);
+            const pricing = calculateDynamicPrice();
+            const amount = pricing ? pricing.total : 0;
 
             const { data: booking, error } = await supabase.from('bookings').insert([
                 {
@@ -220,7 +238,7 @@ export function Booking() {
                     players_info: players.slice(0, playersCount),
                     needs_cart: needsCart,
                     needs_caddie: needsCaddie,
-                    amount: pricing.total,
+                    amount: amount,
                     payment_status: 'pending' // 現場付款（待付款）
                 }
             ]).select('id').single();
@@ -319,6 +337,70 @@ export function Booking() {
             setShowMessageModal(true);
         } finally {
             setLoading(false);
+        }
+    };
+
+    // 判斷是否為假日（週六日）
+    const isHoliday = (date) => {
+        const day = date.getDay();
+        return day === 0 || day === 6;
+    };
+
+    // 使用費率表計算費用
+    const calculateDynamicPrice = () => {
+        if (!rateConfig) return null;
+
+        const tier = golferTypeToTier(userGolferType);
+        const holiday = isHoliday(selectedDate);
+        const dayType = holiday ? 'holiday' : 'weekday';
+        const holesKey = String(selectedHoles);
+
+        try {
+            // 果嶺費（每人）
+            const greenFeeUnit = rateConfig.green_fees[tier][holesKey][dayType];
+            const greenFeeTotal = greenFeeUnit * playersCount;
+
+            // 清潔費
+            const cleaningFee = rateConfig.base_fees.cleaning[holesKey] || 0;
+
+            // 球車費（每人）
+            const cartFeeUnit = needsCart ? (rateConfig.base_fees.cart_per_person[holesKey] || 0) : 0;
+            const cartFeeTotal = cartFeeUnit * playersCount;
+
+            // 桿弟費（依人數對應配比：4人=1:4, 3人=1:3, 2人=1:2, 1人=1:1）
+            let caddyFee = 0;
+            if (needsCaddie) {
+                const ratio = `1:${playersCount}`;
+                caddyFee = rateConfig.caddy_fees[ratio]?.[holesKey] || 0;
+            }
+
+            // 小計
+            const subtotal = greenFeeTotal + cleaningFee + cartFeeTotal + caddyFee;
+
+            // 娛樂稅
+            const taxRate = rateConfig.tax_config?.entertainment_tax || 0.05;
+            const entertainmentTax = Math.round(subtotal * taxRate);
+
+            // 總計
+            const total = subtotal + entertainmentTax;
+
+            return {
+                breakdown: {
+                    greenFee: { unit: greenFeeUnit, count: playersCount, total: greenFeeTotal },
+                    cleaningFee,
+                    cartFee: needsCart ? { unit: cartFeeUnit, count: playersCount, total: cartFeeTotal } : null,
+                    caddyFee: needsCaddie ? caddyFee : null,
+                    subtotal,
+                    entertainmentTax,
+                    taxRate
+                },
+                total,
+                tierName: userGolferType,
+                isHoliday: holiday
+            };
+        } catch (err) {
+            console.error('費率計算錯誤:', err);
+            return null;
         }
     };
 
@@ -601,25 +683,43 @@ export function Booking() {
                             </p>
 
                             {(() => {
-                                const pricing = calculateBookingPrice(selectedHoles, playersCount, needsCart, needsCaddie);
+                                const pricing = calculateDynamicPrice();
+                                if (!pricing) {
+                                    return <p style={{ fontSize: '0.85rem', color: '#999' }}>費率載入中...</p>;
+                                }
                                 return (
                                     <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
+                                        <div style={{ marginBottom: '6px', fontSize: '0.8rem', color: '#94a3b8' }}>
+                                            {pricing.tierName} / {pricing.isHoliday ? '假日' : '平日'}
+                                        </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                            <span>果嶺費 ({pricing.breakdown.greenFee.unit} x {pricing.breakdown.greenFee.count})</span>
+                                            <span>果嶺費 (${pricing.breakdown.greenFee.unit} x {pricing.breakdown.greenFee.count}人)</span>
                                             <span>${pricing.breakdown.greenFee.total}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                            <span>清潔費</span>
+                                            <span>${pricing.breakdown.cleaningFee}</span>
                                         </div>
                                         {pricing.breakdown.cartFee && (
                                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                                <span>球車費 ({pricing.breakdown.cartFee.unit} x {pricing.breakdown.cartFee.count})</span>
+                                                <span>球車費 (${pricing.breakdown.cartFee.unit} x {pricing.breakdown.cartFee.count}人)</span>
                                                 <span>${pricing.breakdown.cartFee.total}</span>
                                             </div>
                                         )}
-                                        {pricing.breakdown.caddieFee && (
+                                        {pricing.breakdown.caddyFee != null && (
                                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                                <span>桿弟費 ({pricing.breakdown.caddieFee.unit} x {pricing.breakdown.caddieFee.count})</span>
-                                                <span>${pricing.breakdown.caddieFee.total}</span>
+                                                <span>桿弟費 (1:{playersCount})</span>
+                                                <span>${pricing.breakdown.caddyFee}</span>
                                             </div>
                                         )}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', paddingTop: '4px', borderTop: '1px dashed #e2e8f0' }}>
+                                            <span>小計</span>
+                                            <span>${pricing.breakdown.subtotal}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                            <span>娛樂稅 ({Math.round(pricing.breakdown.taxRate * 100)}%)</span>
+                                            <span>${pricing.breakdown.entertainmentTax}</span>
+                                        </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #cbd5e1', color: '#1e293b', fontWeight: 'bold', fontSize: '1rem' }}>
                                             <span>總計金額</span>
                                             <span style={{ color: 'var(--primary-color)' }}>${pricing.total}</span>
