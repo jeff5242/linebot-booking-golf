@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
+import { adminFetch, storeLoginResult } from '../utils/adminApi';
 
 export function AdminLogin() {
     const navigate = useNavigate();
@@ -37,7 +38,7 @@ export function AdminLogin() {
                 .from('admins')
                 .select('id')
                 .eq('username', username)
-                .maybeSingle(); // Use maybeSingle to avoid 406 on 0 rows
+                .maybeSingle();
 
             if (!user) {
                 alert('此 Email 不是管理員帳號');
@@ -50,8 +51,6 @@ export function AdminLogin() {
             setMockServerOtp(code);
             setOtpSent(true);
 
-            // Mock Sending Email
-            // In production, call supabase function here
             setTimeout(() => {
                 alert(`[模擬信件] 您的後台登入驗證碼為: ${code}\n此為模擬功能，請填入此號碼。`);
             }, 1000);
@@ -73,7 +72,7 @@ export function AdminLogin() {
                 // Email OTP Login
                 if (!otpSent) {
                     await sendOtp();
-                    return; // Wait for user to input OTP
+                    return;
                 }
 
                 if (otp !== mockServerOtp) {
@@ -82,29 +81,22 @@ export function AdminLogin() {
                     return;
                 }
 
-                // Verify Success, get user details
-                const { data } = await supabase
+                // OTP 驗證成功，透過後端 API 取得 JWT
+                // 使用管理員的密碼進行後端登入（OTP 已驗證身份）
+                // 這裡暫時使用 Supabase 取得密碼後呼叫後端
+                const { data: adminData } = await supabase
                     .from('admins')
-                    .select('*')
+                    .select('password')
                     .eq('username', username)
                     .single();
 
-                LoginSuccess(data);
+                if (adminData) {
+                    await loginViaApi(username, adminData.password);
+                }
 
             } else {
-                // Username/Password Login
-                const { data, error } = await supabase
-                    .from('admins')
-                    .select('*')
-                    .eq('username', username)
-                    .eq('password', password)
-                    .maybeSingle();
-
-                if (error || !data) {
-                    alert('登入失敗：帳號或密碼錯誤');
-                } else {
-                    LoginSuccess(data);
-                }
+                // Username/Password Login - 透過後端 API
+                await loginViaApi(username, password);
             }
         } catch (err) {
             console.error(err);
@@ -114,10 +106,26 @@ export function AdminLogin() {
         }
     };
 
-    const LoginSuccess = (adminData) => {
-        sessionStorage.setItem('admin_token', 'true');
-        sessionStorage.setItem('admin_name', adminData.name);
-        navigate('/admin');
+    const loginViaApi = async (user, pass) => {
+        try {
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${apiUrl}/api/admin/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass }),
+            });
+
+            const result = await res.json();
+            if (!res.ok) {
+                alert(result.error || '登入失敗');
+                return;
+            }
+
+            storeLoginResult(result);
+            navigate('/admin');
+        } catch (err) {
+            alert('登入失敗：' + err.message);
+        }
     };
 
     return (

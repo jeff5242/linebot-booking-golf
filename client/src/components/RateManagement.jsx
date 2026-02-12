@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Calculator, Save, Send, Check, X, History, Users, TrendingUp } from 'lucide-react';
+import { adminFetch } from '../utils/adminApi';
 
 export function RateManagement() {
     const [rateConfig, setRateConfig] = useState(null);
@@ -37,8 +38,7 @@ export function RateManagement() {
 
     const fetchActiveRate = async () => {
         try {
-            const apiUrl = import.meta.env.VITE_API_URL || '';
-            const res = await fetch(`${apiUrl}/api/rates/active`);
+            const res = await adminFetch('/api/rates/active');
             const data = await res.json();
             if (res.ok) {
                 setRateConfig(data);
@@ -52,10 +52,8 @@ export function RateManagement() {
 
     const calculateFee = async () => {
         try {
-            const apiUrl = import.meta.env.VITE_API_URL || '';
-            const res = await fetch(`${apiUrl}/api/rates/calculate`, {
+            const res = await adminFetch('/api/rates/calculate', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(calculator)
             });
             const data = await res.json();
@@ -113,10 +111,8 @@ export function RateManagement() {
         setLoading(true);
         setMsg('');
         try {
-            const apiUrl = import.meta.env.VITE_API_URL || '';
-            const res = await fetch(`${apiUrl}/api/rates/${rateConfig.id}`, {
+            const res = await adminFetch(`/api/rates/${rateConfig.id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(rateConfig)
             });
             const result = await res.json();

@@ -15,6 +15,7 @@ import {
     Bell,
     TrendingUp
 } from 'lucide-react';
+import { adminFetch } from '../utils/adminApi';
 
 // ============= 輔助元件 =============
 
@@ -200,8 +201,7 @@ export function AdminSettings() {
     const fetchSettings = async () => {
         setLoading(true);
         try {
-            const apiUrl = import.meta.env.VITE_API_URL || '';
-            const res = await fetch(`${apiUrl}/api/settings`);
+            const res = await adminFetch('/api/settings');
             const data = await res.json();
             if (res.ok) {
                 // 設定預設值
@@ -265,10 +265,8 @@ export function AdminSettings() {
                 }
             });
 
-            const apiUrl = import.meta.env.VITE_API_URL || '';
-            const res = await fetch(`${apiUrl}/api/settings`, {
+            const res = await adminFetch('/api/settings', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(saveData)
             });
             const data = await res.json();

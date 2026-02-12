@@ -22,11 +22,13 @@
     "@line/bot-sdk": "^10.5.0",
     "@supabase/supabase-js": "^2.94.1",
     "axios": "^1.13.4",
+    "bcryptjs": "^3.0.3",
     "concurrently": "^9.2.1",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "googleapis": "^171.4.0",
+    "jsonwebtoken": "^9.0.3",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

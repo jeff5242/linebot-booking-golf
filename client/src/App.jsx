@@ -128,7 +128,7 @@ function ProtectedRoute({ children }) {
 }
 
 function AdminRoute({ children }) {
-  const isAdmin = sessionStorage.getItem('admin_token');
+  const isAdmin = sessionStorage.getItem('admin_jwt') || sessionStorage.getItem('admin_token');
   if (!isAdmin) {
     return <Navigate to="/admin/login" replace />;
   }

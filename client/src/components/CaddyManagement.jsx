@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-
-const apiUrl = import.meta.env.VITE_API_URL || '';
+import { adminFetch } from '../utils/adminApi';
 
 /**
  * 桿弟名冊管理（簡易模式）
@@ -21,7 +20,7 @@ export default function CaddyManagement() {
 
     const fetchCaddies = async () => {
         try {
-            const res = await fetch(`${apiUrl}/api/caddies`);
+            const res = await adminFetch('/api/caddies');
             const data = await res.json();
             if (Array.isArray(data)) setCaddies(data);
         } catch (err) {
@@ -42,12 +41,11 @@ export default function CaddyManagement() {
 
         try {
             const url = editingId
-                ? `${apiUrl}/api/caddies/${editingId}`
-                : `${apiUrl}/api/caddies`;
+                ? `/api/caddies/${editingId}`
+                : '/api/caddies';
 
-            const res = await fetch(url, {
+            const res = await adminFetch(url, {
                 method: editingId ? 'PUT' : 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(form)
             });
 
@@ -73,9 +71,8 @@ export default function CaddyManagement() {
         if (!confirm(`確定要停用桿弟「${caddy.name}」嗎？`)) return;
 
         try {
-            const res = await fetch(`${apiUrl}/api/caddies/${caddy.id}`, {
+            const res = await adminFetch(`/api/caddies/${caddy.id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'inactive' })
             });
             if (!res.ok) throw new Error('停用失敗');

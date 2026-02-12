@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ChargeCardTemplate from './ChargeCardTemplate';
-
-const apiUrl = import.meta.env.VITE_API_URL || '';
+import { adminFetch } from '../utils/adminApi';
 
 /**
  * 收費卡產生彈窗 - 兩階段介面
@@ -40,7 +39,7 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
 
     const fetchCaddies = async () => {
         try {
-            const res = await fetch(`${apiUrl}/api/caddies`);
+            const res = await adminFetch('/api/caddies');
             const data = await res.json();
             if (Array.isArray(data)) setCaddies(data);
         } catch (err) {
@@ -53,9 +52,8 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
         setPreviewLoading(true);
         try {
             // 使用後端計算費用
-            const res = await fetch(`${apiUrl}/api/rates/calculate`, {
+            const res = await adminFetch('/api/rates/calculate', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tier: 'guest', // 預設用 guest，實際產卡時會依每人等級計算
                     holes: booking.holes,
@@ -83,9 +81,8 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
         setError('');
 
         try {
-            const res = await fetch(`${apiUrl}/api/charge-cards`, {
+            const res = await adminFetch('/api/charge-cards', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     bookingId: booking.id,
                     caddyId: selectedCaddyId || null,
@@ -116,9 +113,8 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
         setNotifyLoading(true);
 
         try {
-            const res = await fetch(`${apiUrl}/api/charge-cards/${chargeCardResult.chargeCard.id}/notify`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+            const res = await adminFetch(`/api/charge-cards/${chargeCardResult.chargeCard.id}/notify`, {
+                method: 'POST'
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || '通知發送失敗');

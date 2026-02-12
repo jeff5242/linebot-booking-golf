@@ -25,6 +25,10 @@ const { generateTimeSlots, processWaitlist } = require('./services/BookingLogic'
 const OperationalCalendar = require('./services/OperationalCalendar');
 const CaddyManagement = require('./services/CaddyManagement');
 const ChargeCard = require('./services/ChargeCard');
+const { login: adminLogin } = require('./services/AuthService');
+const { requireAuth, optionalAuth } = require('./middleware/auth');
+const RoleMgmt = require('./services/RoleManagement');
+const bcrypt = require('bcryptjs');
 
 // Supabase 設定
 const supabase = createClient(
@@ -82,6 +86,137 @@ app.post('/webhook', line.middleware(config), (req, res) => {
 });
 
 app.use(express.json()); // For handling payment API bodies and other JSON requests
+
+// ============================================
+// 管理員認證 API (Admin Auth)
+// ============================================
+
+// 管理員登入
+app.post('/api/admin/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        if (!username || !password) {
+            return res.status(400).json({ error: '帳號和密碼為必填' });
+        }
+        const result = await adminLogin(username, password);
+        res.json(result);
+    } catch (error) {
+        res.status(401).json({ error: error.message });
+    }
+});
+
+// 取得當前管理員資訊
+app.get('/api/admin/me', requireAuth(), async (req, res) => {
+    res.json(req.admin);
+});
+
+// 管理員列表
+app.get('/api/admin/list', requireAuth('admins'), async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('admins')
+            .select('id, username, name, role, created_at')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json(data);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// 新增管理員
+app.post('/api/admin/create', requireAuth('admins'), async (req, res) => {
+    try {
+        const { name, username, password, role } = req.body;
+        if (!name || !username || !password) {
+            return res.status(400).json({ error: '名稱、帳號和密碼為必填' });
+        }
+        const password_hash = await bcrypt.hash(password, 10);
+        const { data, error } = await supabase
+            .from('admins')
+            .insert([{ name, username, password: '***', password_hash, role: role || 'starter' }])
+            .select('id, username, name, role, created_at')
+            .single();
+        if (error) throw error;
+        res.json(data);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// 更新管理員
+app.put('/api/admin/:id', requireAuth('admins'), async (req, res) => {
+    try {
+        const { role, name } = req.body;
+        const updateData = {};
+        if (role) updateData.role = role;
+        if (name) updateData.name = name;
+        const { data, error } = await supabase
+            .from('admins')
+            .update(updateData)
+            .eq('id', req.params.id)
+            .select('id, username, name, role, created_at')
+            .single();
+        if (error) throw error;
+        res.json(data);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// 刪除管理員
+app.delete('/api/admin/:id', requireAuth('admins'), async (req, res) => {
+    try {
+        if (req.params.id === req.admin.adminId) {
+            return res.status(400).json({ error: '無法刪除自己的帳號' });
+        }
+        const { error } = await supabase.from('admins').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// ============================================
+// 角色管理 API (Role Management)
+// ============================================
+
+app.get('/api/roles', requireAuth('admins'), async (req, res) => {
+    try {
+        const roles = await RoleMgmt.getAllRoles();
+        res.json(roles);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/roles', requireAuth('admins'), async (req, res) => {
+    try {
+        const role = await RoleMgmt.createRole(req.body);
+        res.json(role);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+app.put('/api/roles/:id', requireAuth('admins'), async (req, res) => {
+    try {
+        const role = await RoleMgmt.updateRole(req.params.id, req.body);
+        res.json(role);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+app.delete('/api/roles/:id', requireAuth('admins'), async (req, res) => {
+    try {
+        const result = await RoleMgmt.deleteRole(req.params.id);
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
 
 // 健康檢查端點
 app.get('/health', (req, res) => {
@@ -250,7 +385,7 @@ app.get('/api/payment/confirm', async (req, res) => {
 const { syncUsers } = require('./scripts/syncUsers');
 
 // Sync Users Endpoint
-app.post('/api/users/sync', async (req, res) => {
+app.post('/api/users/sync', requireAuth('users'), async (req, res) => {
   try {
     const result = await syncUsers();
     if (result.success) {
@@ -265,7 +400,7 @@ app.post('/api/users/sync', async (req, res) => {
 });
 
 // Get Users Endpoint with Filtering and Pagination
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', requireAuth('users'), async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 100;
@@ -317,8 +452,8 @@ app.get('/api/users', async (req, res) => {
 
 // --- Advanced Booking API ---
 
-// 1. Get System Settings
-app.get('/api/settings', async (req, res) => {
+// 1. Get System Settings (公開 + 後台皆可存取)
+app.get('/api/settings', optionalAuth, async (req, res) => {
   try {
     const settings = await getSettings();
     res.json(settings);
@@ -328,7 +463,7 @@ app.get('/api/settings', async (req, res) => {
 });
 
 // 2. Update System Settings
-app.post('/api/settings', async (req, res) => {
+app.post('/api/settings', requireAuth('settings'), async (req, res) => {
   try {
     const updated = await updateSettings(req.body);
     res.json(updated);
@@ -337,8 +472,8 @@ app.post('/api/settings', async (req, res) => {
   }
 });
 
-// 3. Get Available Time Slots
-app.get('/api/slots', async (req, res) => {
+// 3. Get Available Time Slots (公開 + 後台皆可存取)
+app.get('/api/slots', optionalAuth, async (req, res) => {
   try {
     const { date } = req.query;
     if (!date) return res.status(400).json({ error: 'Date is required' });
@@ -351,7 +486,7 @@ app.get('/api/slots', async (req, res) => {
 });
 
 // 4. Cancel Booking (Trigger HOP)
-app.post('/api/bookings/:id/cancel', async (req, res) => {
+app.post('/api/bookings/:id/cancel', requireAuth('starter'), async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -400,7 +535,7 @@ async function handleEvent(event) {
 // ============================================
 
 // 取得單日覆蓋設定
-app.get('/api/calendar/override/:date', async (req, res) => {
+app.get('/api/calendar/override/:date', requireAuth('operational_calendar'), async (req, res) => {
   try {
     const data = await OperationalCalendar.getDateOverride(req.params.date);
     res.json(data || {});
@@ -410,7 +545,7 @@ app.get('/api/calendar/override/:date', async (req, res) => {
 });
 
 // 取得日期區間的覆蓋設定
-app.get('/api/calendar/overrides', async (req, res) => {
+app.get('/api/calendar/overrides', requireAuth('operational_calendar'), async (req, res) => {
   try {
     const { start, end } = req.query;
     if (!start || !end) {
@@ -424,7 +559,7 @@ app.get('/api/calendar/overrides', async (req, res) => {
 });
 
 // 建立或更新單日覆蓋設定
-app.post('/api/calendar/override', async (req, res) => {
+app.post('/api/calendar/override', requireAuth('operational_calendar'), async (req, res) => {
   try {
     const userId = req.user?.id || null; // 未登入時使用 null（資料庫會接受 NULL 值）
     const result = await OperationalCalendar.upsertDateOverride(req.body, userId);
@@ -435,7 +570,7 @@ app.post('/api/calendar/override', async (req, res) => {
 });
 
 // 刪除覆蓋設定（恢復全域範本）
-app.delete('/api/calendar/override/:date', async (req, res) => {
+app.delete('/api/calendar/override/:date', requireAuth('operational_calendar'), async (req, res) => {
   try {
     const result = await OperationalCalendar.deleteDateOverride(req.params.date);
     res.json(result);
@@ -445,7 +580,7 @@ app.delete('/api/calendar/override/:date', async (req, res) => {
 });
 
 // 批次設定
-app.post('/api/calendar/batch', async (req, res) => {
+app.post('/api/calendar/batch', requireAuth('operational_calendar'), async (req, res) => {
   try {
     const userId = req.user?.id || null; // 未登入時使用 null
     const result = await OperationalCalendar.applyBatchSettings(req.body, userId);
@@ -456,7 +591,7 @@ app.post('/api/calendar/batch', async (req, res) => {
 });
 
 // 檢查預約衝突
-app.get('/api/calendar/conflicts/:date', async (req, res) => {
+app.get('/api/calendar/conflicts/:date', requireAuth('operational_calendar'), async (req, res) => {
   try {
     const status = req.query.status || 'closed';
     const conflicts = await OperationalCalendar.checkBookingConflicts(
@@ -470,7 +605,7 @@ app.get('/api/calendar/conflicts/:date', async (req, res) => {
 });
 
 // 取得日期營運狀態（含全域設定合併）
-app.get('/api/calendar/status/:date', async (req, res) => {
+app.get('/api/calendar/status/:date', requireAuth('operational_calendar'), async (req, res) => {
   try {
     const globalSettings = await getSettings();
     const status = await OperationalCalendar.getDateOperationalStatus(
@@ -494,8 +629,8 @@ app.listen(PORT, () => {
 // ============================================
 const RateManagement = require('./services/RateManagement');
 
-// 取得當前生效的費率配置
-app.get('/api/rates/active', async (req, res) => {
+// 取得當前生效的費率配置 (公開 + 後台皆可存取)
+app.get('/api/rates/active', optionalAuth, async (req, res) => {
   try {
     const rateConfig = await RateManagement.getActiveRateConfig();
     res.json(rateConfig);
@@ -505,7 +640,7 @@ app.get('/api/rates/active', async (req, res) => {
 });
 
 // 取得所有費率配置（含歷史）
-app.get('/api/rates', async (req, res) => {
+app.get('/api/rates', requireAuth('rate_management'), async (req, res) => {
   try {
     const configs = await RateManagement.getAllRateConfigs(req.query);
     res.json(configs);
@@ -515,7 +650,7 @@ app.get('/api/rates', async (req, res) => {
 });
 
 // 創建新費率配置
-app.post('/api/rates', async (req, res) => {
+app.post('/api/rates', requireAuth('rate_management'), async (req, res) => {
   try {
     const config = await RateManagement.createRateConfig(req.body, req.user?.id);
     res.json(config);
@@ -525,7 +660,7 @@ app.post('/api/rates', async (req, res) => {
 });
 
 // 更新費率配置
-app.put('/api/rates/:id', async (req, res) => {
+app.put('/api/rates/:id', requireAuth('rate_management'), async (req, res) => {
   try {
     const config = await RateManagement.updateRateConfig(req.params.id, req.body, req.user?.id);
     res.json(config);
@@ -535,7 +670,7 @@ app.put('/api/rates/:id', async (req, res) => {
 });
 
 // 提交審核
-app.post('/api/rates/:id/submit', async (req, res) => {
+app.post('/api/rates/:id/submit', requireAuth('rate_management'), async (req, res) => {
   try {
     const config = await RateManagement.submitForApproval(req.params.id, req.user?.id, req.body.changesSummary);
     res.json(config);
@@ -545,7 +680,7 @@ app.post('/api/rates/:id/submit', async (req, res) => {
 });
 
 // 批准費率
-app.post('/api/rates/:id/approve', async (req, res) => {
+app.post('/api/rates/:id/approve', requireAuth('rate_management'), async (req, res) => {
   try {
     const config = await RateManagement.approveRateConfig(req.params.id, req.user?.id, req.body.effectiveDate);
     res.json(config);
@@ -555,7 +690,7 @@ app.post('/api/rates/:id/approve', async (req, res) => {
 });
 
 // 拒絕費率
-app.post('/api/rates/:id/reject', async (req, res) => {
+app.post('/api/rates/:id/reject', requireAuth('rate_management'), async (req, res) => {
   try {
     const config = await RateManagement.rejectRateConfig(req.params.id, req.user?.id, req.body.reason);
     res.json(config);
@@ -565,7 +700,7 @@ app.post('/api/rates/:id/reject', async (req, res) => {
 });
 
 // 啟用費率
-app.post('/api/rates/:id/activate', async (req, res) => {
+app.post('/api/rates/:id/activate', requireAuth('rate_management'), async (req, res) => {
   try {
     const config = await RateManagement.activateRateConfig(req.params.id, req.user?.id);
     res.json(config);
@@ -574,8 +709,8 @@ app.post('/api/rates/:id/activate', async (req, res) => {
   }
 });
 
-// 計算費用
-app.post('/api/rates/calculate', async (req, res) => {
+// 計算費用 (公開 + 後台皆可存取)
+app.post('/api/rates/calculate', optionalAuth, async (req, res) => {
   try {
     const result = await RateManagement.calculateTotalFee(req.body);
     res.json(result);
@@ -588,8 +723,8 @@ app.post('/api/rates/calculate', async (req, res) => {
 // 桿弟管理 API (Caddy Management)
 // ============================================
 
-// 取得所有桿弟
-app.get('/api/caddies', async (req, res) => {
+// 取得所有桿弟 (出發台產卡也需要讀取桿弟)
+app.get('/api/caddies', requireAuth(), async (req, res) => {
   try {
     const caddies = await CaddyManagement.getAllCaddies();
     res.json(caddies);
@@ -599,7 +734,7 @@ app.get('/api/caddies', async (req, res) => {
 });
 
 // 新增桿弟
-app.post('/api/caddies', async (req, res) => {
+app.post('/api/caddies', requireAuth('caddy_management'), async (req, res) => {
   try {
     const caddy = await CaddyManagement.createCaddy(req.body);
     res.json(caddy);
@@ -609,7 +744,7 @@ app.post('/api/caddies', async (req, res) => {
 });
 
 // 更新桿弟
-app.put('/api/caddies/:id', async (req, res) => {
+app.put('/api/caddies/:id', requireAuth('caddy_management'), async (req, res) => {
   try {
     const caddy = await CaddyManagement.updateCaddy(req.params.id, req.body);
     res.json(caddy);
@@ -623,7 +758,7 @@ app.put('/api/caddies/:id', async (req, res) => {
 // ============================================
 
 // 產生收費卡
-app.post('/api/charge-cards', async (req, res) => {
+app.post('/api/charge-cards', requireAuth('starter'), async (req, res) => {
   try {
     const result = await ChargeCard.generateChargeCard(req.body.bookingId, {
       caddyId: req.body.caddyId,
@@ -638,7 +773,7 @@ app.post('/api/charge-cards', async (req, res) => {
 });
 
 // 查詢預約的收費卡
-app.get('/api/charge-cards/booking/:bookingId', async (req, res) => {
+app.get('/api/charge-cards/booking/:bookingId', requireAuth('starter'), async (req, res) => {
   try {
     const card = await ChargeCard.getChargeCardByBooking(req.params.bookingId);
     if (!card) {
@@ -651,7 +786,7 @@ app.get('/api/charge-cards/booking/:bookingId', async (req, res) => {
 });
 
 // 發送 LINE 通知
-app.post('/api/charge-cards/:id/notify', async (req, res) => {
+app.post('/api/charge-cards/:id/notify', requireAuth('starter'), async (req, res) => {
   try {
     const result = await ChargeCard.sendChargeCardNotification(req.params.id);
     res.json(result);

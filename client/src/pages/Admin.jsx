@@ -10,6 +10,22 @@ import { RateManagement } from '../components/RateManagement';
 import { OperationalCalendar } from '../components/OperationalCalendar';
 import ChargeCardModal from '../components/ChargeCardModal';
 import CaddyManagement from '../components/CaddyManagement';
+import RolePermissionManager from '../components/RolePermissionManager';
+import { getAdminPermissions, getAdminInfo, adminFetch, clearAdminSession } from '../utils/adminApi';
+
+const ALL_TABS = [
+    { key: 'starter', label: '出發台看板' },
+    { key: 'waitlist', label: '候補監控' },
+    { key: 'scan', label: '📷 掃碼 (報到/核銷)' },
+    { key: 'checkin_list', label: '📋 報到清單' },
+    { key: 'vouchers', label: '🎫 票券管理' },
+    { key: 'users', label: '用戶管理' },
+    { key: 'settings', label: '參數設定' },
+    { key: 'operational_calendar', label: '📅 營運日曆' },
+    { key: 'rate_management', label: '💰 費率管理' },
+    { key: 'caddy_management', label: '🏌️ 桿弟管理' },
+    { key: 'admins', label: '後台權限' },
+];
 
 // ... (DepartureList, CheckInList components remain unchanged)
 // Sub-component: Departure List (Existing)
@@ -1681,8 +1697,7 @@ function UserManagement() {
             if (filters.golfer_type) params.append('golfer_type', filters.golfer_type);
             if (filters.line_bound) params.append('line_bound', filters.line_bound);
 
-            const apiUrl = import.meta.env.VITE_API_URL || '';
-            const res = await fetch(`${apiUrl}/api/users?${params.toString()}`);
+            const res = await adminFetch(`/api/users?${params.toString()}`);
             const data = await res.json();
             setUsers(data.users || []);
             setTotal(data.total || 0);
@@ -1703,8 +1718,7 @@ function UserManagement() {
         if (!confirm('確定要執行 Google Sheets 會員資料同步嗎？這可能需要幾秒鐘。')) return;
         setLoading(true);
         try {
-            const apiUrl = import.meta.env.VITE_API_URL || '';
-            const res = await fetch(`${apiUrl}/api/users/sync`, { method: 'POST' });
+            const res = await adminFetch('/api/users/sync', { method: 'POST' });
             const data = await res.json();
             if (data.success) {
                 alert(`同步成功！\n新增/更新: ${data.synced} 筆\n失敗: ${data.failed} 筆`);
@@ -1838,50 +1852,132 @@ function UserManagement() {
     );
 }
 
-// Sub-component: Admin Management (Existing)
+// Sub-component: Admin Management (RBAC)
 function AdminManagement() {
     const [admins, setAdmins] = useState([]);
+    const [roles, setRoles] = useState([]);
     const [showForm, setShowForm] = useState(false);
-    const [newAdmin, setNewAdmin] = useState({ name: '', username: '', password: '' });
-    useEffect(() => { fetchAdmins(); }, []);
+    const [newAdmin, setNewAdmin] = useState({ name: '', username: '', password: '', role: 'starter' });
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        fetchAdmins();
+        fetchRoles();
+    }, []);
+
     const fetchAdmins = async () => {
-        const { data } = await supabase.from('admins').select('*').order('created_at', { ascending: false });
-        setAdmins(data || []);
+        try {
+            const res = await adminFetch('/api/admin/list');
+            const data = await res.json();
+            setAdmins(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error('載入管理員失敗:', err);
+        }
     };
+
+    const fetchRoles = async () => {
+        try {
+            const res = await adminFetch('/api/roles');
+            const data = await res.json();
+            setRoles(Array.isArray(data) ? data : []);
+        } catch (err) {
+            console.error('載入角色失敗:', err);
+        }
+    };
+
     const handleAddAdmin = async (e) => {
         e.preventDefault();
-        const { error } = await supabase.from('admins').insert([newAdmin]);
-        if (error) alert('新增失敗: ' + error.message);
-        else { alert('新增成功'); setShowForm(false); setNewAdmin({ name: '', username: '', password: '' }); fetchAdmins(); }
+        setError('');
+        try {
+            const res = await adminFetch('/api/admin/create', {
+                method: 'POST',
+                body: JSON.stringify(newAdmin),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '新增失敗');
+            alert('新增成功');
+            setShowForm(false);
+            setNewAdmin({ name: '', username: '', password: '', role: 'starter' });
+            fetchAdmins();
+        } catch (err) {
+            setError(err.message);
+        }
     };
+
     const handleDelete = async (id) => {
         if (!confirm('確定刪除此管理員？')) return;
-        const { error } = await supabase.from('admins').delete().eq('id', id);
-        if (!error) fetchAdmins(); else alert('刪除失敗');
+        try {
+            const res = await adminFetch(`/api/admin/${id}`, { method: 'DELETE' });
+            if (res.ok) fetchAdmins();
+            else {
+                const data = await res.json();
+                alert(data.error || '刪除失敗');
+            }
+        } catch (err) {
+            alert('刪除失敗');
+        }
+    };
+
+    const handleRoleChange = async (adminId, newRole) => {
+        try {
+            const res = await adminFetch(`/api/admin/${adminId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ role: newRole }),
+            });
+            if (res.ok) fetchAdmins();
+        } catch (err) {
+            alert('更新角色失敗');
+        }
+    };
+
+    const getRoleLabel = (roleName) => {
+        const role = roles.find(r => r.name === roleName);
+        return role ? role.label : roleName;
     };
 
     return (
         <div className="card animate-fade-in">
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
                 <h2 className="title" style={{ fontSize: '1.2rem' }}>後台管理員 ({admins.length})</h2>
-                <button className="btn btn-primary" style={{ width: 'auto' }} onClick={() => setShowForm(!showForm)}>
+                <button className="btn btn-primary" style={{ width: 'auto' }} onClick={() => { setShowForm(!showForm); setError(''); }}>
                     {showForm ? '取消' : '+ 新增管理員'}
                 </button>
             </div>
             {showForm && (
                 <form onSubmit={handleAddAdmin} style={{ marginBottom: '20px', padding: '15px', background: '#f9fafb', borderRadius: '8px' }}>
-                    <div className="form-group"><label>名稱</label><input className="form-input" required value={newAdmin.name} onChange={e => setNewAdmin({ ...newAdmin, name: e.target.value })} /></div>
-                    <div className="form-group"><label>帳號 (Email/手機)</label><input className="form-input" required value={newAdmin.username} onChange={e => setNewAdmin({ ...newAdmin, username: e.target.value })} /></div>
-                    <div className="form-group"><label>密碼</label><input className="form-input" required value={newAdmin.password} onChange={e => setNewAdmin({ ...newAdmin, password: e.target.value })} /></div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                            <label>名稱</label>
+                            <input className="form-input" required value={newAdmin.name} onChange={e => setNewAdmin({ ...newAdmin, name: e.target.value })} />
+                        </div>
+                        <div className="form-group" style={{ margin: 0 }}>
+                            <label>帳號 (Email/手機)</label>
+                            <input className="form-input" required value={newAdmin.username} onChange={e => setNewAdmin({ ...newAdmin, username: e.target.value })} />
+                        </div>
+                        <div className="form-group" style={{ margin: 0 }}>
+                            <label>密碼</label>
+                            <input className="form-input" type="password" required value={newAdmin.password} onChange={e => setNewAdmin({ ...newAdmin, password: e.target.value })} />
+                        </div>
+                        <div className="form-group" style={{ margin: 0 }}>
+                            <label>角色</label>
+                            <select className="form-input" value={newAdmin.role} onChange={e => setNewAdmin({ ...newAdmin, role: e.target.value })}>
+                                {roles.map(r => (
+                                    <option key={r.name} value={r.name}>{r.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    {error && <p style={{ color: 'red', margin: '0 0 8px', fontSize: '13px' }}>{error}</p>}
                     <button className="btn btn-primary">確認新增</button>
                 </form>
             )}
             <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
-                        <tr style={{ textAlign: 'left', borderBottom: '1px solid #ddd' }}>
+                        <tr style={{ textAlign: 'left', borderBottom: '2px solid #ddd', background: '#f5f5f5' }}>
                             <th style={{ padding: '10px' }}>名稱</th>
                             <th style={{ padding: '10px' }}>帳號</th>
+                            <th style={{ padding: '10px' }}>角色</th>
                             <th style={{ padding: '10px' }}>建立時間</th>
                             <th style={{ padding: '10px' }}>操作</th>
                         </tr>
@@ -1891,21 +1987,45 @@ function AdminManagement() {
                             <tr key={a.id} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '10px' }}>{a.name}</td>
                                 <td style={{ padding: '10px' }}>{a.username}</td>
+                                <td style={{ padding: '10px' }}>
+                                    <select
+                                        value={a.role || 'super_admin'}
+                                        onChange={e => handleRoleChange(a.id, e.target.value)}
+                                        style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '13px' }}
+                                    >
+                                        {roles.map(r => (
+                                            <option key={r.name} value={r.name}>{r.label}</option>
+                                        ))}
+                                    </select>
+                                </td>
                                 <td style={{ padding: '10px', fontSize: '0.8rem' }}>{new Date(a.created_at).toLocaleDateString()}</td>
                                 <td style={{ padding: '10px' }}>
-                                    {a.username !== 'admin' && <button onClick={() => handleDelete(a.id)} style={{ color: 'red', border: 'none', background: 'none', cursor: 'pointer' }}>刪除</button>}
+                                    {a.username !== 'admin' && (
+                                        <button onClick={() => handleDelete(a.id)} style={{
+                                            padding: '4px 12px', borderRadius: '4px', border: '1px solid #c62828',
+                                            background: '#ffebee', color: '#c62828', cursor: 'pointer', fontSize: '12px'
+                                        }}>刪除</button>
+                                    )}
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
+
+            {/* 角色權限設定 */}
+            <RolePermissionManager roles={roles} onRolesChanged={fetchRoles} />
         </div>
     );
 }
 
 export function AdminDashboard() {
-    const [activeTab, setActiveTab] = useState('starter'); // starter, scan, checkin_list, departure_list, vouchers, users, admins, settings, waitlist, caddy_management
+    const permissions = getAdminPermissions();
+    const adminInfo = getAdminInfo();
+    const visibleTabs = ALL_TABS.filter(tab => permissions.includes(tab.key));
+    const defaultTab = visibleTabs.length > 0 ? visibleTabs[0].key : 'starter';
+
+    const [activeTab, setActiveTab] = useState(defaultTab);
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -1916,8 +2036,7 @@ export function AdminDashboard() {
     useEffect(() => {
         const fetchSettings = async () => {
             try {
-                const apiUrl = import.meta.env.VITE_API_URL || '';
-                const res = await fetch(`${apiUrl}/api/settings`);
+                const res = await adminFetch('/api/settings');
                 if (res.ok) {
                     const data = await res.json();
                     setSystemSettings(data);
@@ -1955,34 +2074,29 @@ export function AdminDashboard() {
 
     const handleLogout = () => {
         if (!confirm('登出?')) return;
-        sessionStorage.clear();
+        clearAdminSession();
         window.location.href = '/admin/login';
     };
+
+    const isSuperAdmin = adminInfo?.role === 'super_admin';
 
     return (
         <div className="container" style={{ maxWidth: '900px' }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h1 className="title" style={{ marginBottom: 0 }}>高爾夫後台系統</h1>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={handleResetDatabase} style={{ backgroundColor: '#fca5a5', border: 'none', padding: '5px 10px', borderRadius: '4px', color: '#7f1d1d', cursor: 'pointer', fontSize: '0.75rem' }}>清空 DB</button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {adminInfo && <span style={{ fontSize: '13px', color: '#6b7280' }}>{adminInfo.name}</span>}
+                    {isSuperAdmin && <button onClick={handleResetDatabase} style={{ backgroundColor: '#fca5a5', border: 'none', padding: '5px 10px', borderRadius: '4px', color: '#7f1d1d', cursor: 'pointer', fontSize: '0.75rem' }}>清空 DB</button>}
                     <button onClick={handleLogout} className="btn" style={{ width: 'auto', padding: '6px 12px', background: '#4b5563', color: 'white' }}>登出</button>
                 </div>
             </div>
 
             {/* Tabs */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e5e7eb', overflowX: 'auto' }}>
-                <button onClick={() => setActiveTab('starter')} style={getTabStyle(activeTab === 'starter')}>出發台看板</button>
-                <button onClick={() => setActiveTab('waitlist')} style={getTabStyle(activeTab === 'waitlist')}>候補監控</button>
-                <button onClick={() => setActiveTab('scan')} style={getTabStyle(activeTab === 'scan')}>📷 掃碼 (報到/核銷)</button>
-                <button onClick={() => setActiveTab('checkin_list')} style={getTabStyle(activeTab === 'checkin_list')}>📋 報到清單</button>
-                <button onClick={() => setActiveTab('vouchers')} style={getTabStyle(activeTab === 'vouchers')}>🎫 票券管理</button>
-                <button onClick={() => setActiveTab('users')} style={getTabStyle(activeTab === 'users')}>用戶管理</button>
-                <button onClick={() => setActiveTab('settings')} style={getTabStyle(activeTab === 'settings')}>參數設定</button>
-                <button onClick={() => setActiveTab('operational_calendar')} style={getTabStyle(activeTab === 'operational_calendar')}>📅 營運日曆</button>
-                <button onClick={() => setActiveTab('rate_management')} style={getTabStyle(activeTab === 'rate_management')}>💰 費率管理</button>
-                <button onClick={() => setActiveTab('caddy_management')} style={getTabStyle(activeTab === 'caddy_management')}>🏌️ 桿弟管理</button>
-                <button onClick={() => setActiveTab('admins')} style={getTabStyle(activeTab === 'admins')}>後台權限</button>
+                {visibleTabs.map(tab => (
+                    <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={getTabStyle(activeTab === tab.key)}>{tab.label}</button>
+                ))}
             </div>
 
             {/* Content */}

@@ -17,6 +17,7 @@ import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, addMonths, startOfMonth, endOfMonth } from 'date-fns';
 import zhTW from 'date-fns/locale/zh-TW';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
+import { adminFetch } from '../utils/adminApi';
 
 // Date-fns localizer
 const locales = { 'zh-TW': zhTW };
@@ -58,8 +59,7 @@ export function OperationalCalendar() {
             const start = format(startOfMonth(month), 'yyyy-MM-dd');
             const end = format(endOfMonth(month), 'yyyy-MM-dd');
 
-            const apiUrl = import.meta.env.VITE_API_URL || '';
-            const res = await fetch(`${apiUrl}/api/calendar/overrides?start=${start}&end=${end}`);
+            const res = await adminFetch(`/api/calendar/overrides?start=${start}&end=${end}`);
             const data = await res.json();
 
             // 轉換為日曆事件格式
@@ -279,10 +279,8 @@ function DateEditDrawer({ dates, onClose, onSave }) {
 
     const loadDateSettings = async (date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
-        const apiUrl = import.meta.env.VITE_API_URL || '';
-
         try {
-            const res = await fetch(`${apiUrl}/api/calendar/override/${dateStr}`);
+            const res = await adminFetch(`/api/calendar/override/${dateStr}`);
             if (res.ok) {
                 const data = await res.json();
                 setFormData(data);
@@ -294,10 +292,8 @@ function DateEditDrawer({ dates, onClose, onSave }) {
 
     const checkConflicts = async (date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
-        const apiUrl = import.meta.env.VITE_API_URL || '';
-
         try {
-            const res = await fetch(`${apiUrl}/api/calendar/conflicts/${dateStr}`);
+            const res = await adminFetch(`/api/calendar/conflicts/${dateStr}`);
             const data = await res.json();
             setConflicts(data);
         } catch (error) {
@@ -307,17 +303,14 @@ function DateEditDrawer({ dates, onClose, onSave }) {
 
     const handleSave = async () => {
         setLoading(true);
-        const apiUrl = import.meta.env.VITE_API_URL || '';
-
         try {
             const errors = [];
 
             for (const date of dates) {
                 const dateStr = format(date, 'yyyy-MM-dd');
 
-                const res = await fetch(`${apiUrl}/api/calendar/override`, {
+                const res = await adminFetch('/api/calendar/override', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         date: dateStr,
                         ...formData
@@ -514,12 +507,9 @@ function BatchSettingsModal({ onClose, onSave }) {
     });
 
     const handleSave = async () => {
-        const apiUrl = import.meta.env.VITE_API_URL || '';
-
         try {
-            const res = await fetch(`${apiUrl}/api/calendar/batch`, {
+            const res = await adminFetch('/api/calendar/batch', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)
             });
 
