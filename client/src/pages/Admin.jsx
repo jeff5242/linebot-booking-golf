@@ -1073,8 +1073,8 @@ function VoucherManagement() {
 }
 
 // Sub-component: StarterDashboard (Existing)
-function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookings, setChargeCardBooking }) {
-    const slots = generateDailySlots(selectedDate);
+function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookings, setChargeCardBooking, systemSettings }) {
+    const slots = generateDailySlots(selectedDate, systemSettings || {});
 
     // Logic for linking bookings (18 holes turn)
     const getBookingAt = (timeStr) => bookings.find(b => b.time === timeStr && b.status !== 'cancelled');
@@ -1231,8 +1231,15 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
             return list;
         };
 
-        const leftTimes = generateTimeList(5, 30, 10, 24, 6);   // 05:30 - 10:24
-        const rightTimes = generateTimeList(10, 30, 15, 54, 6); // 10:30 - 15:54
+        // 從系統設定讀取營運時間，fallback 到預設值
+        const [sH, sM] = (systemSettings?.start_time || '05:30').split(':').map(Number);
+        const [eH, eM] = (systemSettings?.end_time || '15:54').split(':').map(Number);
+        const interval = parseInt(systemSettings?.interval) || 6;
+
+        const allTimes = generateTimeList(sH, sM, eH, eM, interval);
+        const mid = Math.ceil(allTimes.length / 2);
+        const leftTimes = allTimes.slice(0, mid);
+        const rightTimes = allTimes.slice(mid);
 
         const maxRows = Math.max(leftTimes.length, rightTimes.length);
 
@@ -1335,7 +1342,12 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '15px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                {systemSettings && (
+                    <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                        營業時間 {systemSettings.start_time || '05:30'} ~ {systemSettings.end_time || '17:00'} ｜ 間隔 {systemSettings.interval || 10} 分鐘
+                    </span>
+                )}
                 <button
                     onClick={handleExportSheet}
                     className="btn"
@@ -1898,6 +1910,24 @@ export function AdminDashboard() {
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(false);
     const [chargeCardBooking, setChargeCardBooking] = useState(null);
+    const [systemSettings, setSystemSettings] = useState(null);
+
+    // 載入系統設定（營運時間、間隔等）
+    useEffect(() => {
+        const fetchSettings = async () => {
+            try {
+                const apiUrl = import.meta.env.VITE_API_URL || '';
+                const res = await fetch(`${apiUrl}/api/settings`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setSystemSettings(data);
+                }
+            } catch (err) {
+                console.error('載入系統設定失敗:', err);
+            }
+        };
+        fetchSettings();
+    }, []);
 
     useEffect(() => {
         if (['starter', 'checkin_list', 'departure_list'].includes(activeTab)) fetchBookings();
@@ -1956,7 +1986,7 @@ export function AdminDashboard() {
             </div>
 
             {/* Content */}
-            {activeTab === 'starter' && <StarterDashboard selectedDate={selectedDate} setSelectedDate={setSelectedDate} bookings={bookings} fetchBookings={fetchBookings} setChargeCardBooking={setChargeCardBooking} />}
+            {activeTab === 'starter' && <StarterDashboard selectedDate={selectedDate} setSelectedDate={setSelectedDate} bookings={bookings} fetchBookings={fetchBookings} setChargeCardBooking={setChargeCardBooking} systemSettings={systemSettings} />}
             {activeTab === 'scan' && <QRScannerTab />}
             {activeTab === 'checkin_list' && <CheckInList bookings={bookings} selectedDate={selectedDate} />}
             {activeTab === 'departure_list' && <DepartureList bookings={bookings} selectedDate={selectedDate} />}

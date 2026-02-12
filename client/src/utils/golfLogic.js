@@ -12,12 +12,17 @@ const TRANSITION_TIME = 150; // minutes (2.5 hours)
  * Generates all possible slot times for a day.
  * Returns array of Date objects.
  * @param {Date} baseDate - The base date
- * @param {Object} settings - System settings (interval, turn_time, etc.)
+ * @param {Object} settings - System settings (interval, start_time, end_time, etc.)
  */
 export function generateDailySlots(baseDate, settings = {}) {
     const interval = settings?.interval || INTERVAL;
-    let currentTime = set(baseDate, { hours: START_HOUR, minutes: START_MINUTE, seconds: 0, milliseconds: 0 });
-    const endTime = set(baseDate, { hours: END_HOUR, minutes: END_MINUTE, seconds: 0, milliseconds: 0 });
+
+    // Parse start_time / end_time from settings (e.g. "05:30")
+    const [startH, startM] = (settings?.start_time || `${START_HOUR}:${String(START_MINUTE).padStart(2, '0')}`).split(':').map(Number);
+    const [endH, endM] = (settings?.end_time || `${END_HOUR}:${String(END_MINUTE).padStart(2, '0')}`).split(':').map(Number);
+
+    let currentTime = set(baseDate, { hours: startH, minutes: startM, seconds: 0, milliseconds: 0 });
+    const endTime = set(baseDate, { hours: endH, minutes: endM, seconds: 0, milliseconds: 0 });
 
     const slots = [];
     while (currentTime <= endTime) {
@@ -76,7 +81,8 @@ export function isSlotAvailable(slotTime, bookings, holes, settings = {}) {
  */
 export function isTooLateFor18(dateObj, settings = {}) {
     const turnTime = settings?.turn_time || TRANSITION_TIME;
-    const lastSlot = set(dateObj, { hours: END_HOUR, minutes: END_MINUTE, seconds: 0, milliseconds: 0 });
+    const [endH, endM] = (settings?.end_time || `${END_HOUR}:${String(END_MINUTE).padStart(2, '0')}`).split(':').map(Number);
+    const lastSlot = set(dateObj, { hours: endH, minutes: endM, seconds: 0, milliseconds: 0 });
     const cutoffTime = addMinutes(lastSlot, -turnTime);
 
     return dateObj > cutoffTime;
