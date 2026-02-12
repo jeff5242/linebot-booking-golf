@@ -246,11 +246,15 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
                                         <span>{formatMoney(feePreview.breakdown?.caddyFee)}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                        <span>娛樂稅 (5%)</span>
-                                        <span>{formatMoney(feePreview.breakdown?.entertainmentTax)}</span>
+                                        <span>娛樂稅 ({Math.round((feePreview.metadata?.taxRate || 0.05) * 100)}%)</span>
+                                        <span>{formatMoney(feePreview.breakdown?.entertainmentTaxPerPerson)}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', borderTop: '1px dashed #ddd', paddingTop: '6px', fontWeight: '600' }}>
+                                        <span>每人小計</span>
+                                        <span>{formatMoney(feePreview.breakdown?.totalPerPerson)}</span>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '16px', borderTop: '1px solid #ccc', paddingTop: '8px', marginTop: '8px' }}>
-                                        <span>預估總額</span>
+                                        <span>預計總計金額 ({feePreview.metadata?.numPlayers || booking.players_count}人)</span>
                                         <span>{formatMoney(feePreview.totalAmount)}</span>
                                     </div>
                                 </div>

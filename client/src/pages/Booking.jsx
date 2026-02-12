@@ -225,7 +225,7 @@ export function Booking() {
             }
 
             const pricing = calculateDynamicPrice();
-            const amount = pricing ? pricing.total : 0;
+            const amount = pricing ? pricing.groupTotal : 0;
 
             const { data: booking, error } = await supabase.from('bookings').insert([
                 {
@@ -346,7 +346,7 @@ export function Booking() {
         return day === 0 || day === 6;
     };
 
-    // 使用費率表計算費用
+    // 使用費率表計算費用（以每人為單位）
     const calculateDynamicPrice = () => {
         if (!rateConfig) return null;
 
@@ -357,44 +357,47 @@ export function Booking() {
 
         try {
             // 果嶺費（每人）
-            const greenFeeUnit = rateConfig.green_fees[tier][holesKey][dayType];
-            const greenFeeTotal = greenFeeUnit * playersCount;
+            const greenFee = rateConfig.green_fees[tier][holesKey][dayType];
 
-            // 清潔費
+            // 清潔費（每人）
             const cleaningFee = rateConfig.base_fees.cleaning[holesKey] || 0;
 
             // 球車費（每人）
-            const cartFeeUnit = needsCart ? (rateConfig.base_fees.cart_per_person[holesKey] || 0) : 0;
-            const cartFeeTotal = cartFeeUnit * playersCount;
+            const cartFee = needsCart ? (rateConfig.base_fees.cart_per_person[holesKey] || 0) : 0;
 
-            // 桿弟費（依人數對應配比：4人=1:4, 3人=1:3, 2人=1:2, 1人=1:1）
+            // 桿弟費（依人數對應配比，此為整組費用）
             let caddyFee = 0;
             if (needsCaddie) {
                 const ratio = `1:${playersCount}`;
                 caddyFee = rateConfig.caddy_fees[ratio]?.[holesKey] || 0;
             }
 
-            // 小計
-            const subtotal = greenFeeTotal + cleaningFee + cartFeeTotal + caddyFee;
+            // 小計（每人）
+            const subtotalPerPerson = greenFee + cleaningFee + cartFee;
 
-            // 娛樂稅
+            // 娛樂稅 = (果嶺費 + 球車費) * 5%（每人）
             const taxRate = rateConfig.tax_config?.entertainment_tax || 0.05;
-            const entertainmentTax = Math.round(subtotal * taxRate);
+            const entertainmentTaxPerPerson = Math.round((greenFee + cartFee) * taxRate);
 
-            // 總計
-            const total = subtotal + entertainmentTax;
+            // 每人合計
+            const totalPerPerson = subtotalPerPerson + entertainmentTaxPerPerson;
+
+            // 整組預估總計
+            const groupTotal = totalPerPerson * playersCount + caddyFee;
 
             return {
                 breakdown: {
-                    greenFee: { unit: greenFeeUnit, count: playersCount, total: greenFeeTotal },
+                    greenFee,
                     cleaningFee,
-                    cartFee: needsCart ? { unit: cartFeeUnit, count: playersCount, total: cartFeeTotal } : null,
+                    cartFee: needsCart ? cartFee : null,
                     caddyFee: needsCaddie ? caddyFee : null,
-                    subtotal,
-                    entertainmentTax,
+                    subtotalPerPerson,
+                    entertainmentTaxPerPerson,
+                    totalPerPerson,
                     taxRate
                 },
-                total,
+                groupTotal,
+                playersCount,
                 tierName: userGolferType,
                 isHoliday: holiday
             };
@@ -690,39 +693,39 @@ export function Booking() {
                                 return (
                                     <div style={{ fontSize: '0.9rem', color: '#64748b' }}>
                                         <div style={{ marginBottom: '6px', fontSize: '0.8rem', color: '#94a3b8' }}>
-                                            {pricing.tierName} / {pricing.isHoliday ? '假日' : '平日'}
+                                            {pricing.tierName} / {pricing.isHoliday ? '假日' : '平日'} / 每人
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                            <span>果嶺費 (${pricing.breakdown.greenFee.unit} x {pricing.breakdown.greenFee.count}人)</span>
-                                            <span>${pricing.breakdown.greenFee.total}</span>
+                                            <span>果嶺費</span>
+                                            <span>${pricing.breakdown.greenFee}</span>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                                             <span>清潔費</span>
                                             <span>${pricing.breakdown.cleaningFee}</span>
                                         </div>
-                                        {pricing.breakdown.cartFee && (
+                                        {pricing.breakdown.cartFee != null && (
                                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                                <span>球車費 (${pricing.breakdown.cartFee.unit} x {pricing.breakdown.cartFee.count}人)</span>
-                                                <span>${pricing.breakdown.cartFee.total}</span>
+                                                <span>球車費</span>
+                                                <span>${pricing.breakdown.cartFee}</span>
                                             </div>
                                         )}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                            <span>娛樂稅 ({Math.round(pricing.breakdown.taxRate * 100)}%)</span>
+                                            <span>${pricing.breakdown.entertainmentTaxPerPerson}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', paddingTop: '4px', borderTop: '1px dashed #e2e8f0', fontWeight: '600', color: '#334155' }}>
+                                            <span>每人小計</span>
+                                            <span>${pricing.breakdown.totalPerPerson}</span>
+                                        </div>
                                         {pricing.breakdown.caddyFee != null && (
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                                <span>桿弟費 (1:{playersCount})</span>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', marginTop: '8px', fontSize: '0.85rem' }}>
+                                                <span>桿弟費 (1:{pricing.playersCount})</span>
                                                 <span>${pricing.breakdown.caddyFee}</span>
                                             </div>
                                         )}
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', paddingTop: '4px', borderTop: '1px dashed #e2e8f0' }}>
-                                            <span>小計</span>
-                                            <span>${pricing.breakdown.subtotal}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                            <span>娛樂稅 ({Math.round(pricing.breakdown.taxRate * 100)}%)</span>
-                                            <span>${pricing.breakdown.entertainmentTax}</span>
-                                        </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #cbd5e1', color: '#1e293b', fontWeight: 'bold', fontSize: '1rem' }}>
-                                            <span>總計金額</span>
-                                            <span style={{ color: 'var(--primary-color)' }}>${pricing.total}</span>
+                                            <span>預計總計金額 ({pricing.playersCount}人)</span>
+                                            <span style={{ color: 'var(--primary-color)' }}>${pricing.groupTotal}</span>
                                         </div>
                                     </div>
                                 );

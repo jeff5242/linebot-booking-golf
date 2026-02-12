@@ -31,26 +31,31 @@ async function calculateTotalFee(params, rateConfig = null) {
         rateConfig = await getActiveRateConfig();
     }
 
-    // 1. 果嶺費
+    // 以下皆為「每人」費用
+    // 1. 果嶺費（每人）
     const greenFee = rateConfig.green_fees[tier][holes][isHoliday ? 'holiday' : 'weekday'];
 
-    // 2. 清潔費
+    // 2. 清潔費（每人）
     const cleaningFee = rateConfig.base_fees.cleaning[holes];
 
-    // 3. 球車費（按人頭計算）
-    const cartFee = rateConfig.base_fees.cart_per_person[holes] * numPlayers;
+    // 3. 球車費（每人）
+    const cartFee = rateConfig.base_fees.cart_per_person[holes];
 
-    // 4. 桿弟費
+    // 4. 桿弟費（整組）
     const caddyFee = rateConfig.caddy_fees[caddyRatio][holes];
 
-    // 5. 小計
-    const subtotal = greenFee + cleaningFee + cartFee + caddyFee;
+    // 5. 每人小計
+    const subtotalPerPerson = greenFee + cleaningFee + cartFee;
 
-    // 6. 娛樂稅 (5%)
-    const entertainmentTax = Math.round(subtotal * rateConfig.tax_config.entertainment_tax);
+    // 6. 娛樂稅 = (果嶺費 + 球車費) * 稅率（每人）
+    const taxRate = rateConfig.tax_config.entertainment_tax;
+    const entertainmentTaxPerPerson = Math.round((greenFee + cartFee) * taxRate);
 
-    // 7. 總計
-    const totalAmount = subtotal + entertainmentTax;
+    // 7. 每人合計
+    const totalPerPerson = subtotalPerPerson + entertainmentTaxPerPerson;
+
+    // 8. 整組預估總計
+    const totalAmount = totalPerPerson * numPlayers + caddyFee;
 
     return {
         breakdown: {
@@ -58,8 +63,9 @@ async function calculateTotalFee(params, rateConfig = null) {
             cleaningFee,
             cartFee,
             caddyFee,
-            subtotal,
-            entertainmentTax,
+            subtotalPerPerson,
+            entertainmentTaxPerPerson,
+            totalPerPerson,
         },
         totalAmount,
         metadata: {
@@ -68,7 +74,7 @@ async function calculateTotalFee(params, rateConfig = null) {
             isHoliday,
             caddyRatio,
             numPlayers,
-            taxRate: rateConfig.tax_config.entertainment_tax
+            taxRate
         }
     };
 }

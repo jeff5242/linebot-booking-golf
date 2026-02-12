@@ -131,7 +131,8 @@ async function generateChargeCard(bookingId, { caddyId, caddyRatio, course, tier
 
     const subtotal = totalGreenFee + totalCleaningFee + totalCartFee + caddyFee;
     const taxRate = rateConfig.tax_config?.entertainment_tax || 0.05;
-    const entertainmentTax = Math.round(subtotal * taxRate);
+    // 娛樂稅 = (果嶺費 + 球車費) * 稅率
+    const entertainmentTax = Math.round((totalGreenFee + totalCartFee) * taxRate);
     const totalAmount = subtotal + entertainmentTax;
 
     const feesBreakdown = {
