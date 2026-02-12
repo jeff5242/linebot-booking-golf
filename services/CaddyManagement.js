@@ -23,14 +23,14 @@ async function getAllCaddies() {
 /**
  * 新增桿弟
  */
-async function createCaddy({ name, caddy_number, phone }) {
+async function createCaddy({ name, caddy_number, phone, grade, notes }) {
     if (!name || !caddy_number) {
         throw new Error('桿弟姓名和編號為必填');
     }
 
     const { data, error } = await supabase
         .from('caddies')
-        .insert({ name, caddy_number, phone })
+        .insert({ name, caddy_number, phone, grade, notes })
         .select()
         .single();
 

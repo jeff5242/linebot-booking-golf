@@ -10,7 +10,7 @@ export default function CaddyManagement() {
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState(null);
-    const [form, setForm] = useState({ name: '', caddy_number: '', phone: '' });
+    const [form, setForm] = useState({ name: '', caddy_number: '', phone: '', grade: '', notes: '' });
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -54,7 +54,7 @@ export default function CaddyManagement() {
 
             setShowForm(false);
             setEditingId(null);
-            setForm({ name: '', caddy_number: '', phone: '' });
+            setForm({ name: '', caddy_number: '', phone: '', grade: '', notes: '' });
             fetchCaddies();
         } catch (err) {
             setError(err.message);
@@ -63,7 +63,7 @@ export default function CaddyManagement() {
 
     const handleEdit = (caddy) => {
         setEditingId(caddy.id);
-        setForm({ name: caddy.name, caddy_number: caddy.caddy_number, phone: caddy.phone || '' });
+        setForm({ name: caddy.name, caddy_number: caddy.caddy_number, phone: caddy.phone || '', grade: caddy.grade || '', notes: caddy.notes || '' });
         setShowForm(true);
     };
 
@@ -95,7 +95,7 @@ export default function CaddyManagement() {
                 <button
                     onClick={() => {
                         setEditingId(null);
-                        setForm({ name: '', caddy_number: '', phone: '' });
+                        setForm({ name: '', caddy_number: '', phone: '', grade: '', notes: '' });
                         setShowForm(!showForm);
                         setError('');
                     }}
@@ -113,7 +113,7 @@ export default function CaddyManagement() {
                 <form onSubmit={handleSubmit} style={{
                     background: '#f5f5f5', padding: '16px', borderRadius: '8px', marginBottom: '16px'
                 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                         <div>
                             <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '13px' }}>
                                 桿弟編號 *
@@ -140,6 +140,21 @@ export default function CaddyManagement() {
                         </div>
                         <div>
                             <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '13px' }}>
+                                級別
+                            </label>
+                            <select
+                                value={form.grade}
+                                onChange={e => setForm({ ...form, grade: e.target.value })}
+                                style={inputStyle}
+                            >
+                                <option value="">未設定</option>
+                                <option value="A">A</option>
+                                <option value="B">B</option>
+                                <option value="C">C</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '13px' }}>
                                 電話
                             </label>
                             <input
@@ -150,6 +165,18 @@ export default function CaddyManagement() {
                                 style={inputStyle}
                             />
                         </div>
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px', fontSize: '13px' }}>
+                            備註
+                        </label>
+                        <input
+                            type="text"
+                            value={form.notes}
+                            onChange={e => setForm({ ...form, notes: e.target.value })}
+                            placeholder="選填"
+                            style={inputStyle}
+                        />
                     </div>
                     {error && <p style={{ color: 'red', margin: '0 0 8px', fontSize: '13px' }}>{error}</p>}
                     <button type="submit" style={{
@@ -175,7 +202,9 @@ export default function CaddyManagement() {
                         <tr style={{ background: '#f5f5f5' }}>
                             <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>編號</th>
                             <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>姓名</th>
+                            <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>級別</th>
                             <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>電話</th>
+                            <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>備註</th>
                             <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>狀態</th>
                             <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>操作</th>
                         </tr>
@@ -185,7 +214,19 @@ export default function CaddyManagement() {
                             <tr key={caddy.id} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '10px', fontWeight: 'bold' }}>{caddy.caddy_number}</td>
                                 <td style={{ padding: '10px' }}>{caddy.name}</td>
+                                <td style={{ padding: '10px', textAlign: 'center' }}>
+                                    {caddy.grade ? (
+                                        <span style={{
+                                            padding: '2px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold',
+                                            background: caddy.grade === 'A' ? '#e8f5e9' : caddy.grade === 'B' ? '#fff3e0' : '#fce4ec',
+                                            color: caddy.grade === 'A' ? '#2e7d32' : caddy.grade === 'B' ? '#e65100' : '#c62828'
+                                        }}>
+                                            {caddy.grade}
+                                        </span>
+                                    ) : '-'}
+                                </td>
                                 <td style={{ padding: '10px', color: '#666' }}>{caddy.phone || '-'}</td>
+                                <td style={{ padding: '10px', color: '#666', fontSize: '13px' }}>{caddy.notes || '-'}</td>
                                 <td style={{ padding: '10px' }}>
                                     <span style={{
                                         padding: '2px 8px', borderRadius: '12px', fontSize: '12px',
