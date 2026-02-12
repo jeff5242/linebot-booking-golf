@@ -9,6 +9,8 @@ const supabase = createClient(
 const SETTINGS_KEY = 'booking_rules';
 
 const DEFAULT_SETTINGS = {
+    start_time: '05:30',
+    end_time: '17:00',
     interval: 10, // 3, 5, 6, 10, 15
     min_group_size: 4,
     turn_time: 120,

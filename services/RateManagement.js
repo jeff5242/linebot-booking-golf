@@ -184,8 +184,8 @@ async function updateRateConfig(configId, rateData, updatedBy) {
         throw new Error('費率配置不存在');
     }
 
-    if (config.status !== 'draft') {
-        throw new Error('只能修改草稿狀態的費率配置');
+    if (config.status !== 'draft' && config.status !== 'active') {
+        throw new Error('只能修改草稿或使用中的費率配置');
     }
 
     // 驗證白金會員價格一致性

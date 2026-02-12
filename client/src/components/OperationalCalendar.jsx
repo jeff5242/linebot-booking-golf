@@ -42,7 +42,7 @@ const getStatusLabel = (status) => {
 export function OperationalCalendar() {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [calendarData, setCalendarData] = useState([]);
-    const [selectedDate, setSelectedDate] = useState(null);
+    const [selectedDates, setSelectedDates] = useState([]);
     const [showEditDrawer, setShowEditDrawer] = useState(false);
     const [showBatchModal, setShowBatchModal] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -92,13 +92,13 @@ export function OperationalCalendar() {
         }
     };
 
-    const handleSelectSlot = ({ start }) => {
-        setSelectedDate(start);
+    const handleSelectSlot = ({ slots }) => {
+        setSelectedDates(slots);
         setShowEditDrawer(true);
     };
 
     const handleSelectEvent = (event) => {
-        setSelectedDate(event.start);
+        setSelectedDates([event.start]);
         setShowEditDrawer(true);
     };
 
@@ -210,7 +210,7 @@ export function OperationalCalendar() {
             {/* 單日編輯側邊欄 */}
             {showEditDrawer && (
                 <DateEditDrawer
-                    date={selectedDate}
+                    dates={selectedDates}
                     onClose={() => setShowEditDrawer(false)}
                     onSave={() => {
                         setShowEditDrawer(false);
@@ -258,8 +258,9 @@ function StatCard({ title, value, subtitle }) {
     );
 }
 
-// ============= 單日編輯側邊欄 =============
-function DateEditDrawer({ date, onClose, onSave }) {
+// ============= 單日/多日編輯側邊欄 =============
+function DateEditDrawer({ dates, onClose, onSave }) {
+    const isMultiple = dates.length > 1;
     const [formData, setFormData] = useState({
         status: 'normal',
         custom_start_time: '',
@@ -270,9 +271,11 @@ function DateEditDrawer({ date, onClose, onSave }) {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        loadDateSettings(date);
-        checkConflicts(date);
-    }, [date]);
+        if (!isMultiple) {
+            loadDateSettings(dates[0]);
+            checkConflicts(dates[0]);
+        }
+    }, [dates]);
 
     const loadDateSettings = async (date) => {
         const dateStr = format(date, 'yyyy-MM-dd');
@@ -304,27 +307,39 @@ function DateEditDrawer({ date, onClose, onSave }) {
 
     const handleSave = async () => {
         setLoading(true);
+        const apiUrl = import.meta.env.VITE_API_URL || '';
+
         try {
-            const dateStr = format(date, 'yyyy-MM-dd');
-            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const errors = [];
 
-            const res = await fetch(`${apiUrl}/api/calendar/override`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    date: dateStr,
-                    ...formData
-                })
-            });
+            for (const date of dates) {
+                const dateStr = format(date, 'yyyy-MM-dd');
 
-            const result = await res.json();
+                const res = await fetch(`${apiUrl}/api/calendar/override`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        date: dateStr,
+                        ...formData
+                    })
+                });
 
-            if (res.ok) {
-                alert(`✅ 設定已儲存\n日期: ${dateStr}\n狀態: ${getStatusLabel(formData.status)}`);
-                onSave(); // 重新載入日曆資料
-            } else {
-                throw new Error(result.error || '儲存失敗');
+                if (!res.ok) {
+                    const result = await res.json();
+                    errors.push(`${dateStr}: ${result.error || '儲存失敗'}`);
+                }
             }
+
+            if (errors.length > 0) {
+                throw new Error(errors.join('\n'));
+            }
+
+            const dateRange = isMultiple
+                ? `${format(dates[0], 'yyyy-MM-dd')} ~ ${format(dates[dates.length - 1], 'yyyy-MM-dd')} (共 ${dates.length} 天)`
+                : format(dates[0], 'yyyy-MM-dd');
+
+            alert(`✅ 設定已儲存\n日期: ${dateRange}\n狀態: ${getStatusLabel(formData.status)}`);
+            onSave();
         } catch (error) {
             console.error('儲存失敗:', error);
             alert(`❌ 儲存失敗\n錯誤: ${error.message}`);
@@ -340,7 +355,10 @@ function DateEditDrawer({ date, onClose, onSave }) {
                     {/* 標題 */}
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="text-xl font-bold">
-                            📅 {format(date, 'yyyy年MM月dd日')} ({format(date, 'EEEE', { locale: zhTW })})
+                            📅 {isMultiple
+                                ? `${format(dates[0], 'MM/dd')} ~ ${format(dates[dates.length - 1], 'MM/dd')} (共 ${dates.length} 天)`
+                                : `${format(dates[0], 'yyyy年MM月dd日')} (${format(dates[0], 'EEEE', { locale: zhTW })})`
+                            }
                         </h3>
                         <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
                             ✕

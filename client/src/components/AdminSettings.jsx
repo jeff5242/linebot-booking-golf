@@ -414,6 +414,25 @@ export function AdminSettings() {
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             {/* 左側：設定區 */}
                             <div className="lg:col-span-2 space-y-6">
+                                {/* 營運時間範本 */}
+                                <Card title="營運時間範本" icon={Clock}>
+                                    <p className="text-xs text-gray-500 mb-4">
+                                        此為全域預設值，營運日曆「套用範本」時會使用這組設定
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <TimePicker
+                                            label="營運開始時間"
+                                            value={settings.start_time || '05:30'}
+                                            onChange={(val) => setSettings({ ...settings, start_time: val })}
+                                        />
+                                        <TimePicker
+                                            label="營運結束時間"
+                                            value={settings.end_time || '17:00'}
+                                            onChange={(val) => setSettings({ ...settings, end_time: val })}
+                                        />
+                                    </div>
+                                </Card>
+
                                 {/* 預約間隔 */}
                                 <Card title="預約間隔設定" icon={Clock}>
                                     <div className="space-y-4">

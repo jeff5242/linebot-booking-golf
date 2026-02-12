@@ -119,11 +119,12 @@ export function RateManagement() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(rateConfig)
             });
+            const result = await res.json();
             if (res.ok) {
                 setMsg('✅ 儲存成功！');
                 setTimeout(() => setMsg(''), 3000);
             } else {
-                throw new Error('儲存失敗');
+                throw new Error(result.error || '儲存失敗');
             }
         } catch (error) {
             setMsg('❌ ' + error.message);

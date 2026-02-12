@@ -8,10 +8,11 @@
 1. [專案架構](#專案架構)
 2. [開發工作流程](#開發工作流程)
 3. [常見問題與解決方案](#常見問題與解決方案)
-4. [部署流程](#部署流程)
-5. [API 開發規範](#api-開發規範)
-6. [資料庫 Migration](#資料庫-migration)
-7. [環境變數管理](#環境變數管理)
+4. [AI 協作防錯清單](#ai-協作防錯清單) **← 新增**
+5. [部署流程](#部署流程)
+6. [API 開發規範](#api-開發規範)
+7. [資料庫 Migration](#資料庫-migration)
+8. [環境變數管理](#環境變數管理)
 
 ---
 
@@ -28,20 +29,35 @@
 ### 專案結構
 ```
 linebot-booking-golf/
-├── client/                 # 前端專案（Vite + React）
+├── client/                          # 前端專案（Vite + React）
 │   ├── src/
-│   │   ├── components/    # React 組件
-│   │   ├── pages/         # 頁面組件
-│   │   └── utils/         # 工具函數
+│   │   ├── components/
+│   │   │   ├── AdminSettings.jsx    # 系統參數設定 UI
+│   │   │   ├── CaddyManagement.jsx  # 桿弟名冊管理 UI
+│   │   │   ├── ChargeCardModal.jsx  # 收費卡設定+預覽彈窗
+│   │   │   ├── ChargeCardTemplate.jsx # 收費卡列印模板
+│   │   │   ├── RateManagement.jsx   # 費率管理 UI
+│   │   │   └── WaitlistMonitor.jsx  # 候補監控
+│   │   ├── pages/
+│   │   │   ├── Admin.jsx            # 管理後台（~2000 行，含多個 Tab 和子元件）
+│   │   │   ├── Booking.jsx          # 用戶端預約頁面
+│   │   │   └── Register.jsx         # 註冊頁面
+│   │   └── utils/
+│   │       └── golfLogic.js         # 球場邏輯工具（時段計算、golferTypeToTier 等）
+│   ├── .env.production              # 生產環境變數（VITE_API_URL）
 │   ├── tailwind.config.js
 │   └── vite.config.js
-├── services/              # 後端業務邏輯（新架構）
-│   ├── RateManagement.js # 費率管理服務
-│   ├── BookingLogic.js   # 訂位邏輯
-│   └── SystemSettings.js # 系統設定
-├── migrations/            # 資料庫 Migration SQL
-├── index.js               # 後端主程式（Express）
-└── package.json           # 後端依賴
+├── services/                        # 後端業務邏輯
+│   ├── RateManagement.js            # 費率計算引擎（calculateTotalFee, getActiveRateConfig）
+│   ├── ChargeCard.js                # 收費卡產生 + LINE 通知
+│   ├── CaddyManagement.js           # 桿弟名冊 CRUD
+│   ├── LineNotification.js          # LINE Push 訊息封裝
+│   ├── BookingLogic.js              # 訂位邏輯
+│   ├── SystemSettings.js            # 系統設定
+│   └── OperationalCalendar.js       # 營運行事曆
+├── migrations/                      # 資料庫 Migration SQL
+├── index.js                         # 後端主程式（Express 路由層）
+└── supabase_schema.sql              # 資料庫 Schema 參考（CHECK 約束在此）
 ```
 
 ### 前後端分離架構
@@ -220,6 +236,102 @@ app.use(cors({
     credentials: true
 }));
 ```
+
+---
+
+## AI 協作防錯清單
+
+> 以下規則源自實際開發過程中反覆發生的錯誤，**每次修改程式碼前請逐條檢查**。
+
+### 規則 1: 資料庫 INSERT/UPDATE 前必查 CHECK 約束
+
+**背景**: 本專案多個表有 `CHECK` 約束限制欄位值。曾因 3 次 CHECK 違反導致功能失敗。
+
+**錯誤案例**:
+```javascript
+// ❌ 'unpaid' 不在 bookings.payment_status 允許值中
+{ payment_status: 'unpaid' }  // → 正確值: 'pending'
+
+// ❌ 'pending' 不在 waitlist.status 允許值中
+{ status: 'pending' }  // → 正確值: 'queued'
+```
+
+**執行規則**:
+1. 任何 `INSERT` / `UPDATE` 操作前，先查 `supabase_schema.sql` 確認 CHECK 約束
+2. 參考下方「核心表 Status 速查表」快速確認
+
+---
+
+### 規則 2: 子元件新增 Props 必須同步更新父元件
+
+**背景**: 修改子元件函數簽名（新增 props）但忘記在父元件傳入，導致功能無反應。
+
+**錯誤案例**:
+```javascript
+// 子元件新增了 setChargeCardBooking 參數
+function StarterDashboard({ selectedDate, ..., setChargeCardBooking }) { ... }
+
+// ❌ 但父元件忘記傳入
+<StarterDashboard selectedDate={date} />
+
+// ✅ 父元件必須同步更新
+<StarterDashboard selectedDate={date} setChargeCardBooking={setChargeCardBooking} />
+```
+
+**執行規則**:
+1. 修改元件函數簽名後，立即搜尋所有 `<ComponentName` 引用處
+2. 確認每個引用都傳入新的 props
+3. 特別注意 Admin.jsx 中的子元件（StarterDashboard, ScheduleBoard 等）
+
+---
+
+### 規則 3: 新增 API 路由後必須重啟後端
+
+**背景**: 在 `index.js` 新增路由後忘記重啟，前端收到 HTML 404（而非 JSON 錯誤），導致 `Unexpected token '<'` 錯誤。
+
+**執行規則**:
+1. 修改 `index.js` 路由後，終止並重啟 `node index.js`
+2. 用 `curl` 測試新路由是否返回 JSON
+3. 如看到 `Unexpected token '<'` 錯誤，首先檢查後端是否已重啟
+
+---
+
+### 規則 4: 所有前端 fetch 必須使用 VITE_API_URL
+
+**背景**: 生產環境前後端分離，相對路徑 `/api/...` 在 Vercel 上無法連到 Render 後端。
+
+**執行規則**:
+```javascript
+// 每個有 fetch 的元件開頭必須有：
+const apiUrl = import.meta.env.VITE_API_URL || '';
+
+// 每個 fetch 調用必須：
+fetch(`${apiUrl}/api/endpoint`);
+```
+
+---
+
+### 規則 5: 引用函數前先確認函數存在
+
+**背景**: 使用不存在的 `loadAvailableSlots()` 導致執行錯誤，實際應使用已有的 `fetchBookings()`。
+
+**執行規則**:
+1. 調用任何函數前，先搜尋該函數是否在當前作用域中定義
+2. 注意同一功能在不同元件中可能有不同名稱（例如 `fetchBookings` vs `loadAvailableSlots`）
+3. 優先使用元件內已定義的函數
+
+---
+
+### 核心表 Status 速查表
+
+| 表 | 欄位 | 允許值 |
+|---|---|---|
+| `bookings` | `status` | `confirmed`, `checked_in`, `completed`, `cancelled`, `no_show` |
+| `bookings` | `payment_status` | `pending`, `paid`, `failed`, `refunded` |
+| `waitlist` | `status` | `queued`, `notified`, `confirmed`, `expired`, `cancelled` |
+| `charge_cards` | `status` | `created`, `printed`, `paid`, `voided` |
+| `caddies` | `status` | `active`, `inactive` |
+| `rate_configs` | `status` | `active`, `draft`, `archived` |
 
 ---
 
@@ -502,11 +614,11 @@ BASE_URL=https://linebot-booking-golf-q3wo.vercel.app
 
 ## 最近開發記錄
 
-### 2026-02-11: 費率管理系統部署
+### 2026-02-11 (早): 費率管理系統部署
 
 **新增功能：**
 1. 費率管理系統（前後端完整）
-   - 多維度費率矩陣（會員等級 × 球洞 × 平假日）
+   - 多維度費率矩陣（會員等級 x 球洞 x 平假日）
    - 桿弟費配比計算
    - 即時試算工具
    - 收費卡預覽
@@ -534,9 +646,44 @@ BASE_URL=https://linebot-booking-golf-q3wo.vercel.app
 3. **資料庫表不存在**:
    - 解決：執行 PRODUCTION_MIGRATION.sql
 
-**提交記錄：**
-- `c1aea94`: Feature: Add comprehensive rate management system
-- `380e21d`: Fix: Use VITE_API_URL for production API calls
+---
+
+### 2026-02-11 (晚): 收費卡系統 + 候補修復 + 生產環境修正
+
+**新增功能：**
+1. 收費卡產生系統（7 個新檔案）
+   - 出發台報到後，可產生收費卡、指派桿弟
+   - 費用依會員等級自動計算（呼叫 RateManagement）
+   - 可列印的大衛營收費卡 HTML 模板
+   - LINE Push 通知球員集合資訊
+2. 桿弟名冊管理（Admin Tab）
+3. 候補功能（waitlist + peak_type）
+
+**關鍵檔案：**
+- `services/ChargeCard.js` - 收費卡核心邏輯
+- `services/CaddyManagement.js` - 桿弟名冊
+- `services/LineNotification.js` - LINE Push 封裝
+- `client/src/components/ChargeCardModal.jsx` - 收費卡彈窗
+- `client/src/components/ChargeCardTemplate.jsx` - 列印模板
+- `client/src/components/CaddyManagement.jsx` - 桿弟管理 UI
+- `migrations/create_charge_card_tables.sql` - caddies + charge_cards 表
+
+**遇到的 6 個錯誤及修正：**
+
+| # | 錯誤 | 根因 | 修正 |
+|---|------|------|------|
+| 1 | `waitlist_status_check` 違反 | 用 `'pending'` 但 waitlist 只接受 `'queued'` | 改為 `'queued'` |
+| 2 | `bookings_payment_status_check` 違反 | 用 `'unpaid'` 但只接受 `'pending'` | 改為 `'pending'` |
+| 3 | `loadAvailableSlots is not defined` | 引用不存在的函數 | 改用 `fetchBookings()` |
+| 4 | 生產環境預約間隔不連動 | Booking.jsx 未用 `VITE_API_URL` | 加入環境變數 |
+| 5 | `Unexpected token '<'` | 後端新增路由後未重啟 | 重啟 node index.js |
+| 6 | 產生收費卡無反應 | `setChargeCardBooking` 未傳入 StarterDashboard | 加入 props |
+
+**教訓總結：**
+- 3/6 的錯誤可以透過「查 Schema CHECK 約束」避免
+- 1/6 的錯誤可以透過「搜尋函數是否存在」避免
+- 1/6 的錯誤可以透過「搜尋子元件引用處」避免
+- 1/6 的錯誤可以透過「重啟後端」避免
 
 ---
 
@@ -551,6 +698,7 @@ BASE_URL=https://linebot-booking-golf-q3wo.vercel.app
 2. **提供範例或參考：**
    - 提供 UI 設計圖或截圖
    - 說明參考的現有功能
+   - 提供 HTML/CSS 模板（如收費卡模板）效果很好
 
 3. **分階段確認：**
    - 大功能可以分階段確認（資料庫設計 → 後端 API → 前端 UI）
@@ -573,6 +721,44 @@ BASE_URL=https://linebot-booking-golf-q3wo.vercel.app
    - 環境網址（前端、後端）
    - 錯誤訊息截圖或 Console 日誌
    - 已嘗試的解決方法
+
+### AI 協作加速指令（給 AI 的提示）
+
+> 在新對話開始時，可以先請 AI 閱讀此檔案以快速了解專案：
+
+```
+請先閱讀 SKILL.md 了解專案架構和開發規範，再開始實作。
+```
+
+> 需要修改資料庫欄位值時：
+
+```
+請先查 supabase_schema.sql 確認 [表名] 的 CHECK 約束後再寫入。
+```
+
+> 修改子元件後：
+
+```
+修改完元件後，請搜尋所有使用 <ComponentName 的地方，確認 props 已同步更新。
+```
+
+> 新增 API 路由後的提醒：
+
+```
+路由已加入 index.js，請提醒我重啟後端。
+```
+
+> 大功能開發時建議使用的需求格式（如本次收費卡 SOP 格式就很好）：
+
+```
+功能名稱：XXX
+觸發條件：什麼時候使用
+操作流程：1. → 2. → 3.
+UI 需求：描述介面
+資料需求：需要哪些資料
+通知需求：是否需要推播
+參考模板：[附上 HTML/截圖]
+```
 
 ---
 
@@ -629,21 +815,33 @@ supabase migration new <name>    # 建立新 Migration
 
 ### 資料庫 Schema 參考
 
-**費率管理系統表：**
-- `rate_configs` - 費率配置主表
+**核心業務表：**
+- `users` - 用戶資料（含 golfer_type, line_user_id, member_no）
+- `bookings` - 訂位記錄（status CHECK, payment_status CHECK）
+- `waitlist` - 候補名單（status CHECK: queued/notified/confirmed/expired/cancelled）
+- `charge_cards` - 收費卡（status CHECK: created/printed/paid/voided）
+- `caddies` - 桿弟名冊（status CHECK: active/inactive）
+
+**費率管理表：**
+- `rate_configs` - 費率配置主表（含 green_fees, caddy_fees, base_fees, tax_config JSONB）
 - `rate_change_requests` - 費率變更請求
 - `rate_audit_log` - 審計日誌
 - `membership_tiers` - 會員等級定義
 - `membership_benefits_issued` - 禮遇發放記錄
 
-**其他核心表：**
-- `users` - 用戶資料
-- `bookings` - 訂位記錄
-- `system_settings` - 系統參數
+**系統表：**
+- `system_settings` - 系統參數（預約間隔、開放天數等）
 - `admins` - 管理員權限
+- `operational_calendar` - 營運行事曆
+
+**會員等級對應費率 Tier：**
+```
+白金會員 → platinum | 金卡會員 → gold | 社區會員 → gold
+VIP-A → gold | VIP-B → gold | 團友 → team_friend | 來賓 → guest
+```
 
 ---
 
-**文件版本**: v1.0
+**文件版本**: v2.0
 **最後更新**: 2026-02-11
 **維護者**: Development Team + Claude Sonnet 4.5
