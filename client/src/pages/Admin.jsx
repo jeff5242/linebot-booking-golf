@@ -1090,7 +1090,38 @@ function VoucherManagement() {
 
 // Sub-component: StarterDashboard (Existing)
 function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookings, setChargeCardBooking, systemSettings }) {
-    const slots = generateDailySlots(selectedDate, systemSettings || {});
+    const [dateSettings, setDateSettings] = useState(null);
+    const [slotFilter, setSlotFilter] = useState('all'); // 'all' | 'booked'
+
+    // 載入選定日期的營運日曆覆蓋設定
+    useEffect(() => {
+        const fetchDateSettings = async () => {
+            try {
+                const dateStr = format(selectedDate, 'yyyy-MM-dd');
+                const res = await adminFetch(`/api/calendar/status/${dateStr}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setDateSettings(data);
+                } else {
+                    setDateSettings(null);
+                }
+            } catch (err) {
+                console.error('載入日期營運設定失敗:', err);
+                setDateSettings(null);
+            }
+        };
+        fetchDateSettings();
+    }, [selectedDate]);
+
+    // 合併營運日曆覆蓋設定與全域設定
+    const effectiveSettings = dateSettings ? {
+        ...systemSettings,
+        start_time: dateSettings.start_time || systemSettings?.start_time,
+        end_time: dateSettings.end_time || systemSettings?.end_time,
+        interval: dateSettings.interval || systemSettings?.interval,
+    } : (systemSettings || {});
+
+    const slots = generateDailySlots(selectedDate, effectiveSettings);
 
     // Logic for linking bookings (18 holes turn)
     const getBookingAt = (timeStr) => bookings.find(b => b.time === timeStr && b.status !== 'cancelled');
@@ -1247,10 +1278,10 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
             return list;
         };
 
-        // 從系統設定讀取營運時間，fallback 到預設值
-        const [sH, sM] = (systemSettings?.start_time || '05:30').split(':').map(Number);
-        const [eH, eM] = (systemSettings?.end_time || '15:54').split(':').map(Number);
-        const interval = parseInt(systemSettings?.interval) || 6;
+        // 從有效設定讀取營運時間（含日曆覆蓋），fallback 到預設值
+        const [sH, sM] = (effectiveSettings?.start_time || '05:30').split(':').map(Number);
+        const [eH, eM] = (effectiveSettings?.end_time || '15:54').split(':').map(Number);
+        const interval = parseInt(effectiveSettings?.interval) || 6;
 
         const allTimes = generateTimeList(sH, sM, eH, eM, interval);
         const mid = Math.ceil(allTimes.length / 2);
@@ -1359,11 +1390,14 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                {systemSettings && (
-                    <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-                        營業時間 {systemSettings.start_time || '05:30'} ~ {systemSettings.end_time || '17:00'} ｜ 間隔 {systemSettings.interval || 10} 分鐘
-                    </span>
-                )}
+                <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                    營業時間 {effectiveSettings.start_time || '05:30'} ~ {effectiveSettings.end_time || '17:00'} ｜ 間隔 {effectiveSettings.interval || 10} 分鐘
+                    {dateSettings?.source === 'calendar_override' && (
+                        <span style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', background: '#fef3c7', color: '#92400e' }}>
+                            日曆覆蓋
+                        </span>
+                    )}
+                </span>
                 <button
                     onClick={handleExportSheet}
                     className="btn"
@@ -1376,6 +1410,33 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                 <Calendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
             </div>
             <div className="card" style={{ overflowX: 'auto' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', borderBottom: '1px solid #e5e7eb' }}>
+                    <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid #d1d5db' }}>
+                        <button
+                            onClick={() => setSlotFilter('all')}
+                            style={{
+                                padding: '4px 12px', fontSize: '0.8rem', border: 'none', cursor: 'pointer',
+                                background: slotFilter === 'all' ? '#3b82f6' : '#f9fafb',
+                                color: slotFilter === 'all' ? '#fff' : '#4b5563',
+                                fontWeight: slotFilter === 'all' ? 'bold' : 'normal'
+                            }}
+                        >
+                            全部時段
+                        </button>
+                        <button
+                            onClick={() => setSlotFilter('booked')}
+                            style={{
+                                padding: '4px 12px', fontSize: '0.8rem', border: 'none', cursor: 'pointer',
+                                borderLeft: '1px solid #d1d5db',
+                                background: slotFilter === 'booked' ? '#3b82f6' : '#f9fafb',
+                                color: slotFilter === 'booked' ? '#fff' : '#4b5563',
+                                fontWeight: slotFilter === 'booked' ? 'bold' : 'normal'
+                            }}
+                        >
+                            有預約時段
+                        </button>
+                    </div>
+                </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr style={{ textAlign: 'left', borderBottom: '2px solid #e5e7eb' }}>
@@ -1388,7 +1449,11 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                         </tr>
                     </thead>
                     <tbody>
-                        {slots.map(slot => {
+                        {slots.filter(slot => {
+                            if (slotFilter === 'all') return true;
+                            const timeStr = format(slot, 'HH:mm:ss');
+                            return getBookingAt(timeStr) || getLinkedBooking(slot);
+                        }).map(slot => {
                             const timeStr = format(slot, 'HH:mm:ss');
                             const displayTime = format(slot, 'HH:mm');
                             const booking = getBookingAt(timeStr);

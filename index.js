@@ -605,7 +605,7 @@ app.get('/api/calendar/conflicts/:date', requireAuth('operational_calendar'), as
 });
 
 // 取得日期營運狀態（含全域設定合併）
-app.get('/api/calendar/status/:date', requireAuth('operational_calendar'), async (req, res) => {
+app.get('/api/calendar/status/:date', requireAuth(), async (req, res) => {
   try {
     const globalSettings = await getSettings();
     const status = await OperationalCalendar.getDateOperationalStatus(
