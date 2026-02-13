@@ -143,15 +143,15 @@ export function OperationalCalendar() {
             {/* 快速操作卡片 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <QuickActionCard
-                    title="批次套用範本"
-                    icon="📅"
-                    description="選擇日期區間，套用全域設定"
-                    onClick={() => setShowBatchModal(true)}
-                />
-                <QuickActionCard
                     title="批次休場設定"
                     icon="🚫"
                     description="快速設定多日休場"
+                    onClick={() => setShowBatchModal(true)}
+                />
+                <QuickActionCard
+                    title="批次自定義設定"
+                    icon="📅"
+                    description="選擇日期區間，自定義營運設定"
                     onClick={() => setShowBatchModal(true)}
                 />
                 <StatCard
@@ -502,7 +502,7 @@ function BatchSettingsModal({ onClose, onSave }) {
     const [formData, setFormData] = useState({
         start_date: '',
         end_date: '',
-        operation_type: 'apply_template',
+        operation_type: 'bulk_close',
         exclude_weekdays: []
     });
 
@@ -568,9 +568,9 @@ function BatchSettingsModal({ onClose, onSave }) {
                             onChange={(e) => setFormData({ ...formData, operation_type: e.target.value })}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         >
-                            <option value="apply_template">套用全域範本</option>
                             <option value="bulk_close">批次設為休場</option>
                             <option value="bulk_override">批次自定義設定</option>
+                            <option value="apply_template">套用全域範本</option>
                         </select>
                     </div>
                 </div>

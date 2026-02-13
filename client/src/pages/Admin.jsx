@@ -1409,6 +1409,20 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
             <div style={{ marginBottom: '10px' }}>
                 <Calendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
             </div>
+            {dateSettings && (dateSettings.status === 'closed' || dateSettings.status === 'emergency_closed') && (
+                <div style={{
+                    padding: '12px 16px', marginBottom: '10px', borderRadius: '8px',
+                    background: dateSettings.status === 'emergency_closed' ? '#fef2f2' : '#fef3c7',
+                    border: `1px solid ${dateSettings.status === 'emergency_closed' ? '#fecaca' : '#fde68a'}`,
+                    color: dateSettings.status === 'emergency_closed' ? '#991b1b' : '#92400e',
+                    fontWeight: 'bold', textAlign: 'center'
+                }}>
+                    {dateSettings.status === 'emergency_closed' ? '緊急休場' : '本日休場'}
+                    {dateSettings.closure_reason && (
+                        <span style={{ fontWeight: 'normal', marginLeft: '8px' }}>— {dateSettings.closure_reason}</span>
+                    )}
+                </div>
+            )}
             <div className="card" style={{ overflowX: 'auto' }}>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', borderBottom: '1px solid #e5e7eb' }}>
                     <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid #d1d5db' }}>
