@@ -81,18 +81,20 @@ export function AdminLogin() {
                     return;
                 }
 
-                // OTP 驗證成功，透過後端 API 取得 JWT
-                // 使用管理員的密碼進行後端登入（OTP 已驗證身份）
-                // 這裡暫時使用 Supabase 取得密碼後呼叫後端
-                const { data: adminData } = await supabase
-                    .from('admins')
-                    .select('password')
-                    .eq('username', username)
-                    .single();
-
-                if (adminData) {
-                    await loginViaApi(username, adminData.password);
+                // OTP 驗證成功，透過 OTP 專用端點取得 JWT（不需密碼）
+                const apiUrl = import.meta.env.VITE_API_URL || '';
+                const res = await fetch(`${apiUrl}/api/admin/login-otp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username }),
+                });
+                const result = await res.json();
+                if (!res.ok) {
+                    alert(result.error || '登入失敗');
+                    return;
                 }
+                storeLoginResult(result);
+                navigate('/admin');
 
             } else {
                 // Username/Password Login - 透過後端 API

@@ -80,10 +80,58 @@ async function login(username, password) {
 }
 
 /**
+ * OTP 驗證後登入（跳過密碼驗證）
+ * @param {string} username
+ * @returns {{ token, admin, permissions }}
+ */
+async function loginByOtp(username) {
+    const { data: admin, error } = await supabase
+        .from('admins')
+        .select('*')
+        .eq('username', username)
+        .maybeSingle();
+
+    if (error || !admin) {
+        throw new Error('此帳號不是管理員');
+    }
+
+    const { data: role } = await supabase
+        .from('roles')
+        .select('permissions')
+        .eq('name', admin.role || 'super_admin')
+        .single();
+
+    const permissions = role?.permissions || [];
+
+    const token = jwt.sign(
+        {
+            adminId: admin.id,
+            username: admin.username,
+            name: admin.name,
+            role: admin.role || 'super_admin',
+            permissions,
+        },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    return {
+        token,
+        admin: {
+            id: admin.id,
+            name: admin.name,
+            username: admin.username,
+            role: admin.role || 'super_admin',
+        },
+        permissions,
+    };
+}
+
+/**
  * 驗證 JWT Token
  */
 function verifyToken(token) {
     return jwt.verify(token, JWT_SECRET);
 }
 
-module.exports = { login, verifyToken };
+module.exports = { login, loginByOtp, verifyToken };

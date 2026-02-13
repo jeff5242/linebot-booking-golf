@@ -25,7 +25,7 @@ const { generateTimeSlots, processWaitlist } = require('./services/BookingLogic'
 const OperationalCalendar = require('./services/OperationalCalendar');
 const CaddyManagement = require('./services/CaddyManagement');
 const ChargeCard = require('./services/ChargeCard');
-const { login: adminLogin } = require('./services/AuthService');
+const { login: adminLogin, loginByOtp: adminLoginByOtp } = require('./services/AuthService');
 const { requireAuth, optionalAuth } = require('./middleware/auth');
 const RoleMgmt = require('./services/RoleManagement');
 const bcrypt = require('bcryptjs');
@@ -99,6 +99,20 @@ app.post('/api/admin/login', async (req, res) => {
             return res.status(400).json({ error: '帳號和密碼為必填' });
         }
         const result = await adminLogin(username, password);
+        res.json(result);
+    } catch (error) {
+        res.status(401).json({ error: error.message });
+    }
+});
+
+// OTP 驗證後登入（跳過密碼驗證）
+app.post('/api/admin/login-otp', async (req, res) => {
+    try {
+        const { username } = req.body;
+        if (!username) {
+            return res.status(400).json({ error: '帳號為必填' });
+        }
+        const result = await adminLoginByOtp(username);
         res.json(result);
     } catch (error) {
         res.status(401).json({ error: error.message });
