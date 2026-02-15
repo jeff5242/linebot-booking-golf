@@ -45,7 +45,7 @@ const beforeLoginMenu = {
             action: {
                 type: 'uri',
                 label: '升級會員 / 運勢卡',
-                uri: `${LIFF_BASE_URL}/register`,
+                uri: `${LIFF_BASE_URL}/fortune`,
             },
         },
         {

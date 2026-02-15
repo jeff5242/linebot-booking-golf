@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
 export function Fortune() {
     const [revealed, setRevealed] = useState(false);
     const [fortune, setFortune] = useState(null);
+    const navigate = useNavigate();
 
     const fortunes = [
         { title: "大吉", desc: "今日運勢極佳，揮桿如有神助！" },
@@ -66,6 +68,17 @@ export function Fortune() {
                     )}
                 </AnimatePresence>
             </div>
-        </div>
+
+
+            <motion.button
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1 }}
+                onClick={() => navigate('/register')}
+                className="mt-12 px-8 py-3 bg-white text-indigo-900 rounded-full font-bold shadow-lg hover:bg-gray-100 transition-colors"
+            >
+                立即加入會員
+            </motion.button>
+        </div >
     );
 }
