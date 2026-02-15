@@ -8,6 +8,19 @@ export function Register() {
     const [loading, setLoading] = useState(false);
     const [isLineLoggedIn, setIsLineLoggedIn] = useState(false);
 
+    // Rich Menu Sync Helper
+    const refreshRichMenu = async (lineUserId) => {
+        try {
+            await fetch(`${apiUrl}/api/user/richmenu`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lineUserId })
+            });
+        } catch (e) {
+            console.error('Rich Menu sync failed', e);
+        }
+    };
+
     // OTP State
     const [verificationSent, setVerificationSent] = useState(false);
     const [otp, setOtp] = useState('');
@@ -65,6 +78,7 @@ export function Register() {
 
             if (existingUser) {
                 console.log('用戶已註冊，跳轉到個人中心');
+                await refreshRichMenu(lineUserId);
                 navigate('/member');
             }
         } catch (err) {
@@ -155,6 +169,7 @@ export function Register() {
             localStorage.setItem('golf_user_name', formData.name || data.user?.display_name || '');
 
             alert('註冊成功！');
+            await refreshRichMenu(lineUserId);
             window.location.href = '/member';
 
         } catch (error) {

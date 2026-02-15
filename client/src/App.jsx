@@ -13,6 +13,20 @@ import { Fortune } from './pages/Fortune';
 import { CourseInfo } from './pages/CourseInfo';
 import { supabase } from './supabase';
 
+// Helper to refresh Rich Menu
+const refreshRichMenu = async (lineUserId) => {
+  try {
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+    await fetch(`${apiUrl}/api/user/richmenu`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lineUserId })
+    });
+  } catch (e) {
+    console.error('Rich Menu sync failed', e);
+  }
+};
+
 import liff from '@line/liff';
 
 function ProtectedRoute({ children }) {
@@ -104,6 +118,8 @@ function ProtectedRoute({ children }) {
         localStorage.setItem('golf_user_phone', user.phone);
         localStorage.setItem('golf_user_name', user.display_name);
         setIsRegistered(true); // Set registered if user found
+        // Sync Rich Menu
+        refreshRichMenu(profile.userId);
       } else {
         // Not registered, but logged in LINE
         setIsRegistered(false); // Explicitly set to false if not registered

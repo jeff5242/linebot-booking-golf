@@ -298,7 +298,7 @@ export function MemberCenter() {
             {/* 快捷操作 */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
                 <button
-                    onClick={() => navigate('/booking')}
+                    onClick={() => navigate('/')}
                     style={{
                         flex: 1, padding: '12px', borderRadius: '10px', border: 'none',
                         background: '#2e7d32', color: 'white', fontWeight: 'bold',

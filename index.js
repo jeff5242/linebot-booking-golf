@@ -524,6 +524,35 @@ app.post('/api/bookings/:id/cancel', requireAuth('starter'), async (req, res) =>
   }
 });
 
+// 手動更新用戶 Rich Menu API
+app.post('/api/user/richmenu', async (req, res) => {
+  try {
+    const { lineUserId } = req.body;
+    if (!lineUserId) {
+      return res.status(400).json({ error: 'Missing lineUserId' });
+    }
+
+    // Check availability
+    const { data: user } = await supabase
+      .from('users')
+      .select('id')
+      .eq('line_user_id', lineUserId)
+      .maybeSingle();
+
+    if (user) {
+      await RichMenuService.switchToMemberMenu(lineUserId);
+      return res.json({ success: true, mode: 'member' });
+    } else {
+      // Intentionally do not switch back to default here automatically to avoid overwriting if there's a specific reason, 
+      // but for "refresh" logic, we might want to ensure consistency. 
+      // For now, only upgrade to member menu if user exists.
+      return res.json({ success: false, message: 'User not found' });
+    }
+  } catch (error) {
+    console.error('Rich Menu Update Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // 處理 LINE 事件
 async function handleEvent(event) {
