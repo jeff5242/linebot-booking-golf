@@ -18,18 +18,22 @@ export const sendLiffMessage = async (text) => {
 
         if (!liff.isLoggedIn()) {
             console.log('User not logged in, cannot send message');
+            // alert('Debug: User not logged in to LIFF');
             return false;
         }
 
         if (!liff.isInClient()) {
             console.log('Not in LINE client, cannot send message');
-            // Alternatively, we could alert the user, but for "logging" purposes we just skip
+            // alert('Debug: Not in LINE client');
             return false;
         }
 
-        // Check for permission (optional but good practice)
-        // const context = liff.getContext();
-        // if (context && context.type === 'none') return false;
+        // Check context
+        const context = liff.getContext();
+        if (context && context.type === 'none') {
+            // alert('Debug: LIFF context is none. Cannot send messages.');
+            return false;
+        }
 
         await liff.sendMessages([
             {
@@ -41,6 +45,7 @@ export const sendLiffMessage = async (text) => {
         return true;
     } catch (error) {
         console.error('Error sending LIFF message:', error);
+        alert(`Debug Error: ${error.message || error}`);
         return false;
     }
 };
