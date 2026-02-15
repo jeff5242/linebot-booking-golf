@@ -1,12 +1,61 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 export function CourseInfo() {
-    const fees = [
-        { type: '平日 (早球)', price: '2,200', note: '06:00 - 08:00' },
-        { type: '平日 (一般)', price: '2,800', note: '08:00 - 14:00' },
-        { type: '假日 (早球)', price: '3,200', note: '06:00 - 08:00' },
-        { type: '假日 (一般)', price: '3,800', note: '08:00 - 14:00' },
-    ];
+    const [rates, setRates] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        const fetchRates = async () => {
+            try {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+                const res = await fetch(`${apiUrl}/api/rates/active`);
+                if (!res.ok) {
+                    throw new Error('Failed to fetch rates');
+                }
+                const data = await res.json();
+                setRates(data);
+            } catch (err) {
+                console.error('Error fetching rates:', err);
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchRates();
+    }, []);
+
+    const calculatePrice = (tier, holes, isHoliday) => {
+        if (!rates) return '---';
+        try {
+            const typeKey = isHoliday ? 'holiday' : 'weekday';
+            const greenFee = rates.green_fees[tier][holes][typeKey];
+            const cleaningFee = rates.base_fees.cleaning[holes];
+            const cartFee = rates.base_fees.cart_per_person[holes];
+
+            // Default to 1:4 caddy ratio if available, otherwise try 1:1 or first available
+            let caddyFee = 0;
+            if (rates.caddy_fees['1:4']) {
+                caddyFee = rates.caddy_fees['1:4'][holes];
+            } else if (rates.caddy_fees['1:1']) {
+                caddyFee = rates.caddy_fees['1:1'][holes];
+            } else {
+                // Fallback: take the first key
+                const firstKey = Object.keys(rates.caddy_fees)[0];
+                if (firstKey) caddyFee = rates.caddy_fees[firstKey][holes];
+            }
+
+            const taxRate = rates.tax_config.entertainment_tax || 0.05;
+            const tax = Math.round((greenFee + cartFee) * taxRate);
+
+            const total = greenFee + cleaningFee + cartFee + caddyFee + tax;
+            return total.toLocaleString();
+        } catch (e) {
+            console.error('Price calc error:', e);
+            return 'N/A';
+        }
+    };
 
     const facilities = [
         { title: '練習場', icon: '⛳️', desc: '全天候開放，擁有 50 個打位。' },
@@ -19,7 +68,7 @@ export function CourseInfo() {
         <div className="min-h-screen bg-gray-50 flex flex-col">
             {/* Hero Section */}
             <div className="bg-green-800 text-white py-12 px-6 text-center shadow-md">
-                <h1 className="text-3xl font-bold mb-2">大衛營高爾夫球場</h1>
+                <h1 className="text-3xl font-bold mb-2">大衛營高爾夫球場 (九洞)</h1>
                 <p className="text-green-200">享受揮桿樂趣的最佳選擇</p>
             </div>
 
@@ -27,36 +76,98 @@ export function CourseInfo() {
                 {/* Course Intro */}
                 <section className="bg-white rounded-xl shadow-sm p-6">
                     <h2 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">球場簡介</h2>
-                    <p className="text-gray-600 leading-relaxed">
-                        大衛營高爾夫球場座落於風景秀麗的山林之間，擁有標準 18 洞設計。
-                        球道起伏多變，極具挑戰性，適合各級球友前來挑戰。我們致力於提供最優質的擊球體驗與服務。
-                    </p>
+                    <div className="space-y-4 text-gray-600 leading-relaxed">
+                        <p>
+                            <span className="font-bold text-gray-800">特色：</span>
+                            球場設計風景優美，以七個水池作為主要障礙，考驗準度。雖然只有九洞，但採雙果嶺設計（一洞兩果嶺），讓前後九洞有不同體驗。全長約 待確認 碼。
+                        </p>
+                        <p>
+                            <span className="font-bold text-gray-800">非典型球場：</span>
+                            該球場屬於非教育部的社區運動休閒設施，鼓勵步行擊球以健身。
+                        </p>
+                        <p>
+                            <span className="font-bold text-gray-800">初學者友善：</span>
+                            因球道保養良好且收費較低，常被視為高雄球友入門高爾夫的 First Choice。
+                        </p>
+                    </div>
+                </section>
+
+                {/* Location */}
+                <section className="bg-white rounded-xl shadow-sm p-6">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">位置與交通</h2>
+                    <div className="space-y-2 text-gray-600">
+                        <p><span className="font-bold">地點：</span>高雄市旗山區大林里溝坪路98-1號。</p>
+                        <p><span className="font-bold">環境：</span>坐落於山區，風景秀麗，類似世外桃源。</p>
+                    </div>
                 </section>
 
                 {/* Fees */}
                 <section className="bg-white rounded-xl shadow-sm p-6">
                     <h2 className="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">收費標準</h2>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="bg-gray-100 text-gray-600 text-sm uppercase">
-                                    <th className="py-3 px-4">時段</th>
-                                    <th className="py-3 px-4">價格 (NT$)</th>
-                                    <th className="py-3 px-4">備註</th>
-                                </tr>
-                            </thead>
-                            <tbody className="text-gray-700">
-                                {fees.map((fee, idx) => (
-                                    <tr key={idx} className="border-b last:border-0 hover:bg-gray-50">
-                                        <td className="py-3 px-4 font-medium">{fee.type}</td>
-                                        <td className="py-3 px-4 text-green-700 font-bold">{fee.price}</td>
-                                        <td className="py-3 px-4 text-gray-500 text-sm">{fee.note}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    <p className="mt-4 text-xs text-gray-400">* 價格包含果嶺費、桿弟費、球車費與保險。</p>
+                    {loading ? (
+                        <div className="text-center py-8 text-gray-500">載入價格中...</div>
+                    ) : error ? (
+                        <div className="text-center py-8 text-red-500">無法載入價格資訊</div>
+                    ) : (
+                        <>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-green-50 text-green-800 text-sm uppercase">
+                                            <th className="py-3 px-4 border-b border-green-100">身份別</th>
+                                            <th className="py-3 px-4 border-b border-green-100 text-center">9 洞 (平日/假日)</th>
+                                            <th className="py-3 px-4 border-b border-green-100 text-center">18 洞 (平日/假日)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="text-gray-700">
+                                        <tr className="border-b last:border-0 hover:bg-gray-50">
+                                            <td className="py-4 px-4 font-bold text-gray-800">白金會員 (Platinum)</td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className="font-medium text-green-700">${calculatePrice('platinum', 9, false)}</span>
+                                                <span className="mx-2 text-gray-300">/</span>
+                                                <span className="font-medium text-red-600">${calculatePrice('platinum', 9, true)}</span>
+                                            </td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className="font-medium text-green-700">${calculatePrice('platinum', 18, false)}</span>
+                                                <span className="mx-2 text-gray-300">/</span>
+                                                <span className="font-medium text-red-600">${calculatePrice('platinum', 18, true)}</span>
+                                            </td>
+                                        </tr>
+                                        <tr className="border-b last:border-0 hover:bg-gray-50">
+                                            <td className="py-4 px-4 font-bold text-gray-800">金卡會員 (Gold)</td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className="font-medium text-green-700">${calculatePrice('gold', 9, false)}</span>
+                                                <span className="mx-2 text-gray-300">/</span>
+                                                <span className="font-medium text-red-600">${calculatePrice('gold', 9, true)}</span>
+                                            </td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className="font-medium text-green-700">${calculatePrice('gold', 18, false)}</span>
+                                                <span className="mx-2 text-gray-300">/</span>
+                                                <span className="font-medium text-red-600">${calculatePrice('gold', 18, true)}</span>
+                                            </td>
+                                        </tr>
+                                        <tr className="border-b last:border-0 hover:bg-gray-50">
+                                            <td className="py-4 px-4 font-bold text-gray-800">來賓 (Guest)</td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className="font-medium text-green-700">${calculatePrice('guest', 9, false)}</span>
+                                                <span className="mx-2 text-gray-300">/</span>
+                                                <span className="font-medium text-red-600">${calculatePrice('guest', 9, true)}</span>
+                                            </td>
+                                            <td className="py-4 px-4 text-center">
+                                                <span className="font-medium text-green-700">${calculatePrice('guest', 18, false)}</span>
+                                                <span className="mx-2 text-gray-300">/</span>
+                                                <span className="font-medium text-red-600">${calculatePrice('guest', 18, true)}</span>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p className="mt-4 text-xs text-gray-500">
+                                * 以上價格包含：果嶺費、桿弟費（1:4）、球車費、清潔費及娛樂稅。<br />
+                                * 實際費用可能因桿弟配比調整而有所變動，以現場報價為準。
+                            </p>
+                        </>
+                    )}
                 </section>
 
                 {/* Facilities */}
@@ -72,16 +183,6 @@ export function CourseInfo() {
                                 </div>
                             </div>
                         ))}
-                    </div>
-                </section>
-
-                {/* Contact/Map Placeholder */}
-                <section className="bg-white rounded-xl shadow-sm p-6 text-center">
-                    <h2 className="text-xl font-bold text-gray-800 mb-2">聯絡我們</h2>
-                    <p className="text-gray-600">地址：桃園市大溪區大衛營路 1 號</p>
-                    <p className="text-gray-600">電話：(03) 123-4567</p>
-                    <div className="mt-4 bg-gray-200 h-48 rounded-lg flex items-center justify-center text-gray-500">
-                        [Google Map Placeholder]
                     </div>
                 </section>
             </div>
