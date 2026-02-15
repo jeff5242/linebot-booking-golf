@@ -95,103 +95,103 @@ app.use(express.json()); // For handling payment API bodies and other JSON reque
 
 // 管理員登入
 app.post('/api/admin/login', async (req, res) => {
-    try {
-        const { username, password } = req.body;
-        if (!username || !password) {
-            return res.status(400).json({ error: '帳號和密碼為必填' });
-        }
-        const result = await adminLogin(username, password);
-        res.json(result);
-    } catch (error) {
-        res.status(401).json({ error: error.message });
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: '帳號和密碼為必填' });
     }
+    const result = await adminLogin(username, password);
+    res.json(result);
+  } catch (error) {
+    res.status(401).json({ error: error.message });
+  }
 });
 
 // OTP 驗證後登入（跳過密碼驗證）
 app.post('/api/admin/login-otp', async (req, res) => {
-    try {
-        const { username } = req.body;
-        if (!username) {
-            return res.status(400).json({ error: '帳號為必填' });
-        }
-        const result = await adminLoginByOtp(username);
-        res.json(result);
-    } catch (error) {
-        res.status(401).json({ error: error.message });
+  try {
+    const { username } = req.body;
+    if (!username) {
+      return res.status(400).json({ error: '帳號為必填' });
     }
+    const result = await adminLoginByOtp(username);
+    res.json(result);
+  } catch (error) {
+    res.status(401).json({ error: error.message });
+  }
 });
 
 // 取得當前管理員資訊
 app.get('/api/admin/me', requireAuth(), async (req, res) => {
-    res.json(req.admin);
+  res.json(req.admin);
 });
 
 // 管理員列表
 app.get('/api/admin/list', requireAuth('admins'), async (req, res) => {
-    try {
-        const { data, error } = await supabase
-            .from('admins')
-            .select('id, username, name, role, created_at')
-            .order('created_at', { ascending: false });
-        if (error) throw error;
-        res.json(data);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+  try {
+    const { data, error } = await supabase
+      .from('admins')
+      .select('id, username, name, role, created_at')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // 新增管理員
 app.post('/api/admin/create', requireAuth('admins'), async (req, res) => {
-    try {
-        const { name, username, password, role } = req.body;
-        if (!name || !username || !password) {
-            return res.status(400).json({ error: '名稱、帳號和密碼為必填' });
-        }
-        const password_hash = await bcrypt.hash(password, 10);
-        const { data, error } = await supabase
-            .from('admins')
-            .insert([{ name, username, password: '***', password_hash, role: role || 'starter' }])
-            .select('id, username, name, role, created_at')
-            .single();
-        if (error) throw error;
-        res.json(data);
-    } catch (error) {
-        res.status(400).json({ error: error.message });
+  try {
+    const { name, username, password, role } = req.body;
+    if (!name || !username || !password) {
+      return res.status(400).json({ error: '名稱、帳號和密碼為必填' });
     }
+    const password_hash = await bcrypt.hash(password, 10);
+    const { data, error } = await supabase
+      .from('admins')
+      .insert([{ name, username, password: '***', password_hash, role: role || 'starter' }])
+      .select('id, username, name, role, created_at')
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // 更新管理員
 app.put('/api/admin/:id', requireAuth('admins'), async (req, res) => {
-    try {
-        const { role, name } = req.body;
-        const updateData = {};
-        if (role) updateData.role = role;
-        if (name) updateData.name = name;
-        const { data, error } = await supabase
-            .from('admins')
-            .update(updateData)
-            .eq('id', req.params.id)
-            .select('id, username, name, role, created_at')
-            .single();
-        if (error) throw error;
-        res.json(data);
-    } catch (error) {
-        res.status(400).json({ error: error.message });
-    }
+  try {
+    const { role, name } = req.body;
+    const updateData = {};
+    if (role) updateData.role = role;
+    if (name) updateData.name = name;
+    const { data, error } = await supabase
+      .from('admins')
+      .update(updateData)
+      .eq('id', req.params.id)
+      .select('id, username, name, role, created_at')
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // 刪除管理員
 app.delete('/api/admin/:id', requireAuth('admins'), async (req, res) => {
-    try {
-        if (req.params.id === req.admin.adminId) {
-            return res.status(400).json({ error: '無法刪除自己的帳號' });
-        }
-        const { error } = await supabase.from('admins').delete().eq('id', req.params.id);
-        if (error) throw error;
-        res.json({ success: true });
-    } catch (error) {
-        res.status(400).json({ error: error.message });
+  try {
+    if (req.params.id === req.admin.adminId) {
+      return res.status(400).json({ error: '無法刪除自己的帳號' });
     }
+    const { error } = await supabase.from('admins').delete().eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // ============================================
@@ -199,39 +199,39 @@ app.delete('/api/admin/:id', requireAuth('admins'), async (req, res) => {
 // ============================================
 
 app.get('/api/roles', requireAuth('admins'), async (req, res) => {
-    try {
-        const roles = await RoleMgmt.getAllRoles();
-        res.json(roles);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+  try {
+    const roles = await RoleMgmt.getAllRoles();
+    res.json(roles);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post('/api/roles', requireAuth('admins'), async (req, res) => {
-    try {
-        const role = await RoleMgmt.createRole(req.body);
-        res.json(role);
-    } catch (error) {
-        res.status(400).json({ error: error.message });
-    }
+  try {
+    const role = await RoleMgmt.createRole(req.body);
+    res.json(role);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 app.put('/api/roles/:id', requireAuth('admins'), async (req, res) => {
-    try {
-        const role = await RoleMgmt.updateRole(req.params.id, req.body);
-        res.json(role);
-    } catch (error) {
-        res.status(400).json({ error: error.message });
-    }
+  try {
+    const role = await RoleMgmt.updateRole(req.params.id, req.body);
+    res.json(role);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 app.delete('/api/roles/:id', requireAuth('admins'), async (req, res) => {
-    try {
-        const result = await RoleMgmt.deleteRole(req.params.id);
-        res.json(result);
-    } catch (error) {
-        res.status(400).json({ error: error.message });
-    }
+  try {
+    const result = await RoleMgmt.deleteRole(req.params.id);
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // 健康檢查端點
@@ -846,7 +846,13 @@ app.post('/api/otp/send', async (req, res) => {
     }
     const result = await OtpService.sendOtp(phone, purpose || 'registration');
     if (!result.success) {
-      return res.status(429).json({ error: result.message });
+      // 根據錯誤代碼回傳適當的 HTTP Status
+      if (result.code === 'COOLDOWN' || result.code === 'LIMIT_REACHED') {
+        return res.status(429).json({ error: result.message, code: result.code });
+      } else if (result.code === 'SMS_FAILED' || result.code === 'DB_ERROR') {
+        return res.status(500).json({ error: result.message, code: result.code });
+      }
+      return res.status(400).json({ error: result.message });
     }
     res.json(result);
   } catch (error) {
@@ -949,7 +955,7 @@ app.post('/api/member/register', async (req, res) => {
     }
 
     // 註冊成功 → 切換 Rich Menu 為會員版
-    RichMenuService.switchToMemberMenu(lineUserId).catch(() => {});
+    RichMenuService.switchToMemberMenu(lineUserId).catch(() => { });
 
     res.json({
       success: true,

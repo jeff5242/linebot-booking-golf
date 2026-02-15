@@ -65,9 +65,8 @@ async function sendSms(phone, message, options = {}) {
         const apiUrlWithCharset = `${MITAKE_API_URL}?CharsetURL=UTF-8`;
 
         // Debug: 記錄使用的帳號資訊（遮罩處理）
-        const maskedUser = MITAKE_USERNAME ? `${MITAKE_USERNAME.slice(0, 3)}***${MITAKE_USERNAME.slice(-2)}` : 'EMPTY';
-        const maskedPass = MITAKE_PASSWORD ? `${MITAKE_PASSWORD.length}chars` : 'EMPTY';
-        console.log(`[SMS] Sending to ${phone}, user=${maskedUser}, pass=${maskedPass}, url=${MITAKE_API_URL}`);
+        // Cleaned up debug info as per request
+        console.log(`[SMS] Sending to ${phone}, url=${MITAKE_API_URL}`);
 
         const params = new URLSearchParams();
         params.append('username', MITAKE_USERNAME);
@@ -109,8 +108,8 @@ async function sendSms(phone, message, options = {}) {
         } else {
             console.error(`[SMS] 發送失敗 → ${phone}, statusCode: ${statusCode}, response: ${responseText}`);
 
-            // 記錄遮罩後的帳號資訊，供遠端除錯
-            const debugInfo = `user=${maskedUser},pass=${maskedPass},url=${MITAKE_API_URL}`;
+            // 記錄帳號資訊，供遠端除錯
+            const debugInfo = `url=${MITAKE_API_URL}`;
             await logSms({
                 phone, message, otpCode, purpose,
                 msgId, statusCode, status: 'failed',

@@ -9,6 +9,8 @@ import { AdminLogin } from './pages/AdminLogin';
 import { PaymentSuccess } from './pages/PaymentSuccess';
 import { PaymentFailure } from './pages/PaymentFailure';
 import { MemberCenter } from './pages/MemberCenter';
+import { Fortune } from './pages/Fortune';
+import { CourseInfo } from './pages/CourseInfo';
 import { supabase } from './supabase';
 
 import liff from '@line/liff';
@@ -140,6 +142,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/fortune" element={<Fortune />} />
+        <Route path="/course-info" element={<CourseInfo />} />
         <Route path="/register" element={<Register />} />
 
         {/* Admin Routes */}

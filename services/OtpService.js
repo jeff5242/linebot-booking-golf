@@ -31,7 +31,7 @@ async function sendOtp(phone, purpose = 'registration') {
         .maybeSingle();
 
     if (recentOtp) {
-        return { success: false, message: '請稍候再試，每 60 秒只能發送一次驗證碼' };
+        return { success: false, message: '請稍候再試，每 60 秒只能發送一次驗證碼', code: 'COOLDOWN' };
     }
 
     // 2. 每日上限檢查
@@ -44,7 +44,7 @@ async function sendOtp(phone, purpose = 'registration') {
         .gte('created_at', todayStart.toISOString());
 
     if (count >= OTP_DAILY_LIMIT) {
-        return { success: false, message: '今日驗證碼發送次數已達上限，請明天再試' };
+        return { success: false, message: '今日驗證碼發送次數已達上限，請明天再試', code: 'LIMIT_REACHED' };
     }
 
     // 3. 產生 6 位數 OTP
@@ -63,7 +63,7 @@ async function sendOtp(phone, purpose = 'registration') {
 
     if (insertError) {
         console.error('[OTP] 儲存失敗:', insertError.message);
-        return { success: false, message: '系統錯誤，請稍後再試' };
+        return { success: false, message: '系統錯誤，請稍後再試', code: 'DB_ERROR' };
     }
 
     // 5. 發送簡訊（帶入 OTP code 和 purpose 供記錄）
@@ -75,7 +75,7 @@ async function sendOtp(phone, purpose = 'registration') {
 
     if (!smsResult.success) {
         console.error('[OTP] 簡訊發送失敗:', smsResult.error);
-        return { success: false, message: '簡訊發送失敗，請確認手機號碼是否正確' };
+        return { success: false, message: '簡訊發送失敗，請確認手機號碼是否正確', code: 'SMS_FAILED' };
     }
 
     return {
