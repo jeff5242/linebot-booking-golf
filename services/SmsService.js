@@ -64,6 +64,11 @@ async function sendSms(phone, message, options = {}) {
         // 三竹 HTTP API: CharsetURL 必須放在 URL query string，不能放在 POST body
         const apiUrlWithCharset = `${MITAKE_API_URL}?CharsetURL=UTF-8`;
 
+        // Debug: 記錄使用的帳號資訊（遮罩處理）
+        const maskedUser = MITAKE_USERNAME ? `${MITAKE_USERNAME.slice(0, 3)}***${MITAKE_USERNAME.slice(-2)}` : 'EMPTY';
+        const maskedPass = MITAKE_PASSWORD ? `${MITAKE_PASSWORD.length}chars` : 'EMPTY';
+        console.log(`[SMS] Sending to ${phone}, user=${maskedUser}, pass=${maskedPass}, url=${MITAKE_API_URL}`);
+
         const params = new URLSearchParams();
         params.append('username', MITAKE_USERNAME);
         params.append('password', MITAKE_PASSWORD);
