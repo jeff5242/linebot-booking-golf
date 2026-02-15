@@ -109,10 +109,12 @@ async function sendSms(phone, message, options = {}) {
         } else {
             console.error(`[SMS] 發送失敗 → ${phone}, statusCode: ${statusCode}, response: ${responseText}`);
 
+            // 記錄遮罩後的帳號資訊，供遠端除錯
+            const debugInfo = `user=${maskedUser},pass=${maskedPass},url=${MITAKE_API_URL}`;
             await logSms({
                 phone, message, otpCode, purpose,
                 msgId, statusCode, status: 'failed',
-                accountPoint, errorMessage: `簡訊發送失敗 (${statusCode})`,
+                accountPoint, errorMessage: `簡訊發送失敗 (${statusCode}) [${debugInfo}]`,
             });
 
             return { success: false, statusCode, error: `簡訊發送失敗 (${statusCode})` };
