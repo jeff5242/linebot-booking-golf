@@ -604,6 +604,11 @@ LINE_CHANNEL_SECRET=...
 SUPABASE_URL=https://yjglsxbvjhdfwmdtaspj.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=...
 BASE_URL=https://linebot-booking-golf-q3wo.vercel.app
+MITAKE_USERNAME=...          # 三竹簡訊帳號（⚠️ 海外 IP 問題待解決）
+MITAKE_PASSWORD=...          # 三竹簡訊密碼
+MITAKE_API_URL=https://smsapi.mitake.com.tw/api/mtk/SmSend
+RICH_MENU_BEFORE_LOGIN=...   # 執行 setupRichMenus.js 取得
+RICH_MENU_AFTER_LOGIN=...    # 執行 setupRichMenus.js 取得
 ```
 
 **設定位置：**
@@ -612,6 +617,7 @@ BASE_URL=https://linebot-booking-golf-q3wo.vercel.app
 **注意事項：**
 - 修改後服務會自動重啟
 - `BASE_URL` 用於 CORS 和 webhook 設定
+- ⚠️ 三竹簡訊在 Render 海外 IP 無法正常使用（`statuscode=k`），詳見待辦事項
 
 ---
 
@@ -763,7 +769,50 @@ UI 需求：描述介面
 參考模板：[附上 HTML/截圖]
 ```
 
-### ❌ 問題 5: 三竹簡訊中文亂碼
+### ❌ 問題 5: LINE Rich Menu 圖片上傳 415 Unsupported Media Type
+
+**症狀：**
+- 執行 `scripts/setupRichMenus.js` 上傳 Rich Menu 圖片時回傳 `415 Unsupported Media Type`
+
+**原因：**
+LINE SDK `setRichMenuImage()` 內部讀取 `body.type` 作為 `Content-Type` header。Node.js 的 `Buffer` 沒有 `.type` 屬性，導致 `Content-Type: undefined`。
+
+**解決方案：**
+```javascript
+// ❌ 錯誤：直接用 Buffer
+const image = fs.readFileSync(imagePath);
+await blobClient.setRichMenuImage(menuId, image);
+
+// ✅ 正確：用 Blob 包裝，指定 type
+const image = fs.readFileSync(imagePath);
+const blob = new Blob([image], { type: 'image/png' });
+await blobClient.setRichMenuImage(menuId, blob);
+```
+
+**關鍵檔案：** `scripts/setupRichMenus.js`
+
+---
+
+### ❌ 問題 6: Render 海外 IP 無法存取三竹簡訊 API
+
+**症狀：**
+- 三竹 Mitake API 從 Render 發送時返回 `statuscode=k`（帳號或密碼錯誤）
+- 相同帳密從本地台灣 IP 發送成功
+
+**原因：**
+Render 免費方案的伺服器位於美國/歐洲。三竹簡訊 API 可能限制僅允許台灣 IP 存取。
+
+**確認方式：**
+- `sms_logs` 表中查看 `error_message` 欄位，含遮罩帳號資訊 `[user=535***50,pass=10chars]`
+- 帳密正確但從海外 IP 請求返回 `statuscode=k`
+
+**狀態：** 🔴 未解決 — 詳見待辦事項
+
+**關鍵檔案：** `services/SmsService.js`
+
+---
+
+### ❌ 問題 7: 三竹簡訊中文亂碼
 
 **症狀：**
 - 透過三竹 Mitake API 發送含中文的簡訊，手機收到亂碼
@@ -874,43 +923,194 @@ VIP-A → gold | VIP-B → gold | 團友 → team_friend | 來賓 → guest
 
 ### 2026-02-14/15: OTP 手機驗證 + 會員中心 + Rich Menu
 
-**新增功能：**
-1. OTP 手機驗證（三竹簡訊 Mitake API）
-   - 6 位數驗證碼，5 分鐘有效，60 秒冷卻，每日 10 次上限
+#### 開發對話摘要
+
+本次開發為期兩天，涵蓋三大功能模組：OTP 手機驗證、會員個人中心、LINE Rich Menu 整合。開發過程中解決了多個生產環境問題，包括三竹簡訊中文亂碼、LINE SDK 圖片上傳 415 錯誤、以及 Render 海外 IP 無法存取三竹 API 的問題。
+
+#### 開發過程（時間線）
+
+**Phase 1: 設計規劃**
+- 制定 OTP 驗證架構：`Register.jsx` → `POST /api/otp/send` → `SmsService` → 三竹 API
+- 設計會員中心頁面結構：會員卡片 + Tab 分頁（預約/收費卡/優惠券）
+- 規劃 Rich Menu 切換邏輯：登入前 2 格 / 登入後 3 格
+
+**Phase 2: 後端開發**
+- 建立 `otp_codes` 表 + `sms_logs` 表（Supabase Migration）
+- 開發 `SmsService.js`：三竹 HTTP API 串接 + DB 日誌記錄
+- 開發 `OtpService.js`：OTP 產生/驗證（含冷卻期、每日上限、嘗試次數限制）
+- 開發 `RichMenuService.js`：Rich Menu 切換邏輯
+- 在 `index.js` 新增 OTP + 會員 + Rich Menu API 端點
+
+**Phase 3: 前端開發**
+- 修改 `Register.jsx`：真實 OTP 取代 mock SMS Modal
+- 新增 `MemberCenter.jsx`：會員卡片、預約紀錄 Tab、收費卡 Tab、優惠券 Tab、重新綁定手機 Modal
+- 更新 `App.jsx`：新增 `/member` 路由
+
+**Phase 4: 本地測試與除錯**
+- 驗證 Supabase migration 執行成功（`otp_codes` + `sms_logs` 表）
+- 測試 OTP 發送 → 發現中文亂碼 → 修正 `CharsetURL` 位置
+- 重新發送 → 中文正常顯示 ✅
+
+**Phase 5: Rich Menu 設定**
+- 準備 Rich Menu 圖片（1200x405 px）
+- 執行 `scripts/setupRichMenus.js` → 遇到 415 Unsupported Media Type 錯誤
+- 修正：LINE SDK `setRichMenuImage()` 需要 `Blob` 而非 `Buffer`
+- 再次執行 → Rich Menu 建立成功 ✅
+- 新增自動刪除舊 Rich Menu 邏輯（避免累積）
+
+**Phase 6: 部署與生產測試**
+- `vite build` 前端編譯成功
+- 設定 Render 環境變數（`MITAKE_*` + `RICH_MENU_*`）
+- Git commit + push → 觸發 Vercel + Render 自動部署
+- 測試 Rich Menu → 點擊「升級會員」→ 已註冊用戶跳轉到 `/member` ✅
+
+**Phase 7: 生產問題排查**
+- 問題 1：「重新綁定手機」網路錯誤 → SMS 從 Render 發送失敗（`statuscode=k`）
+- 問題 2：「運勢卡」白畫面 → `/fortune` 路由不存在
+- 問題 3：「球場資訊」白畫面 → `/course-info` 路由不存在
+- 排查 SMS 問題：加入遮罩帳號資訊到 `sms_logs` → 確認帳密正確
+- 結論：Render 伺服器在海外（US/EU），三竹 API 可能有 IP 區域限制
+
+#### 新增功能
+
+1. **OTP 手機驗證**（三竹簡訊 Mitake API）
+   - 6 位數驗證碼，5 分鐘有效，60 秒冷卻，每日 10 次上限，最多 5 次嘗試
    - SMS 發送記錄寫入 `sms_logs` 表（含 Message ID、狀態碼、剩餘點數、驗證碼）
-2. 會員個人中心 `/member`（MemberCenter.jsx）
-   - 會員卡片、預約紀錄 Tab、收費卡 Tab、優惠券 Tab
+   - Dev 模式：`MITAKE_USERNAME` 未設定時，OTP 只 log 到 console
+2. **會員個人中心 `/member`**（MemberCenter.jsx）
+   - 會員卡片（身分 badge、會員編號、有效期）
+   - 預約紀錄 Tab（狀態 badge、分頁）
+   - 收費卡 Tab（歷史收費卡）
+   - 優惠券 Tab（`membership_benefits_issued`）
    - 重新綁定手機功能（OTP 再驗證）
-3. LINE Rich Menu 自動切換
-   - 登入前 2 格 / 登入後 3 格
+   - 快捷操作：新增預約、報到 QR
+3. **LINE Rich Menu 自動切換**
+   - 登入前 2 格：升級會員/運勢卡、球場資訊
+   - 登入後 3 格：會員專區、運勢卡、球場資訊
    - 註冊成功自動切換、follow 事件判斷
+   - `scripts/setupRichMenus.js` 自動建立 + 上傳圖片 + 刪除舊 Menu
 
-**新增檔案：**
-- `services/SmsService.js` — 三竹簡訊 + DB log
-- `services/OtpService.js` — OTP 產生 / 驗證
-- `services/RichMenuService.js` — Rich Menu 切換
-- `client/src/pages/MemberCenter.jsx` — 個人中心
-- `scripts/setupRichMenus.js` — Rich Menu 建立腳本
-- `migrations/create_otp_table.sql`
-- `migrations/create_sms_logs_table.sql`
+#### 新增檔案
 
-**修改檔案：**
-- `index.js` — OTP + 會員 + Rich Menu API 端點
-- `client/src/pages/Register.jsx` — 真實 OTP 取代 mock
-- `client/src/App.jsx` — 新增 /member 路由
+| 檔案 | 說明 |
+|------|------|
+| `services/SmsService.js` | 三竹簡訊 HTTP API + DB 日誌記錄 |
+| `services/OtpService.js` | OTP 產生/驗證（含安全限制） |
+| `services/RichMenuService.js` | LINE Rich Menu 切換（per-user） |
+| `client/src/pages/MemberCenter.jsx` | 會員個人中心頁面 |
+| `scripts/setupRichMenus.js` | Rich Menu 建立/上傳/設定腳本 |
+| `migrations/create_otp_table.sql` | `otp_codes` 表 |
+| `migrations/create_sms_logs_table.sql` | `sms_logs` 表 |
 
-**環境變數（新增）：**
-- `MITAKE_USERNAME` — 三竹簡訊帳號
-- `MITAKE_PASSWORD` — 三竹簡訊密碼
-- `MITAKE_API_URL` — 三竹 API 網址
-- `RICH_MENU_BEFORE_LOGIN` — 登入前 Rich Menu ID（執行 setupRichMenus.js 後取得）
-- `RICH_MENU_AFTER_LOGIN` — 登入後 Rich Menu ID
+#### 修改檔案
 
-**踩坑記錄：**
-- 三竹中文簡訊亂碼：`CharsetURL=UTF-8` 必須放 URL query string，不能放 POST body
+| 檔案 | 修改內容 |
+|------|----------|
+| `index.js` | 新增 OTP + 會員 + Rich Menu API 端點（約 200 行） |
+| `client/src/pages/Register.jsx` | 真實 OTP 取代 mock SMS Modal |
+| `client/src/App.jsx` | 新增 `/member` 路由 |
+
+#### 環境變數（新增）
+
+| 變數名稱 | 說明 | Render 必需 |
+|----------|------|:-----------:|
+| `MITAKE_USERNAME` | 三竹簡訊帳號 | ⚠️ 見待辦 |
+| `MITAKE_PASSWORD` | 三竹簡訊密碼 | ⚠️ 見待辦 |
+| `MITAKE_API_URL` | 三竹 API 網址 | ⚠️ 見待辦 |
+| `RICH_MENU_BEFORE_LOGIN` | 登入前 Rich Menu ID | ✅ |
+| `RICH_MENU_AFTER_LOGIN` | 登入後 Rich Menu ID | ✅ |
+
+#### 踩坑記錄
+
+| # | 問題 | 根因 | 解決方案 | 關鍵檔案 |
+|---|------|------|----------|----------|
+| 1 | 三竹中文簡訊亂碼 | `CharsetURL=UTF-8` 放在 POST body | 改放 URL query string + Content-Type 加 `charset=utf-8` | `SmsService.js` |
+| 2 | Rich Menu 圖片上傳 415 | LINE SDK `setRichMenuImage()` 需要 `Blob` | `new Blob([buffer], { type: 'image/png' })` 包裝 | `setupRichMenus.js` |
+| 3 | Render SMS `statuscode=k` | Render 伺服器在海外，三竹 API 可能限制 IP 區域 | **未解決** — 需聯繫三竹或改用台灣主機 | `SmsService.js` |
+| 4 | 舊 server 佔 port 3000 | 前次 server 未關閉 | `lsof -i :3000 -t \| xargs kill -9` | — |
+| 5 | 已註冊用戶看到白畫面 | Register 跳轉 `/member` 但新頁面未部署 | 等待 Vercel 部署完成 | `Register.jsx` |
 
 ---
 
-**文件版本**: v3.0
+## 📌 待辦事項（TODO）
+
+> 上次開發截止時的未完成項目，後續開發請優先處理。
+
+### 🔴 高優先：三竹簡訊 Render 海外 IP 問題
+
+**問題描述：**
+三竹 Mitake SMS API 從 Render（海外伺服器）發送時返回 `statuscode=k`（帳號或密碼錯誤），但相同帳密從本地（台灣 IP）發送成功。
+
+**已確認：**
+- 帳密正確（`sms_logs` 記錄：`user=535***50, pass=10chars`）
+- 本地發送成功（`statuscode=1`，剩餘點數 12905）
+- Render 發送失敗 4 次（全部 `statuscode=k`）
+
+**可能解決方案（擇一）：**
+1. 聯繫三竹客服，確認是否有 IP 白名單限制，要求開放 Render IP
+2. 將後端遷移至台灣 GCP（asia-east1）或 AWS（ap-northeast-1）
+3. 建立一個台灣 VPS 作為 SMS Proxy（後端 → 台灣 Proxy → 三竹 API）
+4. 改用其他支援海外的 SMS 服務商（如 Twilio）
+
+### 🔴 高優先：Rich Menu 缺失頁面（白畫面）
+
+**問題描述：**
+Rich Menu 中「運勢卡」和「球場資訊」按鈕連結到 `/fortune` 和 `/course-info`，但這兩個路由在 `App.jsx` 中不存在。
+
+**需要處理：**
+- 建立 `/fortune` 路由與頁面（`client/src/pages/Fortune.jsx`）— 運勢卡功能
+- 建立 `/course-info` 路由與頁面（`client/src/pages/CourseInfo.jsx`）— 球場資訊頁面
+- 或修改 Rich Menu 連結指向已有頁面（暫時方案）
+- 更新 `App.jsx` 加入新路由
+
+### 🟡 中優先：清理除錯程式碼
+
+**問題描述：**
+`SmsService.js` 中加入了遮罩帳號資訊的除錯日誌（寫入 `sms_logs.error_message`），確認問題後應移除。
+
+**需要處理：**
+- 移除 `maskedUser`、`maskedPass` 相關 console.log
+- 移除 `sms_logs.error_message` 中的 `[user=...,pass=...,url=...]` debug info
+- 恢復簡潔的錯誤訊息
+
+### 🟡 中優先：OTP API 錯誤碼改進
+
+**問題描述：**
+`POST /api/otp/send` 對所有 `!result.success` 都回傳 HTTP 429，無法區分「冷卻中」vs「SMS 發送失敗」。
+
+**建議修改 `index.js`：**
+```javascript
+// 區分不同錯誤類型
+if (result.message.includes('冷卻') || result.message.includes('上限')) {
+    return res.status(429).json({ error: result.message });
+}
+return res.status(500).json({ error: result.message });
+```
+
+### 🟢 低優先：其他改進
+
+1. **導航優化**：Booking 頁面加「個人中心」按鈕，MyBookings 加「返回個人中心」按鈕
+2. **Register 流程優化**：註冊成功後直接跳轉 `/member`（目前已實作）
+3. **Rich Menu 建立腳本**：加入 LIFF ID 環境變數化（目前寫死在 `setupRichMenus.js` 中）
+4. **SMS 重試機制**：SMS 發送失敗時自動重試一次（需注意冷卻期）
+
+---
+
+### API 端點總覽（本次新增）
+
+| Method | Path | 說明 | Auth |
+|--------|------|------|------|
+| POST | `/api/otp/send` | 發送 OTP 簡訊 | 無 |
+| POST | `/api/otp/verify` | 驗證 OTP | 無 |
+| POST | `/api/member/register` | OTP 驗證 + LINE 綁定 | 無 |
+| POST | `/api/member/rebind` | 重新綁定手機 | 無 |
+| GET | `/api/member/profile?lineUserId=` | 會員資料 + 統計 | 無 |
+| GET | `/api/member/bookings?lineUserId=` | 預約紀錄（分頁） | 無 |
+| GET | `/api/member/charge-cards?lineUserId=` | 收費卡紀錄（分頁） | 無 |
+| GET | `/api/member/vouchers?lineUserId=` | 優惠券 | 無 |
+
+---
+
+**文件版本**: v4.0
 **最後更新**: 2026-02-15
 **維護者**: Development Team + Claude Opus 4.6
