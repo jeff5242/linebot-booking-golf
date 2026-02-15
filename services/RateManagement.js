@@ -24,7 +24,7 @@ const supabase = createClient(
  * @returns {Promise<Object>} 費用明細
  */
 async function calculateTotalFee(params, rateConfig = null) {
-    const { tier, holes, isHoliday, caddyRatio, numPlayers = 1 } = params;
+    const { tier, holes, isHoliday, caddyRatio, numPlayers = 1, includeCart = true, includeCaddy = true } = params;
 
     // 如果沒有提供費率配置，從資料庫讀取當前生效的費率
     if (!rateConfig) {
@@ -38,11 +38,11 @@ async function calculateTotalFee(params, rateConfig = null) {
     // 2. 清潔費（每人）
     const cleaningFee = rateConfig.base_fees.cleaning[holes];
 
-    // 3. 球車費（每人）
-    const cartFee = rateConfig.base_fees.cart_per_person[holes];
+    // 3. 球車費（每人）— 可由出發台人員取消
+    const cartFee = includeCart ? rateConfig.base_fees.cart_per_person[holes] : 0;
 
-    // 4. 桿弟費（每人）
-    const caddyFee = rateConfig.caddy_fees[caddyRatio][holes];
+    // 4. 桿弟費（每人）— 可由出發台人員取消
+    const caddyFee = includeCaddy ? rateConfig.caddy_fees[caddyRatio][holes] : 0;
 
     // 5. 每人小計
     const subtotalPerPerson = greenFee + cleaningFee + cartFee + caddyFee;

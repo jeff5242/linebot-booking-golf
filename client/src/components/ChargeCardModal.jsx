@@ -13,6 +13,8 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
     const [selectedCaddyId, setSelectedCaddyId] = useState('');
     const [caddyRatio, setCaddyRatio] = useState('1:4');
     const [course, setCourse] = useState('A -> B');
+    const [includeCart, setIncludeCart] = useState(booking?.needs_cart !== false);
+    const [includeCaddy, setIncludeCaddy] = useState(booking?.needs_caddie !== false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
@@ -35,7 +37,7 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
         if (caddyRatio && booking) {
             calculatePreview();
         }
-    }, [caddyRatio, booking]);
+    }, [caddyRatio, includeCart, includeCaddy, booking]);
 
     const fetchCaddies = async () => {
         try {
@@ -59,7 +61,9 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
                     holes: booking.holes,
                     isHoliday: isWeekend(booking.date),
                     caddyRatio: caddyRatio,
-                    numPlayers: booking.players_count
+                    numPlayers: booking.players_count,
+                    includeCart,
+                    includeCaddy
                 })
             });
             const data = await res.json();
@@ -87,7 +91,9 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
                     bookingId: booking.id,
                     caddyId: selectedCaddyId || null,
                     caddyRatio,
-                    course
+                    course,
+                    includeCart,
+                    includeCaddy
                 })
             });
 
@@ -161,47 +167,94 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
                             {' '}| {booking.holes}洞 | {booking.players_count}人
                         </div>
 
-                        {/* 桿弟選擇 */}
+                        {/* 服務選項 */}
                         <div style={{ marginBottom: '16px' }}>
-                            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>
-                                指派桿弟
+                            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px' }}>
+                                服務項目
                             </label>
-                            <select
-                                value={selectedCaddyId}
-                                onChange={e => setSelectedCaddyId(e.target.value)}
-                                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '14px' }}
-                            >
-                                <option value="">-- 選擇桿弟 --</option>
-                                {caddies.map(c => (
-                                    <option key={c.id} value={c.id}>
-                                        {c.caddy_number} - {c.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* 桿弟配比 */}
-                        <div style={{ marginBottom: '16px' }}>
-                            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>
-                                桿弟配比
-                            </label>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                                {['1:1', '1:2', '1:3', '1:4'].map(ratio => (
-                                    <button
-                                        key={ratio}
-                                        onClick={() => setCaddyRatio(ratio)}
-                                        style={{
-                                            flex: 1, padding: '10px', borderRadius: '6px', cursor: 'pointer',
-                                            border: caddyRatio === ratio ? '2px solid #2e7d32' : '1px solid #ddd',
-                                            background: caddyRatio === ratio ? '#e8f5e9' : '#fff',
-                                            fontWeight: caddyRatio === ratio ? 'bold' : 'normal'
-                                        }}
-                                    >
-                                        {ratio}
-                                    </button>
-                                ))}
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <label style={{
+                                    flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
+                                    padding: '10px 12px', borderRadius: '8px', cursor: 'pointer',
+                                    border: includeCart ? '2px solid #2e7d32' : '1px solid #ddd',
+                                    background: includeCart ? '#e8f5e9' : '#fff'
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={includeCart}
+                                        onChange={e => setIncludeCart(e.target.checked)}
+                                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                    />
+                                    <span style={{ fontWeight: includeCart ? 'bold' : 'normal' }}>球車</span>
+                                    {booking?.needs_cart === false && (
+                                        <span style={{ fontSize: '11px', color: '#999' }}>（客戶未選）</span>
+                                    )}
+                                </label>
+                                <label style={{
+                                    flex: 1, display: 'flex', alignItems: 'center', gap: '8px',
+                                    padding: '10px 12px', borderRadius: '8px', cursor: 'pointer',
+                                    border: includeCaddy ? '2px solid #2e7d32' : '1px solid #ddd',
+                                    background: includeCaddy ? '#e8f5e9' : '#fff'
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={includeCaddy}
+                                        onChange={e => setIncludeCaddy(e.target.checked)}
+                                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                    />
+                                    <span style={{ fontWeight: includeCaddy ? 'bold' : 'normal' }}>桿弟</span>
+                                    {booking?.needs_caddie === false && (
+                                        <span style={{ fontSize: '11px', color: '#999' }}>（客戶未選）</span>
+                                    )}
+                                </label>
                             </div>
                         </div>
+
+                        {/* 桿弟選擇 (僅在含桿弟時顯示) */}
+                        {includeCaddy && (
+                            <div style={{ marginBottom: '16px' }}>
+                                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>
+                                    指派桿弟
+                                </label>
+                                <select
+                                    value={selectedCaddyId}
+                                    onChange={e => setSelectedCaddyId(e.target.value)}
+                                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '14px' }}
+                                >
+                                    <option value="">-- 選擇桿弟 --</option>
+                                    {caddies.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.caddy_number} - {c.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {/* 桿弟配比 (僅在含桿弟時顯示) */}
+                        {includeCaddy && (
+                            <div style={{ marginBottom: '16px' }}>
+                                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>
+                                    桿弟配比
+                                </label>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    {['1:1', '1:2', '1:3', '1:4'].map(ratio => (
+                                        <button
+                                            key={ratio}
+                                            onClick={() => setCaddyRatio(ratio)}
+                                            style={{
+                                                flex: 1, padding: '10px', borderRadius: '6px', cursor: 'pointer',
+                                                border: caddyRatio === ratio ? '2px solid #2e7d32' : '1px solid #ddd',
+                                                background: caddyRatio === ratio ? '#e8f5e9' : '#fff',
+                                                fontWeight: caddyRatio === ratio ? 'bold' : 'normal'
+                                            }}
+                                        >
+                                            {ratio}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {/* 球道 */}
                         <div style={{ marginBottom: '16px' }}>
@@ -220,7 +273,7 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
 
                         {/* 費用預覽 */}
                         <div style={{ background: '#fafafa', border: '1px solid #eee', borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
-                            <h3 style={{ margin: '0 0 12px', fontSize: '1rem' }}>費用預覽（預估）</h3>
+                            <h3 style={{ margin: '0 0 12px', fontSize: '1rem' }}>每人費用預覽（預估）</h3>
                             {previewLoading ? (
                                 <p style={{ color: '#999' }}>計算中...</p>
                             ) : feePreview ? (
@@ -233,25 +286,25 @@ export default function ChargeCardModal({ booking, onClose, onGenerated }) {
                                         <span>清潔費</span>
                                         <span>{formatMoney(feePreview.breakdown?.cleaningFee)}</span>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                        <span>球車費</span>
-                                        <span>{formatMoney(feePreview.breakdown?.cartFee)}</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                        <span>桿弟費 ({caddyRatio})</span>
-                                        <span>{formatMoney(feePreview.breakdown?.caddyFee)}</span>
-                                    </div>
+                                    {feePreview.breakdown?.cartFee > 0 && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                            <span>球車費</span>
+                                            <span>{formatMoney(feePreview.breakdown?.cartFee)}</span>
+                                        </div>
+                                    )}
+                                    {feePreview.breakdown?.caddyFee > 0 && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                            <span>桿弟費 ({caddyRatio})</span>
+                                            <span>{formatMoney(feePreview.breakdown?.caddyFee)}</span>
+                                        </div>
+                                    )}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                                         <span>娛樂稅 ({Math.round((feePreview.metadata?.taxRate || 0.05) * 100)}%)</span>
                                         <span>{formatMoney(feePreview.breakdown?.entertainmentTaxPerPerson)}</span>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', borderTop: '1px dashed #ddd', paddingTop: '6px', fontWeight: '600' }}>
-                                        <span>每人小計</span>
-                                        <span>{formatMoney(feePreview.breakdown?.totalPerPerson)}</span>
-                                    </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '16px', borderTop: '1px solid #ccc', paddingTop: '8px', marginTop: '8px' }}>
-                                        <span>預計總計金額 ({feePreview.metadata?.numPlayers || booking.players_count}人)</span>
-                                        <span>{formatMoney(feePreview.totalAmount)}</span>
+                                        <span>每人預計金額</span>
+                                        <span>{formatMoney(feePreview.breakdown?.totalPerPerson)}</span>
                                     </div>
                                 </div>
                             ) : (

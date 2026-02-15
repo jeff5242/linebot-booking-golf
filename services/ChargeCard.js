@@ -41,8 +41,10 @@ function isHoliday(dateStr) {
  * @param {string} params.caddyRatio - 桿弟配比 (1:1 ~ 1:4)
  * @param {string} params.course - 球道 (e.g. 'A -> B')
  * @param {Object} params.tierOverrides - 球員等級覆寫 {playerIndex: tier}
+ * @param {boolean} params.includeCart - 是否含球車（預設 true）
+ * @param {boolean} params.includeCaddy - 是否含桿弟（預設 true）
  */
-async function generateChargeCard(bookingId, { caddyId, caddyRatio, course, tierOverrides = {} }) {
+async function generateChargeCard(bookingId, { caddyId, caddyRatio, course, tierOverrides = {}, includeCart = true, includeCaddy = true }) {
     // 1. 讀取預約資料 + 使用者
     const { data: booking, error: bookingError } = await supabase
         .from('bookings')
@@ -103,7 +105,9 @@ async function generateChargeCard(bookingId, { caddyId, caddyRatio, course, tier
             holes: booking.holes,
             isHoliday: holiday,
             caddyRatio: caddyRatio,
-            numPlayers: 1
+            numPlayers: 1,
+            includeCart,
+            includeCaddy
         }, rateConfig);
 
         perPlayerFees.push({

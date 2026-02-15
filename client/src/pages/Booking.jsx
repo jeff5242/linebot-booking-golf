@@ -474,6 +474,19 @@ export function Booking() {
                         }}>
                         我的預約
                     </button>
+                    <button
+                        onClick={() => navigate('/member')}
+                        style={{
+                            fontSize: '0.85rem',
+                            color: '#555',
+                            padding: '4px 12px',
+                            border: '1px solid #ddd',
+                            borderRadius: '16px',
+                            background: 'white',
+                            cursor: 'pointer'
+                        }}>
+                        個人中心
+                    </button>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

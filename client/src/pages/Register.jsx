@@ -12,13 +12,15 @@ export function Register() {
     const [verificationSent, setVerificationSent] = useState(false);
     const [otp, setOtp] = useState('');
     const [countdown, setCountdown] = useState(0);
-    const [mockServerOtp, setMockServerOtp] = useState(null); // The "correct" OTP
-    const [showSmsModal, setShowSmsModal] = useState(false); // Modal for displaying SMS code
+    const [sendingOtp, setSendingOtp] = useState(false);
+    const [otpMessage, setOtpMessage] = useState('');
 
     const [formData, setFormData] = useState({
         name: '',
         phone: ''
     });
+
+    const apiUrl = import.meta.env.VITE_API_URL || '';
 
     useEffect(() => {
         checkLineLogin();
@@ -62,8 +64,8 @@ export function Register() {
                 .single();
 
             if (existingUser) {
-                console.log('用戶已註冊，跳轉到預約頁面');
-                navigate('/booking');
+                console.log('用戶已註冊，跳轉到個人中心');
+                navigate('/member');
             }
         } catch (err) {
             console.error('LIFF check failed', err);
@@ -74,41 +76,54 @@ export function Register() {
         liff.login({ redirectUri: window.location.href });
     };
 
-    const sendVerificationCode = () => {
+    const sendVerificationCode = async () => {
         if (!formData.phone || formData.phone.length < 10) {
             alert('請先輸入正確的手機號碼');
             return;
         }
 
-        // Mock sending SMS
-        const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
-        setMockServerOtp(generatedOtp);
-        setVerificationSent(true);
-        setCountdown(60); // 60s cooldown
+        setSendingOtp(true);
+        setOtpMessage('');
 
-        // Show SMS modal instead of alert
-        setTimeout(() => {
-            setShowSmsModal(true);
-        }, 1000);
+        try {
+            const res = await fetch(`${apiUrl}/api/otp/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: formData.phone, purpose: 'registration' }),
+            });
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                setVerificationSent(true);
+                setCountdown(60);
+                setOtpMessage('驗證碼已發送至您的手機');
+            } else {
+                setOtpMessage(data.error || '發送失敗，請稍後再試');
+            }
+        } catch (err) {
+            console.error('Send OTP Error:', err);
+            setOtpMessage('網路錯誤，請稍後再試');
+        } finally {
+            setSendingOtp(false);
+        }
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        // Verify OTP logic
         if (!verificationSent) {
             alert('請先進行手機驗證');
             return;
         }
-        if (otp !== mockServerOtp) {
-            alert('驗證碼錯誤，請重新輸入');
+        if (!otp || otp.length !== 6) {
+            alert('請輸入 6 位數驗證碼');
             return;
         }
 
         setLoading(true);
+        setOtpMessage('');
 
         try {
-            // Updated to ensure we use REAL Line ID
             const lineUserId = localStorage.getItem('line_user_id');
 
             if (!lineUserId) {
@@ -117,75 +132,34 @@ export function Register() {
                 return;
             }
 
-            // 2. Insert or Update into Supabase
-            // Check by Phone first
-            const { data: existingUserByPhone } = await supabase
-                .from('users')
-                .select('id')
-                .eq('phone', formData.phone)
-                .single();
+            // 呼叫後端：OTP 驗證 + 綁定一步完成
+            const res = await fetch(`${apiUrl}/api/member/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phone: formData.phone,
+                    code: otp,
+                    name: formData.name,
+                    lineUserId,
+                }),
+            });
+            const data = await res.json();
 
-            // Check by Line ID
-            const { data: existingUserById } = await supabase
-                .from('users')
-                .select('id')
-                .eq('line_user_id', lineUserId)
-                .single();
-
-            let error;
-
-            if (existingUserByPhone) {
-                // Phone exists -> Bind this Line ID to this Phone user
-                const { error: updateError } = await supabase
-                    .from('users')
-                    .update({
-                        line_user_id: lineUserId,
-                        display_name: formData.name
-                    })
-                    .eq('id', existingUserByPhone.id);
-                error = updateError;
-            } else if (existingUserById) {
-                // Line ID exists (but phone is different) -> Update phone for this user
-                const { error: updateError } = await supabase
-                    .from('users')
-                    .update({
-                        phone: formData.phone,
-                        display_name: formData.name
-                    })
-                    .eq('id', existingUserById.id);
-                error = updateError;
-            } else {
-                // New user
-                const { error: insertError } = await supabase
-                    .from('users')
-                    .insert([
-                        {
-                            line_user_id: lineUserId,
-                            display_name: formData.name,
-                            phone: formData.phone
-                        }
-                    ]);
-                error = insertError;
-            }
-
-            if (error) {
-                console.error('Registration error:', error);
-                alert('註冊失敗: ' + error.message);
+            if (!res.ok) {
+                setOtpMessage(data.error || '註冊失敗');
                 return;
             }
 
-            // 3. Save locally
+            // 儲存到 localStorage
             localStorage.setItem('golf_user_phone', formData.phone);
-            localStorage.setItem('golf_user_name', formData.name);
+            localStorage.setItem('golf_user_name', formData.name || data.user?.display_name || '');
 
             alert('註冊成功！');
-
-            // 4. Force reload to ensure App.jsx re-checks user status
-            window.location.href = '/';
+            window.location.href = '/member';
 
         } catch (error) {
             console.error('Unexpected error:', error);
-            alert('Error registering: ' + error.message);
+            setOtpMessage('發生錯誤，請稍後再試');
         } finally {
             setLoading(false);
         }
@@ -249,27 +223,41 @@ export function Register() {
                                     const value = e.target.value.replace(/[^0-9]/g, '');
                                     setFormData({ ...formData, phone: value });
                                 }}
-                                disabled={verificationSent} // Disable phone edit after sending code
+                                disabled={verificationSent}
                             />
                             <button
                                 type="button"
                                 onClick={sendVerificationCode}
-                                disabled={countdown > 0 || !formData.phone}
+                                disabled={countdown > 0 || !formData.phone || sendingOtp}
                                 style={{
                                     padding: '0 12px',
-                                    backgroundColor: countdown > 0 ? '#d1d5db' : 'var(--primary-color)',
+                                    backgroundColor: (countdown > 0 || sendingOtp) ? '#d1d5db' : 'var(--primary-color)',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '8px',
                                     fontSize: '0.9rem',
                                     whiteSpace: 'nowrap',
-                                    cursor: countdown > 0 ? 'not-allowed' : 'pointer'
+                                    cursor: (countdown > 0 || sendingOtp) ? 'not-allowed' : 'pointer'
                                 }}
                             >
-                                {countdown > 0 ? `${countdown}s` : (verificationSent ? '重發' : '發送驗證碼')}
+                                {sendingOtp ? '發送中...' : countdown > 0 ? `${countdown}s` : (verificationSent ? '重發' : '發送驗證碼')}
                             </button>
                         </div>
                     </div>
+
+                    {/* OTP 訊息提示 */}
+                    {otpMessage && (
+                        <div style={{
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            marginBottom: '12px',
+                            fontSize: '0.9rem',
+                            backgroundColor: otpMessage.includes('已發送') || otpMessage.includes('成功') ? '#dcfce7' : '#fee2e2',
+                            color: otpMessage.includes('已發送') || otpMessage.includes('成功') ? '#166534' : '#dc2626',
+                        }}>
+                            {otpMessage}
+                        </div>
+                    )}
 
                     {verificationSent && (
                         <div className="form-group animate-fade-in">
@@ -292,78 +280,6 @@ export function Register() {
                     </button>
                 </form>
             </div>
-
-            {/* SMS Modal */}
-            {showSmsModal && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 1000,
-                    animation: 'fade-in 0.3s ease-in-out'
-                }}>
-                    <div style={{
-                        backgroundColor: 'white',
-                        borderRadius: '16px',
-                        padding: '30px',
-                        maxWidth: '400px',
-                        width: '90%',
-                        boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
-                        animation: 'slide-up 0.3s ease-out'
-                    }}>
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{
-                                fontSize: '48px',
-                                marginBottom: '20px'
-                            }}>📱</div>
-                            <h2 style={{
-                                fontSize: '1.5rem',
-                                fontWeight: 'bold',
-                                marginBottom: '10px',
-                                color: '#333'
-                            }}>模擬簡訊</h2>
-                            <p style={{
-                                color: '#666',
-                                marginBottom: '20px',
-                                fontSize: '0.95rem'
-                            }}>您的驗證碼是</p>
-                            <div style={{
-                                fontSize: '2rem',
-                                fontWeight: 'bold',
-                                color: 'var(--primary-color)',
-                                fontFamily: 'monospace',
-                                letterSpacing: '8px',
-                                marginBottom: '30px',
-                                padding: '15px',
-                                backgroundColor: '#f3f4f6',
-                                borderRadius: '12px'
-                            }}>{mockServerOtp}</div>
-                            <button
-                                onClick={() => setShowSmsModal(false)}
-                                style={{
-                                    width: '100%',
-                                    padding: '14px',
-                                    backgroundColor: 'var(--primary-color)',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    fontSize: '1rem',
-                                    fontWeight: 'bold',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                我知道了
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

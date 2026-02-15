@@ -20,6 +20,13 @@ export default function ChargeCardTemplate({ booking, chargeCard, caddy, feesBre
         return `$ ${n.toLocaleString()}`;
     };
 
+    // 取得每人費用（使用第一位球員資料）
+    const perPlayer = feesBreakdown?.perPlayer?.[0] || {};
+    const taxRate = feesBreakdown?.taxRate || 0.05;
+    const perPersonTax = Math.round(((perPlayer.greenFee || 0) + (perPlayer.cartFee || 0)) * taxRate);
+    const perPersonTotal = (perPlayer.greenFee || 0) + (perPlayer.cleaningFee || 0) +
+        (perPlayer.cartFee || 0) + (perPlayer.caddyFee || 0) + perPersonTax;
+
     return (
         <div className="charge-card-print-area">
             <style>{`
@@ -154,41 +161,45 @@ export default function ChargeCardTemplate({ booking, chargeCard, caddy, feesBre
                     </div>
                 )}
 
-                {/* 費用明細 */}
+                {/* 費用明細（每人） */}
                 <table>
                     <thead>
                         <tr>
                             <th>收費項目 (Description)</th>
-                            <th>金額 (Amount)</th>
+                            <th>每人金額 (Per Person)</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td className="label-cell">果嶺費 (Green Fee) × {booking.players_count} 人</td>
-                            <td>{formatMoney(feesBreakdown?.greenFee)}</td>
+                            <td className="label-cell">果嶺費 (Green Fee)</td>
+                            <td>{formatMoney(perPlayer.greenFee)}</td>
                         </tr>
                         <tr>
                             <td className="label-cell">設施清潔費 (Maintenance Fee)</td>
-                            <td>{formatMoney(feesBreakdown?.cleaningFee)}</td>
+                            <td>{formatMoney(perPlayer.cleaningFee)}</td>
                         </tr>
+                        {perPlayer.cartFee > 0 && (
+                            <tr>
+                                <td className="label-cell">球車費 (Cart Fee)</td>
+                                <td>{formatMoney(perPlayer.cartFee)}</td>
+                            </tr>
+                        )}
+                        {perPlayer.caddyFee > 0 && (
+                            <tr className="caddy-row">
+                                <td className="label-cell">代收桿弟費 (Caddy Fee - {chargeCard.caddy_ratio})</td>
+                                <td>{formatMoney(perPlayer.caddyFee)}</td>
+                            </tr>
+                        )}
                         <tr>
-                            <td className="label-cell">球車費 (Cart Fee) × {booking.players_count} 人</td>
-                            <td>{formatMoney(feesBreakdown?.cartFee)}</td>
-                        </tr>
-                        <tr className="caddy-row">
-                            <td className="label-cell">代收桿弟費 (Caddy Fee - {chargeCard.caddy_ratio})</td>
-                            <td>{formatMoney(feesBreakdown?.caddyFee)}</td>
-                        </tr>
-                        <tr>
-                            <td className="label-cell">代收娛樂稅 (Entertainment Tax {(feesBreakdown?.taxRate || 0.05) * 100}%)</td>
-                            <td>{formatMoney(feesBreakdown?.entertainmentTax)}</td>
+                            <td className="label-cell">代收娛樂稅 (Entertainment Tax {taxRate * 100}%)</td>
+                            <td>{formatMoney(perPersonTax)}</td>
                         </tr>
                     </tbody>
                 </table>
 
-                {/* 合計 */}
+                {/* 每人合計 */}
                 <div className="total-section">
-                    預計總金額 (Total Estimate): {formatMoney(chargeCard.total_amount)}
+                    每人預計金額 (Per Person Total): {formatMoney(perPersonTotal)}
                 </div>
 
                 {/* 桿弟指派與集合指引 */}

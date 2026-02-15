@@ -48,8 +48,8 @@ export function MyBookings() {
     return (
         <div className="container" style={{ paddingBottom: '80px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                    <button onClick={() => navigate('/')} style={{ marginRight: '10px', background: 'none', border: 'none', fontSize: '1.2rem' }}>←</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button onClick={() => navigate('/member')} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}>←</button>
                     <h1 className="title" style={{ margin: 0 }}>我的預約</h1>
                 </div>
                 <button

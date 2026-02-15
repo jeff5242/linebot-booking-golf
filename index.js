@@ -29,6 +29,8 @@ const { login: adminLogin, loginByOtp: adminLoginByOtp } = require('./services/A
 const { requireAuth, optionalAuth } = require('./middleware/auth');
 const RoleMgmt = require('./services/RoleManagement');
 const bcrypt = require('bcryptjs');
+const OtpService = require('./services/OtpService');
+const RichMenuService = require('./services/RichMenuService');
 
 // Supabase 設定
 const supabase = createClient(
@@ -525,7 +527,27 @@ app.post('/api/bookings/:id/cancel', requireAuth('starter'), async (req, res) =>
 
 // 處理 LINE 事件
 async function handleEvent(event) {
-  // 只處理訊息事件
+  // 處理加入好友事件 → 判斷是否已註冊，分配對應 Rich Menu
+  if (event.type === 'follow') {
+    const lineUserId = event.source.userId;
+    try {
+      const { data: user } = await supabase
+        .from('users')
+        .select('id')
+        .eq('line_user_id', lineUserId)
+        .maybeSingle();
+
+      if (user) {
+        await RichMenuService.switchToMemberMenu(lineUserId);
+      }
+      // 未註冊的用戶會使用預設 Rich Menu（登入前版）
+    } catch (err) {
+      console.error('[Follow] Rich Menu 設定失敗:', err.message);
+    }
+    return Promise.resolve(null);
+  }
+
+  // 只處理文字訊息事件
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
   }
@@ -778,7 +800,9 @@ app.post('/api/charge-cards', requireAuth('starter'), async (req, res) => {
       caddyId: req.body.caddyId,
       caddyRatio: req.body.caddyRatio,
       course: req.body.course,
-      tierOverrides: req.body.tierOverrides
+      tierOverrides: req.body.tierOverrides,
+      includeCart: req.body.includeCart !== false,
+      includeCaddy: req.body.includeCaddy !== false
     });
     res.json(result);
   } catch (error) {
@@ -806,6 +830,384 @@ app.post('/api/charge-cards/:id/notify', requireAuth('starter'), async (req, res
     res.json(result);
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+// ============================================
+// OTP 驗證碼 API
+// ============================================
+
+// 發送 OTP
+app.post('/api/otp/send', async (req, res) => {
+  try {
+    const { phone, purpose } = req.body;
+    if (!phone || phone.length < 10) {
+      return res.status(400).json({ error: '請提供正確的手機號碼' });
+    }
+    const result = await OtpService.sendOtp(phone, purpose || 'registration');
+    if (!result.success) {
+      return res.status(429).json({ error: result.message });
+    }
+    res.json(result);
+  } catch (error) {
+    console.error('OTP Send Error:', error);
+    res.status(500).json({ error: '發送驗證碼失敗' });
+  }
+});
+
+// 驗證 OTP（僅驗證，不綁定）
+app.post('/api/otp/verify', async (req, res) => {
+  try {
+    const { phone, code } = req.body;
+    if (!phone || !code) {
+      return res.status(400).json({ error: '請提供手機號碼和驗證碼' });
+    }
+    const result = await OtpService.verifyOtp(phone, code);
+    if (!result.success) {
+      return res.status(400).json({ error: result.message });
+    }
+    res.json(result);
+  } catch (error) {
+    console.error('OTP Verify Error:', error);
+    res.status(500).json({ error: '驗證失敗' });
+  }
+});
+
+// ============================================
+// 會員 API (Member)
+// ============================================
+
+// 會員註冊 / 綁定 LINE（含 OTP 驗證）
+app.post('/api/member/register', async (req, res) => {
+  try {
+    const { phone, code, name, lineUserId } = req.body;
+    if (!phone || !code || !lineUserId) {
+      return res.status(400).json({ error: '缺少必要參數' });
+    }
+
+    // 1. 驗證 OTP
+    const otpResult = await OtpService.verifyOtp(phone, code);
+    if (!otpResult.success) {
+      return res.status(400).json({ error: otpResult.message });
+    }
+
+    // 2. 查詢 by phone
+    const { data: userByPhone } = await supabase
+      .from('users')
+      .select('*')
+      .eq('phone', phone)
+      .maybeSingle();
+
+    // 3. 查詢 by lineUserId
+    const { data: userByLine } = await supabase
+      .from('users')
+      .select('*')
+      .eq('line_user_id', lineUserId)
+      .maybeSingle();
+
+    let user;
+
+    if (userByPhone) {
+      // Phone 已存在 → 綁定 LINE ID
+      const { data, error } = await supabase
+        .from('users')
+        .update({
+          line_user_id: lineUserId,
+          display_name: name || userByPhone.display_name,
+        })
+        .eq('id', userByPhone.id)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      user = data;
+    } else if (userByLine) {
+      // LINE ID 已存在 → 更新 phone
+      const { data, error } = await supabase
+        .from('users')
+        .update({
+          phone,
+          display_name: name || userByLine.display_name,
+        })
+        .eq('id', userByLine.id)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      user = data;
+    } else {
+      // 新用戶
+      const { data, error } = await supabase
+        .from('users')
+        .insert({
+          line_user_id: lineUserId,
+          phone,
+          display_name: name || '',
+        })
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      user = data;
+    }
+
+    // 註冊成功 → 切換 Rich Menu 為會員版
+    RichMenuService.switchToMemberMenu(lineUserId).catch(() => {});
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        display_name: user.display_name,
+        phone: user.phone,
+        golfer_type: user.golfer_type || '來賓',
+        member_no: user.member_no,
+        member_valid_until: user.member_valid_until,
+        gender: user.gender,
+      },
+    });
+  } catch (error) {
+    console.error('Member Register Error:', error);
+    res.status(500).json({ error: error.message || '註冊失敗' });
+  }
+});
+
+// 重新綁定手機
+app.post('/api/member/rebind', async (req, res) => {
+  try {
+    const { phone, code, lineUserId } = req.body;
+    if (!phone || !code || !lineUserId) {
+      return res.status(400).json({ error: '缺少必要參數' });
+    }
+
+    // 1. 驗證 OTP
+    const otpResult = await OtpService.verifyOtp(phone, code);
+    if (!otpResult.success) {
+      return res.status(400).json({ error: otpResult.message });
+    }
+
+    // 2. 檢查新手機是否已被其他人使用
+    const { data: phoneOwner } = await supabase
+      .from('users')
+      .select('id, line_user_id')
+      .eq('phone', phone)
+      .maybeSingle();
+
+    if (phoneOwner && phoneOwner.line_user_id && phoneOwner.line_user_id !== lineUserId) {
+      return res.status(409).json({ error: '此手機號碼已被其他帳號綁定' });
+    }
+
+    // 3. 更新手機號碼
+    if (phoneOwner && phoneOwner.line_user_id !== lineUserId) {
+      // phone record 存在但沒有 LINE ID → 合併：更新 phone record 加上 LINE ID
+      const { data, error } = await supabase
+        .from('users')
+        .update({ line_user_id: lineUserId })
+        .eq('id', phoneOwner.id)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+
+      // 刪除舊的 LINE record（如果存在且不同）
+      await supabase
+        .from('users')
+        .delete()
+        .eq('line_user_id', lineUserId)
+        .neq('id', phoneOwner.id);
+
+      res.json({ success: true, user: data });
+    } else {
+      // 直接更新 LINE user 的 phone
+      const { data, error } = await supabase
+        .from('users')
+        .update({ phone })
+        .eq('line_user_id', lineUserId)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      res.json({ success: true, user: data });
+    }
+  } catch (error) {
+    console.error('Member Rebind Error:', error);
+    res.status(500).json({ error: error.message || '重新綁定失敗' });
+  }
+});
+
+// 會員個人資料
+app.get('/api/member/profile', async (req, res) => {
+  try {
+    const { lineUserId } = req.query;
+    if (!lineUserId) {
+      return res.status(400).json({ error: '缺少 lineUserId' });
+    }
+
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('line_user_id', lineUserId)
+      .maybeSingle();
+
+    if (error || !user) {
+      return res.status(404).json({ error: '找不到會員資料' });
+    }
+
+    // 統計
+    const { count: totalBookings } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id);
+
+    const { count: upcomingBookings } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .in('status', ['confirmed'])
+      .gte('date', new Date().toISOString().split('T')[0]);
+
+    const { count: completedRounds } = await supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('status', 'checked_in');
+
+    res.json({
+      user: {
+        id: user.id,
+        display_name: user.display_name,
+        phone: user.phone,
+        golfer_type: user.golfer_type || '來賓',
+        member_no: user.member_no,
+        member_valid_until: user.member_valid_until,
+        gender: user.gender,
+      },
+      stats: {
+        totalBookings: totalBookings || 0,
+        upcomingBookings: upcomingBookings || 0,
+        completedRounds: completedRounds || 0,
+      },
+    });
+  } catch (error) {
+    console.error('Member Profile Error:', error);
+    res.status(500).json({ error: '讀取會員資料失敗' });
+  }
+});
+
+// 會員預約紀錄
+app.get('/api/member/bookings', async (req, res) => {
+  try {
+    const { lineUserId, page = 1, limit = 20 } = req.query;
+    if (!lineUserId) {
+      return res.status(400).json({ error: '缺少 lineUserId' });
+    }
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('id')
+      .eq('line_user_id', lineUserId)
+      .maybeSingle();
+
+    if (!user) {
+      return res.status(404).json({ error: '找不到會員' });
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const { data: bookings, count, error } = await supabase
+      .from('bookings')
+      .select('*', { count: 'exact' })
+      .eq('user_id', user.id)
+      .order('date', { ascending: false })
+      .order('time', { ascending: false })
+      .range(offset, offset + parseInt(limit) - 1);
+
+    if (error) throw new Error(error.message);
+
+    res.json({ bookings: bookings || [], total: count || 0 });
+  } catch (error) {
+    console.error('Member Bookings Error:', error);
+    res.status(500).json({ error: '讀取預約紀錄失敗' });
+  }
+});
+
+// 會員收費卡紀錄
+app.get('/api/member/charge-cards', async (req, res) => {
+  try {
+    const { lineUserId, page = 1, limit = 10 } = req.query;
+    if (!lineUserId) {
+      return res.status(400).json({ error: '缺少 lineUserId' });
+    }
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('id')
+      .eq('line_user_id', lineUserId)
+      .maybeSingle();
+
+    if (!user) {
+      return res.status(404).json({ error: '找不到會員' });
+    }
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // 先查詢用戶的 bookings IDs
+    const { data: bookingIds } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('user_id', user.id);
+
+    if (!bookingIds || bookingIds.length === 0) {
+      return res.json({ chargeCards: [], total: 0 });
+    }
+
+    const ids = bookingIds.map(b => b.id);
+
+    const { data: chargeCards, count, error } = await supabase
+      .from('charge_cards')
+      .select('*, caddies(name, caddy_number)', { count: 'exact' })
+      .in('booking_id', ids)
+      .neq('status', 'voided')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + parseInt(limit) - 1);
+
+    if (error) throw new Error(error.message);
+
+    res.json({ chargeCards: chargeCards || [], total: count || 0 });
+  } catch (error) {
+    console.error('Member Charge Cards Error:', error);
+    res.status(500).json({ error: '讀取收費卡紀錄失敗' });
+  }
+});
+
+// 會員優惠券
+app.get('/api/member/vouchers', async (req, res) => {
+  try {
+    const { lineUserId } = req.query;
+    if (!lineUserId) {
+      return res.status(400).json({ error: '缺少 lineUserId' });
+    }
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('id')
+      .eq('line_user_id', lineUserId)
+      .maybeSingle();
+
+    if (!user) {
+      return res.status(404).json({ error: '找不到會員' });
+    }
+
+    const { data: vouchers, error } = await supabase
+      .from('membership_benefits_issued')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      // 表可能不存在，回傳空
+      return res.json({ vouchers: [] });
+    }
+
+    res.json({ vouchers: vouchers || [] });
+  } catch (error) {
+    console.error('Member Vouchers Error:', error);
+    res.status(500).json({ error: '讀取優惠券失敗' });
   }
 });
 

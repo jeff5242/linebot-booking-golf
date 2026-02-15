@@ -52,6 +52,9 @@ linebot-booking-golf/
 │   ├── ChargeCard.js                # 收費卡產生 + LINE 通知
 │   ├── CaddyManagement.js           # 桿弟名冊 CRUD
 │   ├── LineNotification.js          # LINE Push 訊息封裝
+│   ├── SmsService.js                # 三竹簡訊 HTTP API（含 DB log）
+│   ├── OtpService.js                # OTP 驗證碼產生 / 驗證
+│   ├── RichMenuService.js           # LINE Rich Menu 切換（登入前/後）
 │   ├── BookingLogic.js              # 訂位邏輯
 │   ├── SystemSettings.js            # 系統設定
 │   └── OperationalCalendar.js       # 營運行事曆
@@ -760,6 +763,33 @@ UI 需求：描述介面
 參考模板：[附上 HTML/截圖]
 ```
 
+### ❌ 問題 5: 三竹簡訊中文亂碼
+
+**症狀：**
+- 透過三竹 Mitake API 發送含中文的簡訊，手機收到亂碼
+
+**原因：**
+`CharsetURL=UTF-8` 放在 POST body 裡，三竹 API 無法正確識別編碼。三竹要求此參數放在 **URL query string**。
+
+**解決方案：**
+```javascript
+// ❌ 錯誤：CharsetURL 放在 POST body
+const params = new URLSearchParams();
+params.append('CharsetURL', 'UTF-8');
+params.append('smbody', message);
+axios.post(MITAKE_API_URL, params.toString());
+
+// ✅ 正確：CharsetURL 放在 URL query string，Content-Type 加上 charset
+const apiUrl = `${MITAKE_API_URL}?CharsetURL=UTF-8`;
+const params = new URLSearchParams();
+params.append('smbody', message);
+axios.post(apiUrl, params.toString(), {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' }
+});
+```
+
+**關鍵檔案：** `services/SmsService.js`
+
 ---
 
 ## 快速參考
@@ -842,6 +872,45 @@ VIP-A → gold | VIP-B → gold | 團友 → team_friend | 來賓 → guest
 
 ---
 
-**文件版本**: v2.0
-**最後更新**: 2026-02-11
-**維護者**: Development Team + Claude Sonnet 4.5
+### 2026-02-14/15: OTP 手機驗證 + 會員中心 + Rich Menu
+
+**新增功能：**
+1. OTP 手機驗證（三竹簡訊 Mitake API）
+   - 6 位數驗證碼，5 分鐘有效，60 秒冷卻，每日 10 次上限
+   - SMS 發送記錄寫入 `sms_logs` 表（含 Message ID、狀態碼、剩餘點數、驗證碼）
+2. 會員個人中心 `/member`（MemberCenter.jsx）
+   - 會員卡片、預約紀錄 Tab、收費卡 Tab、優惠券 Tab
+   - 重新綁定手機功能（OTP 再驗證）
+3. LINE Rich Menu 自動切換
+   - 登入前 2 格 / 登入後 3 格
+   - 註冊成功自動切換、follow 事件判斷
+
+**新增檔案：**
+- `services/SmsService.js` — 三竹簡訊 + DB log
+- `services/OtpService.js` — OTP 產生 / 驗證
+- `services/RichMenuService.js` — Rich Menu 切換
+- `client/src/pages/MemberCenter.jsx` — 個人中心
+- `scripts/setupRichMenus.js` — Rich Menu 建立腳本
+- `migrations/create_otp_table.sql`
+- `migrations/create_sms_logs_table.sql`
+
+**修改檔案：**
+- `index.js` — OTP + 會員 + Rich Menu API 端點
+- `client/src/pages/Register.jsx` — 真實 OTP 取代 mock
+- `client/src/App.jsx` — 新增 /member 路由
+
+**環境變數（新增）：**
+- `MITAKE_USERNAME` — 三竹簡訊帳號
+- `MITAKE_PASSWORD` — 三竹簡訊密碼
+- `MITAKE_API_URL` — 三竹 API 網址
+- `RICH_MENU_BEFORE_LOGIN` — 登入前 Rich Menu ID（執行 setupRichMenus.js 後取得）
+- `RICH_MENU_AFTER_LOGIN` — 登入後 Rich Menu ID
+
+**踩坑記錄：**
+- 三竹中文簡訊亂碼：`CharsetURL=UTF-8` 必須放 URL query string，不能放 POST body
+
+---
+
+**文件版本**: v3.0
+**最後更新**: 2026-02-15
+**維護者**: Development Team + Claude Opus 4.6

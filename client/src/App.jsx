@@ -8,6 +8,7 @@ import { HealthCheck } from './pages/HealthCheck';
 import { AdminLogin } from './pages/AdminLogin';
 import { PaymentSuccess } from './pages/PaymentSuccess';
 import { PaymentFailure } from './pages/PaymentFailure';
+import { MemberCenter } from './pages/MemberCenter';
 import { supabase } from './supabase';
 
 import liff from '@line/liff';
@@ -150,6 +151,11 @@ function App() {
         } />
 
         <Route path="/health" element={<HealthCheck />} />
+        <Route path="/member" element={
+          <ProtectedRoute>
+            <MemberCenter />
+          </ProtectedRoute>
+        } />
         <Route path="/my-bookings" element={
           <ProtectedRoute>
             <MyBookings />
