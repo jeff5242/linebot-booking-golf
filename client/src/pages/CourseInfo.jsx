@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { sendLiffMessage } from '../utils/liffHelper';
 
 export function CourseInfo() {
     const [rates, setRates] = useState(null);
@@ -6,6 +7,9 @@ export function CourseInfo() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        // Send log
+        sendLiffMessage('查看球場資訊');
+
         const fetchRates = async () => {
             try {
                 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';

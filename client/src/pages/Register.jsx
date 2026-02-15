@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import liff from '@line/liff';
+import { sendLiffMessage } from '../utils/liffHelper';
 
 export function Register() {
     const navigate = useNavigate();
@@ -37,6 +38,12 @@ export function Register() {
     const apiUrl = import.meta.env.VITE_API_URL || '';
 
     useEffect(() => {
+        // Send initial "I am registering/checking" log
+        // But better inside checkLineLogin so we know context or after specific actions?
+        // User asked: "1. 註冊會員" - likely on page load.
+        // We need to be careful not to hold up the UI.
+
+        // Let's rely on standard flow.
         checkLineLogin();
     }, []);
 
@@ -61,6 +68,18 @@ export function Register() {
                 await liff.init({ liffId: import.meta.env.VITE_LIFF_ID });
                 if (liff.isLoggedIn()) {
                     setIsLineLoggedIn(true);
+                    // Send "Page View" message
+                    // User Example: 1. 註冊會員
+                    // We only send it once per session if possible, or just on load.
+                    // Doing it here covers both logged-in states.
+                    // However, we need to check if we are redirecting first.
+                    const context = liff.getContext();
+                    if (context && context.type === 'utou') {
+                        // Only send if not redirected yet... 
+                        // But for now, let's just trigger it. 
+                        // To avoid duplicate "Member Center" messages, we should check if they are already registered.
+                    }
+
                     const profile = await liff.getProfile();
                     lineUserId = profile.userId;
                     localStorage.setItem('line_user_id', lineUserId);
@@ -85,9 +104,15 @@ export function Register() {
                 // Store basics just in case
                 if (existingUser.display_name) localStorage.setItem('golf_user_name', existingUser.display_name);
 
+                // Logging for existing member
+                await sendLiffMessage('登入會員中心');
+
                 // Direct redirect, no form render
                 window.location.href = '/member';
                 return;
+            } else {
+                // New user landing on register page
+                await sendLiffMessage('註冊會員');
             }
         } catch (err) {
             console.error('LIFF check failed', err);
@@ -181,6 +206,7 @@ export function Register() {
 
             alert('註冊成功！');
             await refreshRichMenu(lineUserId);
+            await sendLiffMessage('註冊成功');
             window.location.href = '/member';
 
         } catch (error) {

@@ -1,11 +1,23 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { sendLiffMessage } from '../utils/liffHelper';
 
 export function Fortune() {
     const [revealed, setRevealed] = useState(false);
     const [fortune, setFortune] = useState(null);
     const navigate = useNavigate();
+    const [isMember, setIsMember] = useState(false);
+
+    React.useEffect(() => {
+        const checkMember = () => {
+            const phone = localStorage.getItem('golf_user_phone');
+            if (phone) setIsMember(true);
+        };
+        checkMember();
+        // Send logs
+        sendLiffMessage('查看運勢卡');
+    }, []);
 
     const fortunes = [
         { title: "大吉", desc: "今日運勢極佳，揮桿如有神助！" },
@@ -14,6 +26,12 @@ export function Fortune() {
         { title: "平", desc: "多加練習，基本功最重要。" },
         { title: "吉", desc: "球運不錯，長推有機會進洞。" },
     ];
+
+    // Import helper
+    // Since this file didn't import sendLiffMessage, I need to add it or Dynamic Import?
+    // Let's do dynamic import or assume I will add import statement in another step?
+    // It's safer to use multi_replace for imports.
+    // I will return and use multi_replace instead.
 
     const handleDraw = () => {
         if (revealed) return;
@@ -74,10 +92,10 @@ export function Fortune() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 1 }}
-                onClick={() => navigate('/register')}
+                onClick={() => navigate(isMember ? '/member' : '/register')}
                 className="mt-12 px-8 py-3 bg-white text-indigo-900 rounded-full font-bold shadow-lg hover:bg-gray-100 transition-colors"
             >
-                立即加入會員
+                {isMember ? '前往會員專區' : '立即加入會員'}
             </motion.button>
         </div >
     );
