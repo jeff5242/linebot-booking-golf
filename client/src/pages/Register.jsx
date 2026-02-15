@@ -6,6 +6,7 @@ import liff from '@line/liff';
 export function Register() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
+    const [isCheckingLine, setIsCheckingLine] = useState(true); // New loading state for initial check
     const [isLineLoggedIn, setIsLineLoggedIn] = useState(false);
 
     // Rich Menu Sync Helper
@@ -76,13 +77,23 @@ export function Register() {
                 .eq('line_user_id', lineUserId)
                 .single();
 
+            // Always sync Rich Menu if we know the user ID, just in case
+            await refreshRichMenu(lineUserId);
+
             if (existingUser) {
                 console.log('用戶已註冊，跳轉到個人中心');
-                await refreshRichMenu(lineUserId);
-                navigate('/member');
+                // Store basics just in case
+                if (existingUser.display_name) localStorage.setItem('golf_user_name', existingUser.display_name);
+
+                // Direct redirect, no form render
+                window.location.href = '/member';
+                return;
             }
         } catch (err) {
             console.error('LIFF check failed', err);
+            alert('系統檢查失敗，請稍後再試');
+        } finally {
+            setIsCheckingLine(false); // Stop loading
         }
     };
 
@@ -179,6 +190,14 @@ export function Register() {
             setLoading(false);
         }
     };
+
+    if (isCheckingLine) {
+        return (
+            <div className="container" style={{ textAlign: 'center', paddingTop: '60px' }}>
+                <p style={{ color: '#999' }}>正在確認您的會員身份...</p>
+            </div>
+        );
+    }
 
     if (!isLineLoggedIn) {
         return (
