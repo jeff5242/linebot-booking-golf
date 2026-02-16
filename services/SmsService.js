@@ -3,7 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
 // MilkIdea SMS API 設定
-const MILKIDEA_API_URL = process.env.MILKIDEA_API_URL || 'http://sms.milkidea.com/api/api-mail-send.sms';
+const MILKIDEA_API_URL = process.env.MILKIDEA_API_URL || 'http://sms.milkidea.com/api/api-sms-send.sms';
 const MILKIDEA_TOKEN = process.env.MILKIDEA_TOKEN || '8e940972d4ecec9bcdbbdebf8658a012504';
 
 const supabase = createClient(
