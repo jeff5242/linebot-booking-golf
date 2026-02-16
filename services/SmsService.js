@@ -2,9 +2,9 @@ const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
-const MITAKE_API_URL = process.env.MITAKE_API_URL || 'https://smsapi.mitake.com.tw/api/mtk/SmSend';
-const MITAKE_USERNAME = process.env.MITAKE_USERNAME;
-const MITAKE_PASSWORD = process.env.MITAKE_PASSWORD;
+// MilkIdea SMS API 設定
+const MILKIDEA_API_URL = process.env.MILKIDEA_API_URL || 'http://sms.milkidea.com/api/api-mail-send.sms';
+const MILKIDEA_TOKEN = process.env.MILKIDEA_TOKEN || '8e940972d4ecec9bcdbbdebf8658a012504';
 
 const supabase = createClient(
     process.env.SUPABASE_URL,
@@ -33,90 +33,72 @@ async function logSms({ phone, message, otpCode, purpose, msgId, statusCode, sta
 }
 
 /**
- * 透過三竹簡訊 HTTP API 發送簡訊
+ * 透過 MilkIdea SMS API 發送簡訊
+ *
+ * API 回傳格式： {"Error":{"code":0,"description":""}}
+ *   - code 0 = 成功
+ *   - code 非 0 = 失敗，description 為錯誤說明
+ *
  * @param {string} phone - 手機號碼 (例: 0912345678)
  * @param {string} message - 簡訊內容
  * @param {object} options - 額外選項
  * @param {string} options.otpCode - OTP 驗證碼（供記錄用）
  * @param {string} options.purpose - 用途 ('registration' | 'rebind' | 'notification')
- * @returns {{ success: boolean, msgId?: string, statusCode?: string, accountPoint?: string, error?: string }}
+ * @returns {{ success: boolean, error?: string }}
  */
 async function sendSms(phone, message, options = {}) {
     const { otpCode, purpose } = options;
 
-    // Dev 模式：未設定三竹帳號時，僅 log 到 console
-    if (!MITAKE_USERNAME || !MITAKE_PASSWORD) {
-        console.log('=== [SMS Dev Mode] ===');
-        console.log(`To: ${phone}`);
-        console.log(`Message: ${message}`);
-        console.log('======================');
-
-        await logSms({
-            phone, message, otpCode, purpose,
-            msgId: 'dev_mode', statusCode: '1', status: 'success',
-            accountPoint: null, errorMessage: null,
-        });
-
-        return { success: true, msgId: 'dev_mode', statusCode: '1' };
-    }
-
     try {
-        // 三竹 HTTP API: CharsetURL 必須放在 URL query string，不能放在 POST body
-        const apiUrlWithCharset = `${MITAKE_API_URL}?CharsetURL=UTF-8`;
-
-        // Debug: 記錄使用的帳號資訊（遮罩處理）
-        // Cleaned up debug info as per request
-        console.log(`[SMS] Sending to ${phone}, url=${MITAKE_API_URL}`);
+        console.log(`[SMS] Sending to ${phone} via MilkIdea`);
 
         const params = new URLSearchParams();
-        params.append('username', MITAKE_USERNAME);
-        params.append('password', MITAKE_PASSWORD);
-        params.append('dstaddr', phone);
-        params.append('smbody', message);
+        params.append('token', MILKIDEA_TOKEN);
+        params.append('receiver', phone);
+        params.append('subject', '大衛營高爾夫球場');
+        params.append('body', message);
 
-        const response = await axios.post(apiUrlWithCharset, params.toString(), {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' },
-            timeout: 10000,
+        const response = await axios.post(MILKIDEA_API_URL, params.toString(), {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 15000,
         });
 
-        // 三竹回應格式：每行 key=value
-        const responseText = response.data || '';
-        const lines = responseText.split('\n');
-        const result = {};
-        for (const line of lines) {
-            const [key, ...valueParts] = line.split('=');
-            if (key) {
-                result[key.trim()] = valueParts.join('=').trim();
-            }
-        }
+        console.log('[SMS] Response:', JSON.stringify(response.data));
 
-        // statuscode: 1=成功, 其他=失敗
-        const statusCode = result.statuscode || result.StatusCode || '';
-        const msgId = result.msgid || result.MsgId || '';
-        const accountPoint = result.AccountPoint || result.accountpoint || '';
+        // MilkIdea 回傳格式: {"Error":{"code":0,"description":""}}
+        const resData = response.data;
+        const errorCode = resData?.Error?.code;
+        const errorDesc = resData?.Error?.description || '';
 
-        if (statusCode === '1' || statusCode === '0') {
-            console.log(`[SMS] 發送成功 → ${phone}, msgId: ${msgId}, 剩餘點數: ${accountPoint}`);
+        if (errorCode === 0) {
+            // 成功
+            console.log(`[SMS] 發送成功 → ${phone}`);
 
             await logSms({
                 phone, message, otpCode, purpose,
-                msgId, statusCode, status: 'success',
-                accountPoint, errorMessage: null,
+                msgId: null,
+                statusCode: '0',
+                status: 'success',
+                accountPoint: null,
+                errorMessage: null,
             });
 
-            return { success: true, msgId, statusCode, accountPoint };
+            return { success: true };
         } else {
-            console.error(`[SMS] 發送失敗 → ${phone}, statusCode: ${statusCode}, response: ${responseText}`);
+            // 失敗
+            const errMsg = `MilkIdea 簡訊發送失敗 (code: ${errorCode}, desc: ${errorDesc})`;
+            console.error(`[SMS] ${errMsg}`);
 
-            // 記錄帳號資訊，供遠端除錯
-            const debugInfo = `url=${MITAKE_API_URL}`;
             await logSms({
                 phone, message, otpCode, purpose,
-                msgId, statusCode, status: 'failed',
-                accountPoint, errorMessage: `簡訊發送失敗 (${statusCode}) [${debugInfo}]`,
+                msgId: null,
+                statusCode: String(errorCode),
+                status: 'failed',
+                accountPoint: null,
+                errorMessage: errMsg,
             });
 
-            return { success: false, statusCode, error: `簡訊發送失敗 (${statusCode})` };
+            return { success: false, error: errMsg };
         }
     } catch (error) {
         console.error(`[SMS] 發送例外 → ${phone}:`, error.message);
