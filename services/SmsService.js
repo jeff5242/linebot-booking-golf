@@ -54,9 +54,8 @@ async function sendSms(phone, message, options = {}) {
 
         const params = new URLSearchParams();
         params.append('token', MILKIDEA_TOKEN);
-        params.append('receiver', phone);
-        params.append('subject', '大衛營高爾夫球場');
-        params.append('body', message);
+        params.append('dstAddr', phone);
+        params.append('smbody', message);
 
         const response = await axios.post(MILKIDEA_API_URL, params.toString(), {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
