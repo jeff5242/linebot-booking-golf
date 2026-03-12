@@ -4,7 +4,8 @@ require('dotenv').config();
 
 // MilkIdea SMS API 設定
 const MILKIDEA_API_URL = process.env.MILKIDEA_API_URL || 'http://sms.milkidea.com/api/api-sms-send.sms';
-const MILKIDEA_TOKEN = process.env.MILKIDEA_TOKEN || '8e940972d4ecec9bcdbbdebf8658a012504';
+const MILKIDEA_TOKEN = process.env.MILKIDEA_TOKEN;
+if (!MILKIDEA_TOKEN) throw new Error('Missing MILKIDEA_TOKEN env var');
 
 const supabase = createClient(
     process.env.SUPABASE_URL,
