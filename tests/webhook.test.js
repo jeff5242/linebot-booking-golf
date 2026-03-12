@@ -77,7 +77,7 @@ describeIfSecret('POST /webhook - LINE 事件處理', () => {
 
     // 200 = 處理成功, 500 = replyMessage 因假 token 被 LINE API 拒絕（測試環境正常現象）
     expect([200, 500]).toContain(res.status);
-  });
+  }, 15000);
 
   test('postback 未知 action 應靜默處理', async () => {
     const res = await sendWebhook([{
