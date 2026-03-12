@@ -234,9 +234,30 @@ app.delete('/api/roles/:id', requireAuth('admins'), async (req, res) => {
   }
 });
 
-// 健康檢查端點
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+// 健康檢查端點（含 DB 連線驗證）
+app.get('/health', async (req, res) => {
+  const checks = { db: 'unknown', line: 'unknown' };
+  let healthy = true;
+
+  // 檢查 Supabase 連線
+  try {
+    const { error } = await supabase
+      .from('system_settings')
+      .select('key')
+      .limit(1);
+    checks.db = error ? 'error' : 'ok';
+    if (error) healthy = false;
+  } catch (err) {
+    checks.db = 'error';
+    healthy = false;
+  }
+
+  // 檢查 LINE Bot 設定
+  checks.line = config.channelAccessToken ? 'ok' : 'missing_token';
+  if (!config.channelAccessToken) healthy = false;
+
+  const status = healthy ? 'ok' : 'degraded';
+  res.status(healthy ? 200 : 503).json({ status, checks });
 });
 
 app.get('/', (req, res) => {
@@ -501,7 +522,203 @@ app.get('/api/slots', optionalAuth, async (req, res) => {
   }
 });
 
-// 4. Cancel Booking (Trigger HOP)
+// 4. Create Booking (Server-side validated)
+app.post('/api/bookings', async (req, res) => {
+  try {
+    const { phone, date, time, holes, players_count, players_info, needs_cart, needs_caddie } = req.body;
+
+    // Validate required fields
+    if (!phone || !date || !time || !holes || !players_count) {
+      return res.status(400).json({ error: '缺少必要欄位 (phone, date, time, holes, players_count)' });
+    }
+
+    // Validate phone format (Taiwan mobile)
+    if (!/^09\d{8}$/.test(phone.replace(/[^0-9]/g, ''))) {
+      return res.status(400).json({ error: '請輸入正確的台灣手機號碼格式 (09開頭，共10碼)' });
+    }
+
+    // Validate holes
+    if (![9, 18].includes(Number(holes))) {
+      return res.status(400).json({ error: 'holes 必須為 9 或 18' });
+    }
+
+    // Validate players_info names
+    if (!Array.isArray(players_info) || players_info.length < players_count) {
+      return res.status(400).json({ error: '球友資料不完整' });
+    }
+    for (let i = 0; i < players_count; i++) {
+      if (!players_info[i]?.name || players_info[i].name.trim() === '') {
+        return res.status(400).json({ error: `第 ${i + 1} 位球友的姓名為必填` });
+      }
+    }
+
+    // Validate date is not in the past
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (new Date(date) < today) {
+      return res.status(400).json({ error: '不可預約過去的日期' });
+    }
+
+    // Check time slot availability (no duplicate booking at same date+time)
+    const { data: existingBookings, error: checkError } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('date', date)
+      .eq('time', time)
+      .neq('status', 'cancelled');
+
+    if (checkError) throw checkError;
+
+    // Get settings to check max groups per slot
+    const settings = await getSettings();
+    const maxGroupsPerSlot = parseInt(settings.max_groups_per_slot) || 1;
+    if (existingBookings && existingBookings.length >= maxGroupsPerSlot) {
+      return res.status(409).json({ error: '此時段已額滿，請選擇其他時段或加入候補' });
+    }
+
+    // Find user by phone
+    const { data: users, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('phone', phone.replace(/[^0-9]/g, ''))
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (userError) throw userError;
+
+    let userId;
+    if (users && users.length > 0) {
+      userId = users[0].id;
+    } else {
+      return res.status(404).json({ error: '找不到使用者資料，請先完成註冊' });
+    }
+
+    // Calculate amount via RateManagement (best-effort, fallback to 0)
+    let amount = 0;
+    try {
+      const dayOfWeek = new Date(date).getDay();
+      const isHoliday = dayOfWeek === 0 || dayOfWeek === 6;
+      const feeResult = await RateManagement.calculateTotalFee({
+        tier: 'guest',
+        holes: Number(holes),
+        isHoliday,
+        numPlayers: Number(players_count),
+        includeCart: !!needs_cart,
+        includeCaddy: !!needs_caddie
+      });
+      if (feeResult && feeResult.totalAmount) {
+        amount = feeResult.totalAmount;
+      }
+    } catch (calcErr) {
+      console.warn('Fee calculation skipped:', calcErr.message);
+    }
+
+    // Insert booking
+    const { data: booking, error: insertError } = await supabase
+      .from('bookings')
+      .insert([{
+        user_id: userId,
+        date,
+        time,
+        holes: Number(holes),
+        players_count: Number(players_count),
+        status: 'confirmed',
+        players_info: players_info.slice(0, players_count),
+        needs_cart: !!needs_cart,
+        needs_caddie: !!needs_caddie,
+        amount,
+        payment_status: 'pending'
+      }])
+      .select('id')
+      .single();
+
+    if (insertError) throw insertError;
+
+    res.json({ success: true, booking_id: booking.id, amount });
+  } catch (error) {
+    console.error('Create Booking Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4.5 Join Waitlist (Server-side validated)
+app.post('/api/waitlist', async (req, res) => {
+  try {
+    const { phone, date, players_count, peak_type } = req.body;
+
+    // Validate required fields
+    if (!phone || !date || !players_count || !peak_type) {
+      return res.status(400).json({ error: '缺少必要欄位 (phone, date, players_count, peak_type)' });
+    }
+
+    // Validate phone format
+    if (!/^09\d{8}$/.test(phone.replace(/[^0-9]/g, ''))) {
+      return res.status(400).json({ error: '請輸入正確的台灣手機號碼格式 (09開頭，共10碼)' });
+    }
+
+    // Validate peak_type
+    if (!['peak_a', 'peak_b'].includes(peak_type)) {
+      return res.status(400).json({ error: 'peak_type 必須為 peak_a 或 peak_b' });
+    }
+
+    // Find user by phone
+    const { data: users, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('phone', phone.replace(/[^0-9]/g, ''))
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (userError) throw userError;
+
+    if (!users || users.length === 0) {
+      return res.status(404).json({ error: '找不到使用者資料，請先完成註冊' });
+    }
+
+    const userId = users[0].id;
+
+    // Prevent duplicate: same user + same date + same peak_type
+    const { data: existing, error: dupError } = await supabase
+      .from('waitlist')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('date', date)
+      .eq('peak_type', peak_type)
+      .in('status', ['queued', 'notified']);
+
+    if (dupError) throw dupError;
+
+    if (existing && existing.length > 0) {
+      return res.status(409).json({ error: '您已在此日期此時段的候補名單中' });
+    }
+
+    // Get peak time range from settings
+    const settings = await getSettings();
+    const peakConfig = peak_type === 'peak_a' ? settings.peak_a : settings.peak_b;
+
+    // Insert waitlist entry
+    const { error: insertError } = await supabase
+      .from('waitlist')
+      .insert([{
+        user_id: userId,
+        date,
+        desired_time_start: peakConfig.start,
+        desired_time_end: peakConfig.end,
+        players_count: Number(players_count),
+        status: 'queued',
+        peak_type
+      }]);
+
+    if (insertError) throw insertError;
+
+    res.json({ success: true, message: '已成功加入候補清單' });
+  } catch (error) {
+    console.error('Waitlist Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5. Cancel Booking (Trigger HOP)
 app.post('/api/bookings/:id/cancel', requireAuth('starter'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -574,6 +791,63 @@ async function handleEvent(event) {
       console.error('[Follow] Rich Menu 設定失敗:', err.message);
     }
     return Promise.resolve(null);
+  }
+
+  // 處理取消追蹤（封鎖）事件 → 記錄並切換 Rich Menu
+  if (event.type === 'unfollow') {
+    const lineUserId = event.source.userId;
+    console.log(`[Unfollow] 用戶 ${lineUserId} 已取消追蹤`);
+    try {
+      // 記錄取消追蹤時間
+      await supabase
+        .from('users')
+        .update({ unfollowed_at: new Date().toISOString() })
+        .eq('line_user_id', lineUserId);
+    } catch (err) {
+      console.error('[Unfollow] 更新失敗:', err.message);
+    }
+    return Promise.resolve(null);
+  }
+
+  // 處理 Postback 事件（Rich Menu 按鈕、快速選單等）
+  if (event.type === 'postback') {
+    const lineUserId = event.source.userId;
+    const postbackData = event.postback.data;
+    console.log(`[Postback] 用戶 ${lineUserId} 觸發: ${postbackData}`);
+
+    try {
+      // 解析 postback data（格式: action=xxx&param=yyy）
+      const params = new URLSearchParams(postbackData);
+      const action = params.get('action');
+
+      switch (action) {
+        case 'booking':
+          // 預約相關的 postback（由 Rich Menu 觸發）
+          return client.replyMessage({
+            replyToken: event.replyToken,
+            messages: [{ type: 'text', text: '請使用下方選單進入預約頁面 ⛳' }],
+          });
+
+        case 'my_bookings':
+          return client.replyMessage({
+            replyToken: event.replyToken,
+            messages: [{ type: 'text', text: '請使用下方選單查看您的預約紀錄 📋' }],
+          });
+
+        case 'contact':
+          return client.replyMessage({
+            replyToken: event.replyToken,
+            messages: [{ type: 'text', text: '如需協助，請撥打球場服務專線或於營業時間洽詢櫃台。📞' }],
+          });
+
+        default:
+          console.log(`[Postback] 未處理的 action: ${action}`);
+          return Promise.resolve(null);
+      }
+    } catch (err) {
+      console.error('[Postback] 處理失敗:', err.message);
+      return Promise.resolve(null);
+    }
   }
 
   // 只處理文字訊息事件
@@ -683,11 +957,15 @@ app.get('/api/calendar/status/:date', requireAuth(), async (req, res) => {
   }
 });
 
-// 啟動伺服器
+// 啟動伺服器（測試模式不啟動 listen）
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`LINE Bot 伺服器正在運行於 port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`LINE Bot 伺服器正在運行於 port ${PORT}`);
+  });
+}
+
+module.exports = app;
 
 // ============================================
 // 費率管理 API (Rate Management)

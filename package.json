@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node index.js",
     "sync-users": "node scripts/syncUsers.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "NODE_ENV=test jest --forceExit --detectOpenHandles --verbose",
     "install": "cd client && npm install",
     "build": "cd client && npm run build && rm -rf ../dist && cp -r dist ../dist",
     "dev": "cd client && npm run dev"
@@ -32,8 +32,13 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/plugin-transform-modules-commonjs": "^7.28.6",
     "autoprefixer": "^10.4.24",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0",
     "postcss": "^8.5.6",
+    "supertest": "^7.2.2",
     "tailwindcss": "^4.1.18"
   }
 }

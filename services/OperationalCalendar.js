@@ -9,6 +9,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { sendPushMessage } = require('./LineNotification');
 require('dotenv').config();
 
 const supabase = createClient(
@@ -344,14 +345,51 @@ async function checkBookingConflicts(date, newStatus) {
  * 發送休場通知給受影響用戶
  */
 async function sendClosureNotifications(date, affectedBookings, closureReason) {
-    // TODO: 整合 LINE 訊息 API
-    // 這裡需要根據專案的 LINE Bot 實作來發送通知
+    console.log(`[休場通知] 發送通知給 ${affectedBookings.length} 位用戶，日期: ${date}`);
 
-    const message = `您好，因${closureReason}，您於${date}的預約需要調整。請聯繫客服重新安排時間。`;
+    let sentCount = 0;
+    let failedCount = 0;
 
-    // 模擬發送通知
-    console.log(`發送通知給 ${affectedBookings.length} 位用戶`);
-    console.log(`訊息內容: ${message}`);
+    for (const booking of affectedBookings) {
+        // 查詢預約者的 LINE User ID
+        const { data: user } = await supabase
+            .from('users')
+            .select('line_user_id, display_name')
+            .eq('id', booking.user_id)
+            .single();
+
+        if (!user || !user.line_user_id) {
+            console.warn(`[休場通知] 使用者 ${booking.user_id} 無 LINE ID，跳過`);
+            failedCount++;
+            continue;
+        }
+
+        const timeStr = booking.time ? booking.time.slice(0, 5) : '';
+        const message = [
+            '⚠️ 休場通知',
+            '',
+            `${user.display_name || '會員'} 您好：`,
+            `因${closureReason || '場地維護'}，${date} 球場將暫停營業。`,
+            '',
+            `您原訂的預約需要調整：`,
+            `⛳ 日期：${date}`,
+            timeStr ? `🕐 時段：${timeStr}` : '',
+            `👥 人數：${booking.players_count || '-'} 人`,
+            '',
+            '請聯繫客服或至預約頁面重新安排時間，造成不便敬請見諒。',
+            '📞 客服專線：請洽球場櫃台',
+        ].filter(Boolean).join('\n');
+
+        const result = await sendPushMessage(user.line_user_id, [{ type: 'text', text: message }]);
+        if (result.success) {
+            sentCount++;
+        } else {
+            failedCount++;
+            console.warn(`[休場通知] 發送失敗 (${user.line_user_id}):`, result.reason);
+        }
+    }
+
+    console.log(`[休場通知] 完成：成功 ${sentCount}，失敗 ${failedCount}`);
 
     // 更新通知狀態
     await supabase
@@ -364,7 +402,9 @@ async function sendClosureNotifications(date, affectedBookings, closureReason) {
 
     return {
         success: true,
-        notified: affectedBookings.length
+        notified: sentCount,
+        failed: failedCount,
+        total: affectedBookings.length
     };
 }
 

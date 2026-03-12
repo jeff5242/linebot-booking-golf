@@ -184,66 +184,32 @@ export function Booking() {
 
         try {
             const userPhone = localStorage.getItem('golf_user_phone');
-            const userName = localStorage.getItem('golf_user_name');
-            const lineUserId = localStorage.getItem('line_user_id') || 'temp_' + Date.now();
 
-            // Try to find user - handle duplicate phones by taking the latset one
-            const { data: users, error: userError } = await supabase
-                .from('users')
-                .select('id')
-                .eq('phone', userPhone)
-                .order('created_at', { ascending: false })
-                .limit(1);
-
-            let user = users && users.length > 0 ? users[0] : null;
-
-            // If user not found but we have local info, try to register/restore user seamlessly
-            if (!user && userPhone && userName) {
-                console.log('User not found in DB, attempting auto-restore...');
-                const { data: newUser, error: createError } = await supabase
-                    .from('users')
-                    .insert([{
-                        line_user_id: lineUserId,
-                        phone: userPhone,
-                        display_name: userName
-                    }])
-                    .select('id')
-                    .single();
-
-                if (newUser && !createError) {
-                    user = newUser;
-                }
-            }
-
-            if (!user) {
+            if (!userPhone) {
                 setMessageContent({ type: 'error', message: '找不到使用者資料，請重新註冊' });
                 setShowMessageModal(true);
-                setTimeout(() => {
-                    navigate('/register');
-                }, 2000);
+                setTimeout(() => { navigate('/register'); }, 2000);
                 return;
             }
 
-            const pricing = calculateDynamicPrice();
-            const amount = pricing ? pricing.groupTotal : 0;
-
-            const { data: booking, error } = await supabase.from('bookings').insert([
-                {
-                    user_id: user.id,
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${apiUrl}/api/bookings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phone: userPhone,
                     date: format(selectedDate, 'yyyy-MM-dd'),
                     time: format(pendingTime, 'HH:mm:ss'),
                     holes: selectedHoles,
                     players_count: playersCount,
-                    status: 'confirmed',
                     players_info: players.slice(0, playersCount),
                     needs_cart: needsCart,
-                    needs_caddie: needsCaddie,
-                    amount: amount,
-                    payment_status: 'pending' // 現場付款（待付款）
-                }
-            ]).select('id').single();
+                    needs_caddie: needsCaddie
+                })
+            });
 
-            if (error) throw error;
+            const result = await res.json();
+            if (!res.ok) throw new Error(result.error || '預約失敗');
 
             // 預約成功，顯示成功訊息
             setShowPlayerModal(false);
@@ -285,42 +251,28 @@ export function Booking() {
         try {
             setLoading(true);
             const userPhone = localStorage.getItem('golf_user_phone');
-            const lineUserId = localStorage.getItem('line_user_id') || 'temp_' + Date.now();
 
-            // 找到使用者
-            const { data: users, error: userError } = await supabase
-                .from('users')
-                .select('id')
-                .eq('phone', userPhone)
-                .order('created_at', { ascending: false })
-                .limit(1);
-
-            let user = users && users.length > 0 ? users[0] : null;
-
-            if (!user) {
+            if (!userPhone) {
                 setMessageContent({ type: 'error', message: '找不到使用者資料，請重新註冊' });
                 setShowMessageModal(true);
                 return;
             }
 
-            // 取得尖峰時段設定
-            const peakConfig = waitlistPeakType === 'peak_a' ? settings.peak_a : settings.peak_b;
-
-            // 加入候補清單
-            const { error: waitlistError } = await supabase
-                .from('waitlist')
-                .insert([{
-                    user_id: user.id,
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${apiUrl}/api/waitlist`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phone: userPhone,
                     date: format(selectedDate, 'yyyy-MM-dd'),
-                    desired_time_start: peakConfig.start,
-                    desired_time_end: peakConfig.end,
                     players_count: playersCount,
-                    status: 'queued',
                     peak_type: waitlistPeakType
-                }]);
+                })
+            });
 
-            if (waitlistError) {
-                throw new Error(waitlistError.message);
+            const result = await res.json();
+            if (!res.ok) {
+                throw new Error(result.error || '加入候補失敗');
             }
 
             // 成功加入候補

@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { getSettings } = require('./SystemSettings');
+const { sendPushMessage } = require('./LineNotification');
 require('dotenv').config();
 
 const supabase = createClient(
@@ -126,8 +127,34 @@ async function processWaitlist(cancelledBookingId) {
             .eq('id', candidate.id);
 
         console.log(`[HOP] Notifying candidate ${candidate.user_id}`);
-        // TODO: Send LINE Notify here
-        // sendLineNotify(candidate.user_id, '候補名額釋出通知...');
+
+        // 查詢候補者的 LINE User ID
+        const { data: candidateUser } = await supabase
+            .from('users')
+            .select('line_user_id, display_name')
+            .eq('id', candidate.user_id)
+            .single();
+
+        if (candidateUser && candidateUser.line_user_id) {
+            const timeStr = booking.time ? booking.time.slice(0, 5) : '';
+            const message = [
+                '🔔 候補名額釋出通知',
+                '',
+                `${candidateUser.display_name || '會員'} 您好：`,
+                `您候補的 ${booking.date} 時段有名額釋出！`,
+                '',
+                `⛳ 日期：${booking.date}`,
+                `🕐 時段：${timeStr}`,
+                `⏰ 保留時限：2 小時`,
+                '',
+                '請盡快前往預約頁面完成訂位，逾時將自動釋出給下一位候補者。',
+            ].join('\n');
+
+            const result = await sendPushMessage(candidateUser.line_user_id, [{ type: 'text', text: message }]);
+            console.log(`[HOP] LINE notification result:`, result);
+        } else {
+            console.warn(`[HOP] Candidate ${candidate.user_id} has no LINE ID, skipping notification`);
+        }
     }
 }
 
