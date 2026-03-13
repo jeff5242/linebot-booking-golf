@@ -10,6 +10,7 @@ export function Fortune() {
     const [isMember, setIsMember] = useState(false);
 
     React.useEffect(() => {
+        document.title = '運勢卡';
         const checkMember = () => {
             const phone = localStorage.getItem('golf_user_phone');
             if (phone) setIsMember(true);

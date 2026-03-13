@@ -43,6 +43,7 @@ export function Booking() {
 
     // Load Main User Info and Settings
     useEffect(() => {
+        document.title = '預約球場';
         loadMainUser();
         fetchSettings();
         fetchRateConfig();

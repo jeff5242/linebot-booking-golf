@@ -2493,6 +2493,7 @@ export function AdminDashboard() {
 
     // 載入系統設定（營運時間、間隔等）
     useEffect(() => {
+        document.title = '出發台管理';
         const fetchSettings = async () => {
             try {
                 const res = await adminFetch('/api/settings');

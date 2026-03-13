@@ -54,6 +54,7 @@ export function MemberCenter() {
     const [selectedBooking, setSelectedBooking] = useState(null);
 
     useEffect(() => {
+        document.title = '會員專區';
         fetchProfile();
     }, []);
 

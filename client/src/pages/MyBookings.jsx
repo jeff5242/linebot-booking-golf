@@ -12,6 +12,7 @@ export function MyBookings() {
     const userPhone = localStorage.getItem('golf_user_phone');
 
     useEffect(() => {
+        document.title = '我的預約';
         fetchMyBookings();
     }, []);
 

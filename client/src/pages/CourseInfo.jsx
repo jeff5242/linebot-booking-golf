@@ -7,6 +7,7 @@ export function CourseInfo() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        document.title = '球場資訊';
         // Send log
         sendLiffMessage('查看球場資訊');
 

@@ -23,6 +23,7 @@ export function AdminLogin() {
     const isEmail = (str) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str);
 
     useEffect(() => {
+        document.title = '管理員登入';
         if (isEmail(username)) {
             setUseOtp(true);
         } else {

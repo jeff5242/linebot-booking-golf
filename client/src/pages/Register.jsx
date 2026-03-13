@@ -46,6 +46,7 @@ export function Register() {
     const apiUrl = import.meta.env.VITE_API_URL || '';
 
     useEffect(() => {
+        document.title = '綁定會員';
         // Send initial "I am registering/checking" log
         // But better inside checkLineLogin so we know context or after specific actions?
         // User asked: "1. 註冊會員" - likely on page load.
