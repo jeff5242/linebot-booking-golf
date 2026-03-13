@@ -825,7 +825,6 @@ app.post('/api/bookings/group', requireAuth('starter'), async (req, res) => {
       const { data: booking, error } = await supabase
         .from('bookings')
         .insert([{
-          user_id: null,
           date,
           time: groupTime,
           holes: bookingHoles,
