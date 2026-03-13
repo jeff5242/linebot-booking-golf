@@ -161,10 +161,12 @@ export function Booking() {
 
     const confirmBooking = async (e) => {
         e.preventDefault();
-        if (!pendingTime) return;
+        if (!pendingTime || loading) return;
+        setLoading(true);
 
         // Validate main booker phone
         if (!validatePhone(players[0].phone)) {
+            setLoading(false);
             setMessageContent({ type: 'error', message: '請輸入正確的台灣手機號碼格式 (09開頭，共10碼)' });
             setShowMessageModal(true);
             return;
@@ -178,6 +180,7 @@ export function Booking() {
                     message: `請填寫第 ${i + 1} 位球友的姓名`
                 });
                 setShowMessageModal(true);
+                setLoading(false);
                 return;
             }
         }
@@ -697,7 +700,7 @@ export function Booking() {
                             })()}
                         </div>
 
-                        <form onSubmit={confirmBooking}>
+                        <form onSubmit={confirmBooking} noValidate>
                             {/* Service Options */}
                             <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f0fdf4', borderRadius: '8px' }}>
                                 <h4 style={{ marginBottom: '10px', fontSize: '0.9rem', fontWeight: 'bold' }}>服務項目</h4>
@@ -765,7 +768,6 @@ export function Booking() {
                                                     flex: 1, // Take available space
                                                     minWidth: '0' // Allow shrinking
                                                 }}
-                                                required={index === 0}
                                                 value={player.name}
                                                 onChange={e => updatePlayer(index, 'name', e.target.value)}
                                             />
@@ -779,8 +781,6 @@ export function Booking() {
                                                     flex: 1.4, // give slightly more space to phone
                                                     minWidth: '0'
                                                 }}
-                                                required={index === 0}
-                                                pattern="09[0-9]{8}"
                                                 maxLength="10"
                                                 value={player.phone}
                                                 onChange={e => {
@@ -804,8 +804,8 @@ export function Booking() {
                                 >
                                     取消
                                 </button>
-                                <button type="submit" className="btn btn-primary">
-                                    確定預約
+                                <button type="submit" className="btn btn-primary" disabled={loading}>
+                                    {loading ? '處理中...' : '確定預約'}
                                 </button>
                             </div>
                         </form>
@@ -855,7 +855,7 @@ export function Booking() {
                             </p>
                         </div>
 
-                        <form onSubmit={submitWaitlist}>
+                        <form onSubmit={submitWaitlist} noValidate>
                             {/* 人數選擇 */}
                             <div style={{ marginBottom: '1rem' }}>
                                 <label className="form-label" style={{ fontWeight: 'bold' }}>選擇人數</label>
@@ -890,7 +890,6 @@ export function Booking() {
                                     placeholder="姓名"
                                     value={players[0].name}
                                     onChange={(e) => updatePlayer(0, 'name', e.target.value)}
-                                    required
                                     style={{ marginBottom: '0.5rem' }}
                                 />
                                 <input
@@ -899,7 +898,6 @@ export function Booking() {
                                     placeholder="手機號碼 (09xxxxxxxx)"
                                     value={players[0].phone}
                                     onChange={(e) => updatePlayer(0, 'phone', e.target.value)}
-                                    required
                                 />
                             </div>
 
