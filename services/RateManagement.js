@@ -24,7 +24,7 @@ const supabase = createClient(
  * @returns {Promise<Object>} 費用明細
  */
 async function calculateTotalFee(params, rateConfig = null) {
-    const { tier, holes, isHoliday, caddyRatio, numPlayers = 1, includeCart = true, includeCaddy = true } = params;
+    const { tier, holes, isHoliday, caddyRatio = '1:4', numPlayers = 1, includeCart = true, includeCaddy = true } = params;
 
     // 如果沒有提供費率配置，從資料庫讀取當前生效的費率
     if (!rateConfig) {
