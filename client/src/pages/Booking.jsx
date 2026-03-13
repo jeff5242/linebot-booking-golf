@@ -548,72 +548,130 @@ export function Booking() {
                 <h3 className="form-label" style={{ marginBottom: '1rem' }}>選擇開球時間</h3>
                 {loading ? (
                     <p>載入中...</p>
-                ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                        {slots.map(slot => {
-                            const peakType = getPeakType(slot);
-                            const isAvailable = isSlotAvailable(slot, bookings, selectedHoles, settings);
-                            const timeLabel = format(slot, 'HH:mm');
+                ) : (() => {
+                    // 計算一小時後的時間（只有今天需要過濾）
+                    const now = new Date();
+                    const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
+                    const isToday = format(selectedDate, 'yyyy-MM-dd') === format(now, 'yyyy-MM-dd');
 
-                            // Peak logic: hide non-peak slots if both peaks are not full
-                            if (!peakType && !areBothPeaksFull) {
-                                return null; // Don't show non-peak slots
+                    // 將 slots 分成 Peak A 和 Peak B（及離峰）
+                    const peakASlots = [];
+                    const peakBSlots = [];
+                    const offPeakSlots = [];
+
+                    slots.forEach(slot => {
+                        const peakType = getPeakType(slot);
+                        if (peakType === 'peak_a') peakASlots.push(slot);
+                        else if (peakType === 'peak_b') peakBSlots.push(slot);
+                        else offPeakSlots.push(slot);
+                    });
+
+                    const renderSlot = (slot) => {
+                        const peakType = getPeakType(slot);
+                        const isAvailable = isSlotAvailable(slot, bookings, selectedHoles, settings);
+                        const timeLabel = format(slot, 'HH:mm');
+
+                        // 今天只能預約一小時後的時段
+                        const isTooSoon = isToday && slot <= oneHourLater;
+
+                        let isTooLateFor18Holes = false;
+                        if (selectedHoles === 18) {
+                            const h = slot.getHours();
+                            const m = slot.getMinutes();
+                            if (h > 13 || (h === 13 && m > 30)) {
+                                isTooLateFor18Holes = true;
                             }
+                        }
 
-                            let isTooLateFor18Holes = false;
-                            if (selectedHoles === 18) {
-                                const h = slot.getHours();
-                                const m = slot.getMinutes();
-                                const turnTime = settings?.turn_time || 120;
-                                // Calculate cutoff: END_HOUR:END_MINUTE - turnTime
-                                // 15:30 - 120min = 13:30
-                                if (h > 13 || (h === 13 && m > 30)) {
-                                    isTooLateFor18Holes = true;
-                                }
-                            }
+                        const isDisabled = !isAvailable || isTooLateFor18Holes || isTooSoon;
 
-                            const isDisabled = !isAvailable || isTooLateFor18Holes;
+                        return (
+                            <button
+                                key={timeLabel}
+                                disabled={isDisabled}
+                                onClick={() => handleBook(slot)}
+                                style={{
+                                    padding: '10px 4px',
+                                    borderRadius: '8px',
+                                    border: peakType ? '2px solid #f59e0b' : '1px solid #e5e7eb',
+                                    backgroundColor: isDisabled ? '#f3f4f6' : (peakType ? '#fffbeb' : 'white'),
+                                    color: isDisabled ? '#9ca3af' : (peakType ? '#d97706' : 'var(--primary-color)'),
+                                    fontWeight: '600',
+                                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                    boxShadow: isDisabled ? 'none' : '0 1px 2px rgba(0,0,0,0.05)',
+                                    position: 'relative'
+                                }}
+                            >
+                                {timeLabel}
+                                {peakType && (
+                                    <span style={{
+                                        position: 'absolute',
+                                        top: '2px',
+                                        right: '2px',
+                                        fontSize: '0.6rem',
+                                        backgroundColor: '#f59e0b',
+                                        color: 'white',
+                                        padding: '1px 3px',
+                                        borderRadius: '3px'
+                                    }}>
+                                        {peakType === 'peak_a' ? 'A' : 'B'}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    };
 
-                            // Determine if this is a peak slot that's full
-                            const isPeakSlotFull = (peakType === 'peak_a' && isPeakAFull) || (peakType === 'peak_b' && isPeakBFull);
+                    return (
+                        <div>
+                            {/* Peak A 上午時段 */}
+                            {peakASlots.length > 0 && (
+                                <>
+                                    <p style={{ fontSize: '0.85rem', color: '#92400e', fontWeight: 'bold', margin: '0 0 8px' }}>上午 A 時段</p>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                                        {peakASlots.map(renderSlot)}
+                                    </div>
+                                </>
+                            )}
 
-                            return (
-                                <button
-                                    key={timeLabel}
-                                    disabled={isDisabled}
-                                    onClick={() => handleBook(slot)}
-                                    style={{
-                                        padding: '10px 4px',
-                                        borderRadius: '8px',
-                                        border: peakType ? '2px solid #f59e0b' : '1px solid #e5e7eb',
-                                        backgroundColor: isDisabled ? '#f3f4f6' : (peakType ? '#fffbeb' : 'white'),
-                                        color: isDisabled ? '#9ca3af' : (peakType ? '#d97706' : 'var(--primary-color)'),
-                                        fontWeight: '600',
-                                        cursor: isDisabled ? 'not-allowed' : 'pointer',
-                                        boxShadow: isDisabled ? 'none' : '0 1px 2px rgba(0,0,0,0.05)',
-                                        position: 'relative'
-                                    }}
-                                >
-                                    {timeLabel}
-                                    {peakType && (
-                                        <span style={{
-                                            position: 'absolute',
-                                            top: '2px',
-                                            right: '2px',
-                                            fontSize: '0.6rem',
-                                            backgroundColor: '#f59e0b',
-                                            color: 'white',
-                                            padding: '1px 3px',
-                                            borderRadius: '3px'
-                                        }}>
-                                            {peakType === 'peak_a' ? 'A' : 'B'}
-                                        </span>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-                )}
+                            {/* 分隔線 */}
+                            {peakASlots.length > 0 && peakBSlots.length > 0 && (
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', margin: '16px 0', gap: '12px'
+                                }}>
+                                    <div style={{ flex: 1, height: '1px', backgroundColor: '#d1d5db' }} />
+                                    <span style={{ fontSize: '0.8rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>下午時段</span>
+                                    <div style={{ flex: 1, height: '1px', backgroundColor: '#d1d5db' }} />
+                                </div>
+                            )}
+
+                            {/* Peak B 下午時段 */}
+                            {peakBSlots.length > 0 && (
+                                <>
+                                    <p style={{ fontSize: '0.85rem', color: '#92400e', fontWeight: 'bold', margin: '0 0 8px' }}>下午 B 時段</p>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                                        {peakBSlots.map(renderSlot)}
+                                    </div>
+                                </>
+                            )}
+
+                            {/* 離峰時段（僅在尖峰滿時顯示） */}
+                            {areBothPeaksFull && offPeakSlots.length > 0 && (
+                                <>
+                                    <div style={{
+                                        display: 'flex', alignItems: 'center', margin: '16px 0', gap: '12px'
+                                    }}>
+                                        <div style={{ flex: 1, height: '1px', backgroundColor: '#d1d5db' }} />
+                                        <span style={{ fontSize: '0.8rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>其他時段</span>
+                                        <div style={{ flex: 1, height: '1px', backgroundColor: '#d1d5db' }} />
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                                        {offPeakSlots.map(renderSlot)}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    );
+                })()}
             </div>
             )}
 
