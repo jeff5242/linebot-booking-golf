@@ -28,6 +28,14 @@ export function Register() {
     const [otp, setOtp] = useState('');
     const [countdown, setCountdown] = useState(0);
     const [sendingOtp, setSendingOtp] = useState(false);
+
+    // Custom modal to replace alert()
+    const [modalMsg, setModalMsg] = useState('');
+    const [modalCallback, setModalCallback] = useState(null);
+    const showModal = (msg, callback) => {
+        setModalMsg(msg);
+        setModalCallback(() => callback || null);
+    };
     const [otpMessage, setOtpMessage] = useState('');
 
     const [formData, setFormData] = useState({
@@ -116,7 +124,7 @@ export function Register() {
             }
         } catch (err) {
             console.error('LIFF check failed', err);
-            alert('系統檢查失敗，請稍後再試');
+            showModal('系統檢查失敗，請稍後再試');
         } finally {
             setIsCheckingLine(false); // Stop loading
         }
@@ -128,7 +136,7 @@ export function Register() {
 
     const sendVerificationCode = async () => {
         if (!formData.phone || formData.phone.length < 10) {
-            alert('請先輸入正確的手機號碼');
+            showModal('請先輸入正確的手機號碼');
             return;
         }
 
@@ -162,11 +170,11 @@ export function Register() {
         e.preventDefault();
 
         if (!verificationSent) {
-            alert('請先進行手機驗證');
+            showModal('請先進行手機驗證');
             return;
         }
         if (!otp || otp.length !== 6) {
-            alert('請輸入 6 位數驗證碼');
+            showModal('請輸入 6 位數驗證碼');
             return;
         }
 
@@ -177,8 +185,7 @@ export function Register() {
             const lineUserId = localStorage.getItem('line_user_id');
 
             if (!lineUserId) {
-                alert('無法取得 LINE 使用者資訊，請重新登入 LINE');
-                handleLineLogin();
+                showModal('無法取得 LINE 使用者資訊，請重新登入 LINE', () => handleLineLogin());
                 return;
             }
 
@@ -204,7 +211,7 @@ export function Register() {
             localStorage.setItem('golf_user_phone', formData.phone);
             localStorage.setItem('golf_user_name', formData.name || data.user?.display_name || '');
 
-            alert('註冊成功！');
+            showModal('註冊成功！');
             await refreshRichMenu(lineUserId);
             await sendLiffMessage('註冊成功');
             window.location.href = '/member';
@@ -340,6 +347,31 @@ export function Register() {
                     </button>
                 </form>
             </div>
+
+            {/* 自訂提示 Modal */}
+            {modalMsg && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', zIndex: 9999
+                }}>
+                    <div style={{
+                        background: 'white', borderRadius: '12px', padding: '24px',
+                        maxWidth: '320px', width: '90%', textAlign: 'center'
+                    }}>
+                        <h3 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: '#1a5c1a' }}>大衛營提示</h3>
+                        <p style={{ margin: '0 0 20px', color: '#333', lineHeight: '1.5' }}>{modalMsg}</p>
+                        <button
+                            onClick={() => { setModalMsg(''); if (modalCallback) modalCallback(); }}
+                            style={{
+                                padding: '10px 32px', backgroundColor: 'var(--primary-color, #2d5a27)',
+                                color: 'white', border: 'none', borderRadius: '8px',
+                                fontSize: '1rem', cursor: 'pointer'
+                            }}
+                        >確定</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

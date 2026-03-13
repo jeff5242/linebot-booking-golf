@@ -972,13 +972,19 @@ async function handleEvent(event) {
 
   const userMessage = event.message.text;
 
-  // Echo 回覆使用者訊息
+  // 忽略 LIFF 自動發送的訊息（不回覆）
+  const liffMessages = ['註冊會員', '註冊成功', '球場預約', '查看預約', '會員專區', '運勢卡', '球場資訊'];
+  if (liffMessages.includes(userMessage)) {
+    return Promise.resolve(null);
+  }
+
+  // 回覆使用者訊息
   return client.replyMessage({
     replyToken: event.replyToken,
     messages: [
       {
         type: 'text',
-        text: `你說了: ${userMessage}`,
+        text: `歡迎來到大衛營高爾夫球場！請使用下方選單操作。`,
       },
     ],
   });
