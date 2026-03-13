@@ -585,6 +585,13 @@ export function Booking() {
 
                         const isDisabled = !isAvailable || isTooLateFor18Holes || isTooSoon;
 
+                        // Peak A: 橘色系, Peak B: 深棕色系
+                        const colors = peakType === 'peak_b'
+                            ? { border: '#92400e', bg: '#fef3c7', text: '#78350f', badge: '#92400e' }
+                            : peakType === 'peak_a'
+                            ? { border: '#f59e0b', bg: '#fffbeb', text: '#d97706', badge: '#f59e0b' }
+                            : { border: '#e5e7eb', bg: 'white', text: 'var(--primary-color)', badge: '#999' };
+
                         return (
                             <button
                                 key={timeLabel}
@@ -593,9 +600,9 @@ export function Booking() {
                                 style={{
                                     padding: '10px 4px',
                                     borderRadius: '8px',
-                                    border: peakType ? '2px solid #f59e0b' : '1px solid #e5e7eb',
-                                    backgroundColor: isDisabled ? '#f3f4f6' : (peakType ? '#fffbeb' : 'white'),
-                                    color: isDisabled ? '#9ca3af' : (peakType ? '#d97706' : 'var(--primary-color)'),
+                                    border: peakType ? `2px solid ${colors.border}` : '1px solid #e5e7eb',
+                                    backgroundColor: isDisabled ? '#f3f4f6' : colors.bg,
+                                    color: isDisabled ? '#9ca3af' : colors.text,
                                     fontWeight: '600',
                                     cursor: isDisabled ? 'not-allowed' : 'pointer',
                                     boxShadow: isDisabled ? 'none' : '0 1px 2px rgba(0,0,0,0.05)',
@@ -609,7 +616,7 @@ export function Booking() {
                                         top: '2px',
                                         right: '2px',
                                         fontSize: '0.6rem',
-                                        backgroundColor: '#f59e0b',
+                                        backgroundColor: colors.badge,
                                         color: 'white',
                                         padding: '1px 3px',
                                         borderRadius: '3px'
