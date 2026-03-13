@@ -1159,8 +1159,102 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
     const [currentFriend, setCurrentFriend] = useState({ name: '', phone: '' });
     const [isSaving, setIsSaving] = useState(false);
 
-    // Details Modal State
+    // Details Modal State (editable)
     const [viewingBooking, setViewingBooking] = useState(null);
+    const [editingPlayers, setEditingPlayers] = useState([]);
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+    // 果嶺隊預約 State
+    const [showGroupModal, setShowGroupModal] = useState(false);
+    const [groupData, setGroupData] = useState({
+        time: '', totalPlayers: '', leaderName: '', leaderPhone: '',
+        holes: 18, needsCart: true, needsCaddie: true
+    });
+    const [isSavingGroup, setIsSavingGroup] = useState(false);
+
+    const openEditMode = (booking) => {
+        let playerList = [];
+        if (booking.players_info && Array.isArray(booking.players_info) && booking.players_info.length > 0) {
+            playerList = booking.players_info.map(p => ({ ...p }));
+        } else if (booking.notes?.includes('手動預約球友清單:')) {
+            const lines = booking.notes.split('手動預約球友清單:\n')[1].split('\n').filter(l => l.trim());
+            playerList = lines.map(line => {
+                const match = line.match(/(.+) \((.+)\)/);
+                return { name: match ? match[1] : line, phone: match ? match[2] : '' };
+            });
+        } else {
+            playerList = [{ name: booking.users?.display_name || '', phone: booking.users?.phone || '' }];
+        }
+        setEditingPlayers(playerList);
+        setIsEditMode(true);
+    };
+
+    const saveEditedPlayers = async () => {
+        if (!viewingBooking) return;
+        setIsSavingEdit(true);
+        try {
+            const res = await adminFetch(`/api/bookings/${viewingBooking.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    players_info: editingPlayers,
+                    players_count: editingPlayers.length
+                })
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error);
+            }
+            alert('儲存成功');
+            setIsEditMode(false);
+            setViewingBooking(null);
+            fetchBookings();
+        } catch (err) {
+            alert('儲存失敗: ' + err.message);
+        } finally {
+            setIsSavingEdit(false);
+        }
+    };
+
+    const handleGroupSubmit = async (e) => {
+        e.preventDefault();
+        if (!groupData.time || !groupData.totalPlayers || !groupData.leaderName || !groupData.leaderPhone) {
+            alert('請填寫必要欄位');
+            return;
+        }
+        if (groupData.totalPlayers < 1 || groupData.totalPlayers > 100) {
+            alert('人數須介於 1 ~ 100 人');
+            return;
+        }
+        setIsSavingGroup(true);
+        try {
+            const res = await adminFetch('/api/bookings/group', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: format(selectedDate, 'yyyy-MM-dd'),
+                    time: groupData.time + ':00',
+                    total_players: Number(groupData.totalPlayers),
+                    leader_name: groupData.leaderName,
+                    leader_phone: groupData.leaderPhone,
+                    holes: groupData.holes,
+                    needs_cart: groupData.needsCart,
+                    needs_caddie: groupData.needsCaddie
+                })
+            });
+            const result = await res.json();
+            if (!res.ok) throw new Error(result.error);
+            alert(`果嶺隊預約成功！共 ${result.group_count} 組，${result.total_players} 人`);
+            setShowGroupModal(false);
+            setGroupData({ time: '', totalPlayers: '', leaderName: '', leaderPhone: '', holes: 18, needsCart: true, needsCaddie: true });
+            fetchBookings();
+        } catch (err) {
+            alert('果嶺隊預約失敗: ' + err.message);
+        } finally {
+            setIsSavingGroup(false);
+        }
+    };
 
     const openManualBooking = (time) => {
         // Restriction: 18 holes only before 13:30
@@ -1424,7 +1518,13 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                 </div>
             )}
             <div className="card" style={{ overflowX: 'auto' }}>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', borderBottom: '1px solid #e5e7eb' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #e5e7eb' }}>
+                    <button
+                        onClick={() => setShowGroupModal(true)}
+                        style={{ padding: '4px 12px', fontSize: '0.8rem', border: '1px solid #1d4ed8', borderRadius: '6px', background: '#dbeafe', color: '#1d4ed8', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                        + 果嶺隊預約
+                    </button>
                     <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid #d1d5db' }}>
                         <button
                             onClick={() => setSlotFilter('all')}
@@ -1482,8 +1582,12 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                                         <>
                                             <td style={{ padding: '12px' }}>{booking.status === 'checked_in' ? '已報到' : '已預約'}</td>
                                             <td style={{ padding: '12px' }}>
-                                                {booking.users?.display_name}<br />
-                                                <small style={{ color: '#666' }}>{booking.users?.phone}</small>
+                                                {booking.users?.display_name || booking.players_info?.[0]?.name || '-'}
+                                                {booking.notes?.includes('果嶺隊預約') && (
+                                                    <span style={{ marginLeft: '4px', fontSize: '0.65rem', padding: '1px 5px', backgroundColor: '#dbeafe', color: '#1d4ed8', borderRadius: '3px', fontWeight: 'bold' }}>果嶺隊</span>
+                                                )}
+                                                <br />
+                                                <small style={{ color: '#666' }}>{booking.users?.phone || booking.players_info?.[0]?.phone || ''}</small>
                                             </td>
                                             <td style={{ padding: '12px' }}>{booking.holes}洞</td>
                                             <td style={{ padding: '12px' }}>{booking.players_count}人</td>
@@ -1657,15 +1761,20 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                 </div>
             )}
 
-            {/* Booking Details Modal */}
+            {/* Booking Details Modal (Editable) */}
             {viewingBooking && (
                 <div style={{
                     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                     backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 10000,
                     display: 'flex', justifyContent: 'center', alignItems: 'center'
                 }}>
-                    <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '400px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-                        <h2 style={{ margin: '0 0 15px 0', fontSize: '1.25rem', fontWeight: 'bold', borderBottom: '2px solid #f3f4f6', paddingBottom: '10px' }}>預約內容詳情</h2>
+                    <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '450px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 15px 0', borderBottom: '2px solid #f3f4f6', paddingBottom: '10px' }}>
+                            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold' }}>預約內容詳情</h2>
+                            {viewingBooking.notes?.includes('果嶺隊預約') && (
+                                <span style={{ fontSize: '0.75rem', padding: '2px 8px', backgroundColor: '#dbeafe', color: '#1d4ed8', borderRadius: '4px', fontWeight: 'bold' }}>果嶺隊</span>
+                            )}
+                        </div>
 
                         <div style={{ display: 'grid', gap: '15px' }}>
                             <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px' }}>
@@ -1675,38 +1784,80 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
 
                             <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px' }}>
                                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '4px' }}>主訂位人</label>
-                                <div style={{ fontWeight: 'bold' }}>{viewingBooking.users?.display_name}</div>
-                                <div style={{ color: '#666' }}>{viewingBooking.users?.phone}</div>
+                                <div style={{ fontWeight: 'bold' }}>{viewingBooking.users?.display_name || viewingBooking.players_info?.[0]?.name || '-'}</div>
+                                <div style={{ color: '#666' }}>{viewingBooking.users?.phone || viewingBooking.players_info?.[0]?.phone || '-'}</div>
                             </div>
 
                             <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px' }}>
-                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '10px' }}>球友清單 (共 {viewingBooking.players_count} 位)</label>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                    {(() => {
-                                        let playerList = [];
-                                        if (viewingBooking.players_info && Array.isArray(viewingBooking.players_info) && viewingBooking.players_info.length > 0) {
-                                            playerList = viewingBooking.players_info;
-                                        } else if (viewingBooking.notes?.includes('手動預約球友清單:')) {
-                                            const lines = viewingBooking.notes.split('手動預約球友清單:\n')[1].split('\n').filter(l => l.trim());
-                                            playerList = lines.map(line => {
-                                                const match = line.match(/(.+) \((.+)\)/);
-                                                return { name: match ? match[1] : line, phone: match ? match[2] : '' };
-                                            });
-                                        } else {
-                                            playerList = [{ name: viewingBooking.users?.display_name, phone: viewingBooking.users?.phone }];
-                                        }
-
-                                        return playerList.map((p, idx) => (
-                                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '8px 12px', borderRadius: '6px', border: '1px solid #eee' }}>
-                                                <div style={{ fontWeight: '500' }}>
-                                                    <span style={{ color: '#9ca3af', marginRight: '8px' }}>{idx + 1}</span>
-                                                    {p.name}
-                                                </div>
-                                                <div style={{ color: '#4b5563', fontSize: '0.875rem' }}>{p.phone}</div>
-                                            </div>
-                                        ));
-                                    })()}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                    <label style={{ fontSize: '0.75rem', color: '#666' }}>球友清單 (共 {isEditMode ? editingPlayers.length : viewingBooking.players_count} 位)</label>
+                                    {!isEditMode && viewingBooking.status !== 'cancelled' && (
+                                        <button
+                                            onClick={() => openEditMode(viewingBooking)}
+                                            style={{ fontSize: '0.75rem', padding: '3px 10px', border: '1px solid #3b82f6', borderRadius: '4px', background: 'white', color: '#3b82f6', cursor: 'pointer' }}
+                                        >
+                                            編輯
+                                        </button>
+                                    )}
                                 </div>
+
+                                {isEditMode ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {editingPlayers.map((p, idx) => (
+                                            <div key={idx} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                <span style={{ color: '#9ca3af', fontSize: '0.8rem', width: '20px', flexShrink: 0 }}>{idx + 1}</span>
+                                                <input
+                                                    type="text" placeholder="姓名" value={p.name}
+                                                    onChange={e => { const arr = [...editingPlayers]; arr[idx] = { ...arr[idx], name: e.target.value }; setEditingPlayers(arr); }}
+                                                    style={{ flex: 1, padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '0.85rem' }}
+                                                />
+                                                <input
+                                                    type="tel" placeholder="手機" value={p.phone}
+                                                    onChange={e => { const arr = [...editingPlayers]; arr[idx] = { ...arr[idx], phone: e.target.value }; setEditingPlayers(arr); }}
+                                                    style={{ flex: 1, padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '0.85rem' }}
+                                                />
+                                                <button
+                                                    onClick={() => setEditingPlayers(editingPlayers.filter((_, i) => i !== idx))}
+                                                    style={{ padding: '4px 8px', border: 'none', background: '#fee2e2', color: '#dc2626', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', flexShrink: 0 }}
+                                                >
+                                                    刪除
+                                                </button>
+                                            </div>
+                                        ))}
+                                        <button
+                                            onClick={() => setEditingPlayers([...editingPlayers, { name: '', phone: '' }])}
+                                            style={{ padding: '6px', border: '1px dashed #9ca3af', borderRadius: '4px', background: 'white', color: '#6b7280', cursor: 'pointer', fontSize: '0.8rem' }}
+                                        >
+                                            + 新增組員
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        {(() => {
+                                            let playerList = [];
+                                            if (viewingBooking.players_info && Array.isArray(viewingBooking.players_info) && viewingBooking.players_info.length > 0) {
+                                                playerList = viewingBooking.players_info;
+                                            } else if (viewingBooking.notes?.includes('手動預約球友清單:')) {
+                                                const lines = viewingBooking.notes.split('手動預約球友清單:\n')[1].split('\n').filter(l => l.trim());
+                                                playerList = lines.map(line => {
+                                                    const match = line.match(/(.+) \((.+)\)/);
+                                                    return { name: match ? match[1] : line, phone: match ? match[2] : '' };
+                                                });
+                                            } else {
+                                                playerList = [{ name: viewingBooking.users?.display_name, phone: viewingBooking.users?.phone }];
+                                            }
+                                            return playerList.map((p, idx) => (
+                                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '8px 12px', borderRadius: '6px', border: '1px solid #eee' }}>
+                                                    <div style={{ fontWeight: '500' }}>
+                                                        <span style={{ color: '#9ca3af', marginRight: '8px' }}>{idx + 1}</span>
+                                                        {p.name || '(待補)'}
+                                                    </div>
+                                                    <div style={{ color: '#4b5563', fontSize: '0.875rem' }}>{p.phone}</div>
+                                                </div>
+                                            ));
+                                        })()}
+                                    </div>
+                                )}
                             </div>
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -1721,15 +1872,128 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                             </div>
                         </div>
 
-                        <div style={{ marginTop: '25px' }}>
-                            <button
-                                onClick={() => setViewingBooking(null)}
-                                className="btn btn-primary"
-                                style={{ width: '100%', padding: '12px 0' }}
-                            >
-                                關閉內容
-                            </button>
+                        <div style={{ marginTop: '25px', display: 'flex', gap: '8px' }}>
+                            {isEditMode ? (
+                                <>
+                                    <button
+                                        onClick={() => setIsEditMode(false)}
+                                        className="btn"
+                                        style={{ flex: 1, padding: '12px 0', backgroundColor: '#e5e7eb', color: '#374151' }}
+                                    >
+                                        取消編輯
+                                    </button>
+                                    <button
+                                        onClick={saveEditedPlayers}
+                                        className="btn btn-primary"
+                                        style={{ flex: 1, padding: '12px 0' }}
+                                        disabled={isSavingEdit}
+                                    >
+                                        {isSavingEdit ? '儲存中...' : '儲存變更'}
+                                    </button>
+                                </>
+                            ) : (
+                                <button
+                                    onClick={() => { setViewingBooking(null); setIsEditMode(false); }}
+                                    className="btn btn-primary"
+                                    style={{ width: '100%', padding: '12px 0' }}
+                                >
+                                    關閉內容
+                                </button>
+                            )}
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 果嶺隊預約 Modal */}
+            {showGroupModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 10000,
+                    display: 'flex', justifyContent: 'center', alignItems: 'center'
+                }}>
+                    <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', width: '90%', maxWidth: '450px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+                        <h2 style={{ margin: '0 0 15px 0', fontSize: '1.25rem', fontWeight: 'bold', borderBottom: '2px solid #dbeafe', paddingBottom: '10px', color: '#1d4ed8' }}>果嶺隊預約</h2>
+                        <form onSubmit={handleGroupSubmit}>
+                            <div style={{ display: 'grid', gap: '12px' }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#666', marginBottom: '4px' }}>開球時間 *</label>
+                                    <select
+                                        value={groupData.time}
+                                        onChange={e => setGroupData({ ...groupData, time: e.target.value })}
+                                        style={{ width: '100%', padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                                    >
+                                        <option value="">選擇時間</option>
+                                        {slots.map(slot => {
+                                            const t = format(slot, 'HH:mm');
+                                            return <option key={t} value={t}>{t}</option>;
+                                        })}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#666', marginBottom: '4px' }}>總人數 * (1~100)</label>
+                                    <input
+                                        type="number" min="1" max="100"
+                                        value={groupData.totalPlayers}
+                                        onChange={e => setGroupData({ ...groupData, totalPlayers: e.target.value })}
+                                        style={{ width: '100%', padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px', boxSizing: 'border-box' }}
+                                        placeholder="輸入人數"
+                                    />
+                                    {groupData.totalPlayers > 0 && (
+                                        <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#3b82f6' }}>
+                                            將自動分為 {Math.ceil(groupData.totalPlayers / 4)} 組，從 {groupData.time || '--:--'} 開始每 5 分鐘一組
+                                        </p>
+                                    )}
+                                </div>
+                                <div style={{ background: '#f0f9ff', padding: '12px', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#0369a1', marginBottom: '8px', fontWeight: 'bold' }}>領隊資訊 *</label>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <input
+                                            type="text" placeholder="領隊姓名"
+                                            value={groupData.leaderName}
+                                            onChange={e => setGroupData({ ...groupData, leaderName: e.target.value })}
+                                            style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                                        />
+                                        <input
+                                            type="tel" placeholder="手機號碼"
+                                            value={groupData.leaderPhone}
+                                            onChange={e => setGroupData({ ...groupData, leaderPhone: e.target.value })}
+                                            style={{ flex: 1, padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                                        />
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ display: 'block', fontSize: '0.8rem', color: '#666', marginBottom: '4px' }}>洞數</label>
+                                        <select
+                                            value={groupData.holes}
+                                            onChange={e => setGroupData({ ...groupData, holes: Number(e.target.value) })}
+                                            style={{ width: '100%', padding: '8px', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                                        >
+                                            <option value={18}>18 洞</option>
+                                            <option value={9}>9 洞</option>
+                                        </select>
+                                    </div>
+                                    <label style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', paddingBottom: '8px' }}>
+                                        <input type="checkbox" checked={groupData.needsCart} onChange={e => setGroupData({ ...groupData, needsCart: e.target.checked })} />
+                                        <span style={{ fontSize: '0.85rem' }}>球車</span>
+                                    </label>
+                                    <label style={{ display: 'flex', alignItems: 'flex-end', gap: '4px', paddingBottom: '8px' }}>
+                                        <input type="checkbox" checked={groupData.needsCaddie} onChange={e => setGroupData({ ...groupData, needsCaddie: e.target.checked })} />
+                                        <span style={{ fontSize: '0.85rem' }}>桿弟</span>
+                                    </label>
+                                </div>
+                                <p style={{ margin: 0, fontSize: '0.8rem', color: '#92400e', background: '#fef3c7', padding: '8px 10px', borderRadius: '6px' }}>
+                                    隊員名單可在建立後透過「詳情 &gt; 編輯」逐組補填
+                                </p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '20px' }}>
+                                <button type="button" onClick={() => setShowGroupModal(false)} className="btn" style={{ flex: 1, padding: '12px 0', backgroundColor: '#e5e7eb', color: '#374151' }}>取消</button>
+                                <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: '12px 0' }} disabled={isSavingGroup}>
+                                    {isSavingGroup ? '建立中...' : '確認建立'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

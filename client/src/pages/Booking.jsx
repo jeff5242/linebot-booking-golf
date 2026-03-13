@@ -751,6 +751,14 @@ export function Booking() {
                                 </div>
                             </div>
 
+                            {playersCount < 4 && (
+                                <div style={{ marginBottom: '12px', padding: '10px 12px', backgroundColor: '#fef3c7', borderRadius: '8px', border: '1px solid #fbbf24' }}>
+                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#92400e', lineHeight: '1.4' }}>
+                                        未滿 4 人之組別，球場將視當日情況安排併組，送出預約即表示同意接受併組安排。
+                                    </p>
+                                </div>
+                            )}
+
                             {players.slice(0, playersCount).map((player, index) => (
                                 <div key={index} style={{ marginBottom: '12px', padding: '10px', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>

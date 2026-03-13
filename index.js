@@ -741,6 +741,122 @@ app.post('/api/bookings/:id/cancel', requireAuth('starter'), async (req, res) =>
   }
 });
 
+// 5.5 Update Booking (Edit players_info, players_count, holes, etc.)
+app.put('/api/bookings/:id', requireAuth('starter'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { players_info, players_count, holes, needs_cart, needs_caddie } = req.body;
+
+    const updateData = {};
+    if (players_info !== undefined) {
+      if (!Array.isArray(players_info)) {
+        return res.status(400).json({ error: 'players_info 必須為陣列' });
+      }
+      updateData.players_info = players_info;
+    }
+    if (players_count !== undefined) updateData.players_count = Number(players_count);
+    if (holes !== undefined) updateData.holes = Number(holes);
+    if (needs_cart !== undefined) updateData.needs_cart = !!needs_cart;
+    if (needs_caddie !== undefined) updateData.needs_caddie = !!needs_caddie;
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: '無更新內容' });
+    }
+
+    const { error } = await supabase
+      .from('bookings')
+      .update(updateData)
+      .eq('id', id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update Booking Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5.6 Create Group Booking (果嶺隊預約)
+app.post('/api/bookings/group', requireAuth('starter'), async (req, res) => {
+  try {
+    const { date, time, total_players, leader_name, leader_phone, members, holes, needs_cart, needs_caddie } = req.body;
+
+    if (!date || !time || !total_players || !leader_name || !leader_phone) {
+      return res.status(400).json({ error: '缺少必要欄位 (date, time, total_players, leader_name, leader_phone)' });
+    }
+
+    if (total_players < 1 || total_players > 100) {
+      return res.status(400).json({ error: '人數須介於 1 ~ 100 人' });
+    }
+
+    // Build players_info: leader + members
+    const players_info = [{ name: leader_name, phone: leader_phone }];
+    if (Array.isArray(members)) {
+      members.forEach(m => {
+        players_info.push({ name: m.name || '(待補)', phone: m.phone || '' });
+      });
+    }
+    // Fill remaining with placeholders
+    while (players_info.length < total_players) {
+      players_info.push({ name: '(待補)', phone: '' });
+    }
+
+    // Calculate how many groups needed (4 per group, round up)
+    const groupCount = Math.ceil(total_players / 4);
+
+    // Parse start time
+    const [startH, startM] = time.split(':').map(Number);
+    const interval = 5; // minutes between groups
+    const bookingHoles = holes || 18;
+
+    const createdBookings = [];
+
+    for (let g = 0; g < groupCount; g++) {
+      const groupStartMinutes = startH * 60 + startM + (g * interval);
+      const gh = Math.floor(groupStartMinutes / 60);
+      const gm = groupStartMinutes % 60;
+      const groupTime = `${String(gh).padStart(2, '0')}:${String(gm).padStart(2, '0')}:00`;
+
+      // Assign players to this group (4 per group, last group may have fewer)
+      const startIdx = g * 4;
+      const endIdx = Math.min(startIdx + 4, total_players);
+      const groupPlayers = players_info.slice(startIdx, endIdx);
+
+      const { data: booking, error } = await supabase
+        .from('bookings')
+        .insert([{
+          user_id: null,
+          date,
+          time: groupTime,
+          holes: bookingHoles,
+          players_count: groupPlayers.length,
+          players_info: groupPlayers,
+          status: 'confirmed',
+          needs_cart: !!needs_cart,
+          needs_caddie: !!needs_caddie,
+          amount: 0,
+          payment_status: 'pending',
+          notes: `果嶺隊預約 (${leader_name}) - 第 ${g + 1}/${groupCount} 組`
+        }])
+        .select('id, time')
+        .single();
+
+      if (error) throw error;
+      createdBookings.push(booking);
+    }
+
+    res.json({
+      success: true,
+      group_count: groupCount,
+      total_players,
+      bookings: createdBookings
+    });
+  } catch (error) {
+    console.error('Group Booking Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 手動更新用戶 Rich Menu API
 app.post('/api/user/richmenu', async (req, res) => {
   try {
