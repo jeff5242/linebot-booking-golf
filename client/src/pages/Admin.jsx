@@ -1256,6 +1256,63 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
         }
     };
 
+    // 判斷預約屬於 Peak A / Peak B / 離峰
+    const getBookingPeakType = (bookingTime) => {
+        if (!effectiveSettings) return null;
+        const t = bookingTime.slice(0, 5); // "HH:mm"
+        const peakA = effectiveSettings.peak_a || systemSettings?.peak_a;
+        const peakB = effectiveSettings.peak_b || systemSettings?.peak_b;
+        if (peakA && t >= peakA.start && t <= peakA.end) return 'peak_a';
+        if (peakB && t >= peakB.start && t <= peakB.end) return 'peak_b';
+        return null;
+    };
+
+    // 取得同 Peak 可併組的預約（不足4人、同日、同 Peak、非取消）
+    const getMergeableSamePeak = (booking) => {
+        const peakType = getBookingPeakType(booking.time);
+        if (!peakType) return [];
+        return bookings.filter(b =>
+            b.id !== booking.id &&
+            b.status !== 'cancelled' &&
+            b.players_count < 4 &&
+            getBookingPeakType(b.time) === peakType
+        );
+    };
+
+    // 執行併組：將 source 的球友合併到 target
+    const handleMergeGroups = async (targetBooking, sourceBooking) => {
+        const targetPlayers = targetBooking.players_info || [];
+        const sourcePlayers = sourceBooking.players_info || [];
+        const merged = [...targetPlayers, ...sourcePlayers];
+
+        if (merged.length > 4) {
+            alert(`合併後人數 ${merged.length} 人超過 4 人上限，無法併組`);
+            return;
+        }
+
+        if (!confirm(`確認將 ${sourcePlayers.map(p => p.name).join('、')} 併入 ${targetPlayers[0]?.name || '-'} 的組別？\n合併後共 ${merged.length} 人`)) return;
+
+        try {
+            // 更新目標組
+            const res1 = await adminFetch(`/api/bookings/${targetBooking.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ players_info: merged, players_count: merged.length })
+            });
+            if (!res1.ok) throw new Error((await res1.json()).error);
+
+            // 取消來源組
+            const res2 = await adminFetch(`/api/bookings/${sourceBooking.id}/cancel`, { method: 'POST' });
+            if (!res2.ok) throw new Error((await res2.json()).error);
+
+            alert('併組成功');
+            setViewingBooking(null);
+            fetchBookings();
+        } catch (err) {
+            alert('併組失敗: ' + err.message);
+        }
+    };
+
     const openManualBooking = (time) => {
         // Restriction: 18 holes only before 13:30
         const [h, m] = time.split(':').map(Number);
@@ -1572,8 +1629,20 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                             const displayTime = format(slot, 'HH:mm');
                             const booking = getBookingAt(timeStr);
                             const linkedBooking = getLinkedBooking(slot);
-                            let bg = booking ? '#ecfdf5' : (linkedBooking ? '#fef3c7' : 'transparent');
-                            if (booking?.status === 'checked_in') bg = '#dcfce7';
+                            let bg = 'transparent';
+                            if (booking) {
+                                if (booking.status === 'checked_in') {
+                                    bg = '#dcfce7';
+                                } else if (booking.players_count === 1) {
+                                    bg = '#fefce8'; // 淡黃色 - 1人
+                                } else if (booking.players_count === 2) {
+                                    bg = '#fce7f3'; // 粉紅色 - 2人
+                                } else {
+                                    bg = '#ffffff'; // 白色 - 3~4人
+                                }
+                            } else if (linkedBooking) {
+                                bg = '#fef3c7';
+                            }
 
                             return (
                                 <tr key={timeStr} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: bg }}>
@@ -1871,6 +1940,53 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                                 </div>
                             </div>
                         </div>
+
+                        {/* 併組區塊 - 人數不足4人時顯示 */}
+                        {viewingBooking.players_count < 4 && viewingBooking.status !== 'cancelled' && !isEditMode && (() => {
+                            const mergeable = getMergeableSamePeak(viewingBooking);
+                            const peakLabel = getBookingPeakType(viewingBooking.time) === 'peak_a' ? 'Peak A' : getBookingPeakType(viewingBooking.time) === 'peak_b' ? 'Peak B' : '離峰';
+                            return mergeable.length > 0 ? (
+                                <div style={{ marginTop: '15px', padding: '12px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #fbbf24' }}>
+                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#92400e', marginBottom: '8px', fontWeight: 'bold' }}>
+                                        同 {peakLabel} 可併組的預約
+                                    </label>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {mergeable.map(b => {
+                                            const combined = (viewingBooking.players_count || 0) + (b.players_count || 0);
+                                            const canMerge = combined <= 4;
+                                            return (
+                                                <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'white', padding: '8px 10px', borderRadius: '6px', border: '1px solid #eee' }}>
+                                                    <div style={{ fontSize: '0.85rem' }}>
+                                                        <span style={{ fontWeight: 'bold' }}>{b.time.slice(0, 5)}</span>
+                                                        <span style={{ margin: '0 6px', color: '#9ca3af' }}>|</span>
+                                                        {b.players_info?.[0]?.name || b.users?.display_name || '-'}
+                                                        <span style={{ color: '#6b7280', marginLeft: '4px' }}>({b.players_count}人)</span>
+                                                        {!canMerge && <span style={{ color: '#dc2626', fontSize: '0.75rem', marginLeft: '4px' }}>合計{combined}人超過4人</span>}
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleMergeGroups(viewingBooking, b)}
+                                                        disabled={!canMerge}
+                                                        style={{
+                                                            padding: '3px 10px', fontSize: '0.75rem', borderRadius: '4px', cursor: canMerge ? 'pointer' : 'not-allowed',
+                                                            border: canMerge ? '1px solid #f59e0b' : '1px solid #d1d5db',
+                                                            background: canMerge ? '#fef3c7' : '#f3f4f6',
+                                                            color: canMerge ? '#92400e' : '#9ca3af',
+                                                            fontWeight: 'bold'
+                                                        }}
+                                                    >
+                                                        併組
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{ marginTop: '15px', padding: '10px 12px', background: '#f9fafb', borderRadius: '8px', fontSize: '0.8rem', color: '#9ca3af' }}>
+                                    同 {peakLabel} 目前無其他不足 4 人的組別可併組
+                                </div>
+                            );
+                        })()}
 
                         <div style={{ marginTop: '25px', display: 'flex', gap: '8px' }}>
                             {isEditMode ? (
