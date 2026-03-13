@@ -41,6 +41,9 @@ export function Booking() {
     const [rateConfig, setRateConfig] = useState(null);
     const [userGolferType, setUserGolferType] = useState('來賓');
 
+    // 營運日曆狀態
+    const [dateStatus, setDateStatus] = useState(null);
+
     // Load Main User Info and Settings
     useEffect(() => {
         document.title = '預約球場';
@@ -127,10 +130,28 @@ export function Booking() {
         }
     };
 
-    // Fetch bookings... (existing useEffect)
+    // Fetch bookings and date status when date changes
     useEffect(() => {
         fetchBookings();
+        fetchDateStatus();
     }, [selectedDate]);
+
+    const fetchDateStatus = async () => {
+        try {
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const dateStr = format(selectedDate, 'yyyy-MM-dd');
+            const res = await fetch(`${apiUrl}/api/calendar/status/${dateStr}`);
+            if (res.ok) {
+                const data = await res.json();
+                setDateStatus(data);
+            } else {
+                setDateStatus(null);
+            }
+        } catch (err) {
+            console.error('Failed to load date status:', err);
+            setDateStatus(null);
+        }
+    };
 
     const fetchBookings = async () => {
         setLoading(true);
@@ -505,7 +526,24 @@ export function Booking() {
                 </button>
             </div>
 
+            {/* 休場日提示 */}
+            {dateStatus && (dateStatus.status === 'closed' || dateStatus.status === 'emergency_closed') && (
+                <div style={{
+                    padding: '16px', borderRadius: '8px', marginBottom: '16px', textAlign: 'center',
+                    backgroundColor: dateStatus.status === 'emergency_closed' ? '#fef2f2' : '#fef3c7',
+                    border: `1px solid ${dateStatus.status === 'emergency_closed' ? '#fecaca' : '#fde68a'}`,
+                    color: dateStatus.status === 'emergency_closed' ? '#991b1b' : '#92400e',
+                }}>
+                    <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold' }}>
+                        {dateStatus.status === 'emergency_closed' ? '⚠️ 本日緊急休場' : '本日休場'}
+                    </p>
+                    {dateStatus.reason && <p style={{ margin: '8px 0 0', fontSize: '0.9rem' }}>{dateStatus.reason}</p>}
+                    <p style={{ margin: '8px 0 0', fontSize: '0.85rem' }}>請選擇其他日期預約</p>
+                </div>
+            )}
+
             {/* Time Grid */}
+            {(!dateStatus || (dateStatus.status !== 'closed' && dateStatus.status !== 'emergency_closed')) && (
             <div className="time-grid">
                 <h3 className="form-label" style={{ marginBottom: '1rem' }}>選擇開球時間</h3>
                 {loading ? (
@@ -577,9 +615,10 @@ export function Booking() {
                     </div>
                 )}
             </div>
+            )}
 
             {/* Waitlist Buttons */}
-            {(isPeakAFull || isPeakBFull) && (
+            {(isPeakAFull || isPeakBFull) && (!dateStatus || (dateStatus.status !== 'closed' && dateStatus.status !== 'emergency_closed')) && (
                 <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#fef3c7', borderRadius: '8px', border: '1px solid #fbbf24' }}>
                     <h4 style={{ margin: '0 0 0.5rem 0', color: '#92400e', fontSize: '0.9rem', fontWeight: 'bold' }}>⏰ 尖峰時段已滿 - 加入候補</h4>
                     <div style={{ display: 'flex', gap: '8px' }}>

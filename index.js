@@ -559,6 +559,16 @@ app.post('/api/bookings', async (req, res) => {
       return res.status(400).json({ error: '不可預約過去的日期' });
     }
 
+    // Check if date is closed (operational calendar)
+    const { data: calOverride } = await supabase
+      .from('operational_calendar')
+      .select('status')
+      .eq('date', date)
+      .maybeSingle();
+    if (calOverride && (calOverride.status === 'closed' || calOverride.status === 'emergency_closed')) {
+      return res.status(400).json({ error: '該日期為休場日，無法預約' });
+    }
+
     // Check time slot availability (no duplicate booking at same date+time)
     const { data: existingBookings, error: checkError } = await supabase
       .from('bookings')
