@@ -1165,6 +1165,19 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
     const [isEditMode, setIsEditMode] = useState(false);
     const [isSavingEdit, setIsSavingEdit] = useState(false);
 
+    // ESC 鍵關閉詳情視窗
+    useEffect(() => {
+        if (!viewingBooking) return;
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                setViewingBooking(null);
+                setIsEditMode(false);
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [viewingBooking]);
+
     // 果嶺隊預約 State
     const [showGroupModal, setShowGroupModal] = useState(false);
     const [groupData, setGroupData] = useState({
