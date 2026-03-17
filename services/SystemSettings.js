@@ -36,7 +36,8 @@ const DEFAULT_SETTINGS = {
     notifications: {
         cancellation_template: '您的預約已取消',
         waitlist_template: '候補通知：您的時段已開放'
-    }
+    },
+    kiosk_pin: '1688'
 };
 
 /**

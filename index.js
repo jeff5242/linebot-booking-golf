@@ -31,6 +31,7 @@ const RoleMgmt = require('./services/RoleManagement');
 const bcrypt = require('bcryptjs');
 const OtpService = require('./services/OtpService');
 const RichMenuService = require('./services/RichMenuService');
+const { sendPushMessage } = require('./services/LineNotification');
 
 // Supabase 設定
 const supabase = createClient(
@@ -493,7 +494,26 @@ app.get('/api/users', requireAuth('users'), async (req, res) => {
 app.get('/api/settings', optionalAuth, async (req, res) => {
   try {
     const settings = await getSettings();
-    res.json(settings);
+    // 不對外暴露 kiosk_pin
+    const { kiosk_pin, ...publicSettings } = settings;
+    res.json(publicSettings);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Kiosk PIN 驗證（不回傳 PIN 本身，只驗證對錯）
+app.post('/api/kiosk/verify-pin', async (req, res) => {
+  try {
+    const { pin } = req.body;
+    if (!pin) return res.status(400).json({ error: '請輸入 PIN 碼' });
+    const settings = await getSettings();
+    const correct = settings.kiosk_pin || '1688';
+    if (pin === correct) {
+      res.json({ success: true });
+    } else {
+      res.status(401).json({ success: false, error: 'PIN 碼錯誤' });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -589,16 +609,18 @@ app.post('/api/bookings', async (req, res) => {
     // Find user by phone
     const { data: users, error: userError } = await supabase
       .from('users')
-      .select('id')
+      .select('id, line_user_id, display_name')
       .eq('phone', phone.replace(/[^0-9]/g, ''))
       .order('created_at', { ascending: false })
       .limit(1);
 
     if (userError) throw userError;
 
-    let userId;
+    let userId, lineUserId, displayName;
     if (users && users.length > 0) {
       userId = users[0].id;
+      lineUserId = users[0].line_user_id;
+      displayName = users[0].display_name;
     } else {
       return res.status(404).json({ error: '找不到使用者資料，請先完成註冊' });
     }
@@ -643,6 +665,27 @@ app.post('/api/bookings', async (req, res) => {
       .single();
 
     if (insertError) throw insertError;
+
+    // 發送 LINE 預約成功通知
+    if (lineUserId) {
+      const bookerName = players_info[0]?.name || displayName || '會員';
+      const dateStr = date.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2/$3');
+      const timeStr = time.substring(0, 5);
+      const msg = [
+        '✅ 預約成功通知',
+        '',
+        `📅 日期：${dateStr}`,
+        `🕐 時間：${timeStr}`,
+        `👥 人數：${players_count}位`,
+        `📝 預約人：${bookerName}`,
+        `⛳ 洞數：${holes}洞`,
+        '',
+        '請於現場付款，祝您擊球愉快！',
+      ].join('\n');
+      sendPushMessage(lineUserId, [{ type: 'text', text: msg }]).catch(err =>
+        console.error('Booking push message failed:', err.message)
+      );
+    }
 
     res.json({ success: true, booking_id: booking.id, amount });
   } catch (error) {

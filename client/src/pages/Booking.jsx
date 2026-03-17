@@ -4,6 +4,7 @@ import { Calendar } from '../components/Calendar';
 import { generateDailySlots, isSlotAvailable, golferTypeToTier } from '../utils/golfLogic';
 import { supabase } from '../supabase';
 import { useNavigate } from 'react-router-dom';
+import { sendLiffMessage } from '../utils/liffHelper';
 
 export function Booking() {
     const navigate = useNavigate();
@@ -47,6 +48,7 @@ export function Booking() {
     // Load Main User Info and Settings
     useEffect(() => {
         document.title = '預約球場';
+        sendLiffMessage('開始預約');
         loadMainUser();
         fetchSettings();
         fetchRateConfig();

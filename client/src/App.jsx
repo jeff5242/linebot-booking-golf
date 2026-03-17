@@ -11,6 +11,7 @@ import { PaymentFailure } from './pages/PaymentFailure';
 import { MemberCenter } from './pages/MemberCenter';
 import { Fortune } from './pages/Fortune';
 import { CourseInfo } from './pages/CourseInfo';
+import { KioskCheckin } from './pages/KioskCheckin';
 import { supabase } from './supabase';
 
 // Helper to refresh Rich Menu
@@ -158,6 +159,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/kiosk/checkin" element={<KioskCheckin />} />
         <Route path="/fortune" element={<Fortune />} />
         <Route path="/course-info" element={<CourseInfo />} />
         <Route path="/register" element={<Register />} />

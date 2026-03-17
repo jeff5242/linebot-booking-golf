@@ -13,7 +13,8 @@ import {
     Save,
     Power,
     Bell,
-    TrendingUp
+    TrendingUp,
+    KeyRound
 } from 'lucide-react';
 import { adminFetch } from '../utils/adminApi';
 
@@ -886,6 +887,33 @@ export function AdminSettings() {
                                         </select>
                                         <p className="text-xs text-gray-500 mt-2">
                                             每一組預約中會員與來賓的人數限制
+                                        </p>
+                                    </div>
+                                </div>
+                            </Card>
+
+                            <Card title="報到機 (Kiosk) 設定" icon={KeyRound}>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            報到機 PIN 碼
+                                        </label>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={8}
+                                            value={settings.kiosk_pin || '1688'}
+                                            onChange={(e) => setSettings({ ...settings, kiosk_pin: e.target.value })}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-lg tracking-widest"
+                                            placeholder="1688"
+                                        />
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            用於 Kiosk 報到機頁面的進入驗證碼，修改後需重新驗證
+                                        </p>
+                                    </div>
+                                    <div className="pt-3 border-t border-gray-200">
+                                        <p className="text-xs text-gray-500">
+                                            報到機網址：<code className="bg-gray-100 px-1.5 py-0.5 rounded text-blue-600">/kiosk/checkin</code>
                                         </p>
                                     </div>
                                 </div>

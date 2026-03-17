@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
-import { adminFetch, storeLoginResult } from '../utils/adminApi';
+import { storeLoginResult } from '../utils/adminApi';
 
 export function AdminLogin() {
     const navigate = useNavigate();
@@ -17,7 +17,7 @@ export function AdminLogin() {
     // OTP State
     const [otpSent, setOtpSent] = useState(false);
     const [otp, setOtp] = useState('');
-    const [mockServerOtp, setMockServerOtp] = useState(null);
+    const [otpError, setOtpError] = useState('');
 
     // Detect if input is email
     const isEmail = (str) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str);
@@ -31,34 +31,43 @@ export function AdminLogin() {
         }
     }, [username]);
 
+    // 透過 Supabase Auth 發送 Email OTP
     const sendOtp = async () => {
         setLoading(true);
+        setOtpError('');
         try {
-            // Check if admin exists first
-            const { data: user } = await supabase
+            // 先確認是管理員帳號
+            const { data: admin } = await supabase
                 .from('admins')
                 .select('id')
                 .eq('username', username)
                 .maybeSingle();
 
-            if (!user) {
-                alert('此 Email 不是管理員帳號');
+            if (!admin) {
+                setOtpError('此 Email 不是管理員帳號');
                 setLoading(false);
                 return;
             }
 
-            // Generate Mock OTP
-            const code = Math.floor(100000 + Math.random() * 900000).toString();
-            setMockServerOtp(code);
+            // 透過 Supabase Auth 發送 OTP 信件
+            const { error } = await supabase.auth.signInWithOtp({
+                email: username,
+                options: { shouldCreateUser: true }
+            });
+
+            if (error) {
+                if (error.message?.includes('rate limit')) {
+                    setOtpError('發送次數過多，請稍後再試');
+                } else {
+                    setOtpError(error.message || '發送驗證碼失敗');
+                }
+                return;
+            }
+
             setOtpSent(true);
-
-            setTimeout(() => {
-                alert(`[模擬信件] 您的後台登入驗證碼為: ${code}\n此為模擬功能，請填入此號碼。`);
-            }, 1000);
-
         } catch (err) {
             console.error(err);
-            alert('系統錯誤');
+            setOtpError('系統錯誤：' + err.message);
         } finally {
             setLoading(false);
         }
@@ -67,6 +76,7 @@ export function AdminLogin() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
+        setOtpError('');
 
         try {
             if (useOtp) {
@@ -76,13 +86,20 @@ export function AdminLogin() {
                     return;
                 }
 
-                if (otp !== mockServerOtp) {
-                    alert('驗證碼錯誤');
+                // 透過 Supabase Auth 驗證 OTP
+                const { error: verifyError } = await supabase.auth.verifyOtp({
+                    email: username,
+                    token: otp,
+                    type: 'email'
+                });
+
+                if (verifyError) {
+                    setOtpError('驗證碼錯誤或已過期');
                     setLoading(false);
                     return;
                 }
 
-                // OTP 驗證成功，透過 OTP 專用端點取得 JWT（不需密碼）
+                // Supabase 驗證成功，取得後台 JWT
                 const apiUrl = import.meta.env.VITE_API_URL || '';
                 const res = await fetch(`${apiUrl}/api/admin/login-otp`, {
                     method: 'POST',
@@ -91,19 +108,19 @@ export function AdminLogin() {
                 });
                 const result = await res.json();
                 if (!res.ok) {
-                    alert(result.error || '登入失敗');
+                    setOtpError(result.error || '登入失敗');
                     return;
                 }
                 storeLoginResult(result);
                 navigate('/admin');
 
             } else {
-                // Username/Password Login - 透過後端 API
+                // Username/Password Login
                 await loginViaApi(username, password);
             }
         } catch (err) {
             console.error(err);
-            alert('發生錯誤');
+            setOtpError('發生錯誤：' + err.message);
         } finally {
             setLoading(false);
         }
@@ -131,6 +148,12 @@ export function AdminLogin() {
         }
     };
 
+    const handleReset = () => {
+        setOtpSent(false);
+        setOtp('');
+        setOtpError('');
+    };
+
     return (
         <div className="container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh' }}>
             <div className="card animate-fade-in" style={{ width: '100%', maxWidth: '400px', padding: '40px' }}>
@@ -150,7 +173,7 @@ export function AdminLogin() {
                         />
                         {useOtp && !otpSent && (
                             <small style={{ color: '#059669', marginTop: '4px', display: 'block' }}>
-                                偵測到 Email，將發送驗證碼
+                                偵測到 Email，將透過信箱發送驗證碼
                             </small>
                         )}
                     </div>
@@ -176,11 +199,21 @@ export function AdminLogin() {
                                 type="text"
                                 className="form-input"
                                 required
-                                placeholder="請查收信件輸入驗證碼"
+                                inputMode="numeric"
+                                maxLength={6}
+                                placeholder="請輸入信件中的 6 位數驗證碼"
                                 value={otp}
-                                onChange={e => setOtp(e.target.value)}
+                                onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
+                                autoFocus
                             />
+                            <small style={{ color: '#6b7280', marginTop: '4px', display: 'block' }}>
+                                驗證碼已發送至 {username}
+                            </small>
                         </div>
+                    )}
+
+                    {otpError && (
+                        <p style={{ color: '#ef4444', fontSize: '0.9rem', marginTop: '8px' }}>{otpError}</p>
                     )}
 
                     <button
@@ -197,7 +230,7 @@ export function AdminLogin() {
                             type="button"
                             className="btn"
                             style={{ marginTop: '10px', background: '#f3f4f6', color: '#374151', width: '100%' }}
-                            onClick={() => { setOtpSent(false); setOtp(''); }}
+                            onClick={handleReset}
                         >
                             重新輸入帳號
                         </button>
