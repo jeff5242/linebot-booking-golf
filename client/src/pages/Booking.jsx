@@ -556,12 +556,18 @@ export function Booking() {
                     const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
                     const isToday = format(selectedDate, 'yyyy-MM-dd') === format(now, 'yyyy-MM-dd');
 
+                    // 過濾管理員隱藏的時段
+                    const hiddenSet = new Set(dateStatus?.hidden_slots || []);
+                    const visibleSlots = hiddenSet.size > 0
+                        ? slots.filter(slot => !hiddenSet.has(format(slot, 'HH:mm')))
+                        : slots;
+
                     // 將 slots 分成 Peak A 和 Peak B（及離峰）
                     const peakASlots = [];
                     const peakBSlots = [];
                     const offPeakSlots = [];
 
-                    slots.forEach(slot => {
+                    visibleSlots.forEach(slot => {
                         const peakType = getPeakType(slot);
                         if (peakType === 'peak_a') peakASlots.push(slot);
                         else if (peakType === 'peak_b') peakBSlots.push(slot);

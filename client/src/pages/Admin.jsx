@@ -1092,6 +1092,8 @@ function VoucherManagement() {
 function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookings, setChargeCardBooking, systemSettings }) {
     const [dateSettings, setDateSettings] = useState(null);
     const [slotFilter, setSlotFilter] = useState('all'); // 'all' | 'booked'
+    const [hiddenSlots, setHiddenSlots] = useState([]);
+    const [isSavingHidden, setIsSavingHidden] = useState(false);
 
     // 載入選定日期的營運日曆覆蓋設定
     useEffect(() => {
@@ -1102,12 +1104,15 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                 if (res.ok) {
                     const data = await res.json();
                     setDateSettings(data);
+                    setHiddenSlots(data.hidden_slots || []);
                 } else {
                     setDateSettings(null);
+                    setHiddenSlots([]);
                 }
             } catch (err) {
                 console.error('載入日期營運設定失敗:', err);
                 setDateSettings(null);
+                setHiddenSlots([]);
             }
         };
         fetchDateSettings();
@@ -1164,6 +1169,12 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
     const [editingPlayers, setEditingPlayers] = useState([]);
     const [isEditMode, setIsEditMode] = useState(false);
     const [isSavingEdit, setIsSavingEdit] = useState(false);
+    const [isRescheduleMode, setIsRescheduleMode] = useState(false);
+    const [rescheduleDate, setRescheduleDate] = useState('');
+    const [rescheduleTime, setRescheduleTime] = useState('');
+    const [rescheduleSlots, setRescheduleSlots] = useState([]);
+    const [isSavingReschedule, setIsSavingReschedule] = useState(false);
+    const [isCancelling, setIsCancelling] = useState(false);
 
     // ESC 鍵關閉詳情視窗
     useEffect(() => {
@@ -1172,6 +1183,7 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
             if (e.key === 'Escape') {
                 setViewingBooking(null);
                 setIsEditMode(false);
+                setIsRescheduleMode(false);
             }
         };
         document.addEventListener('keydown', handleKeyDown);
@@ -1227,6 +1239,79 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
             alert('儲存失敗: ' + err.message);
         } finally {
             setIsSavingEdit(false);
+        }
+    };
+
+    // 代客取消預約
+    const handleAdminCancel = async () => {
+        if (!viewingBooking) return;
+        const name = viewingBooking.players_info?.[0]?.name || viewingBooking.users?.display_name || '-';
+        if (!confirm(`確認取消 ${name} 於 ${viewingBooking.date} ${viewingBooking.time.slice(0, 5)} 的預約？\n取消後將自動觸發候補遞補流程。`)) return;
+        setIsCancelling(true);
+        try {
+            const res = await adminFetch(`/api/bookings/${viewingBooking.id}/cancel`, { method: 'POST' });
+            if (!res.ok) throw new Error((await res.json()).error);
+            alert('預約已取消');
+            setViewingBooking(null);
+            fetchBookings();
+        } catch (err) {
+            alert('取消失敗: ' + err.message);
+        } finally {
+            setIsCancelling(false);
+        }
+    };
+
+    // 改期：載入目標日期可用時段
+    const loadRescheduleSlots = async (dateStr) => {
+        setRescheduleDate(dateStr);
+        setRescheduleTime('');
+        if (!dateStr) { setRescheduleSlots([]); return; }
+        try {
+            const res = await adminFetch(`/api/slots?date=${dateStr}`);
+            if (!res.ok) throw new Error('載入時段失敗');
+            const slots = await res.json();
+            setRescheduleSlots(slots);
+        } catch (err) {
+            console.error(err);
+            setRescheduleSlots([]);
+        }
+    };
+
+    const openRescheduleMode = (booking) => {
+        setRescheduleDate(booking.date);
+        setRescheduleTime(booking.time.slice(0, 5));
+        setIsRescheduleMode(true);
+        loadRescheduleSlots(booking.date);
+    };
+
+    const saveReschedule = async () => {
+        if (!viewingBooking || !rescheduleDate || !rescheduleTime) return;
+        const newTime = rescheduleTime.length === 5 ? rescheduleTime + ':00' : rescheduleTime;
+        if (rescheduleDate === viewingBooking.date && newTime === viewingBooking.time) {
+            alert('日期與時間未變更');
+            return;
+        }
+        const name = viewingBooking.players_info?.[0]?.name || viewingBooking.users?.display_name || '-';
+        if (!confirm(`確認將 ${name} 的預約從\n${viewingBooking.date} ${viewingBooking.time.slice(0, 5)}\n改為\n${rescheduleDate} ${rescheduleTime}？`)) return;
+        setIsSavingReschedule(true);
+        try {
+            const res = await adminFetch(`/api/bookings/${viewingBooking.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date: rescheduleDate, time: newTime })
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error);
+            }
+            alert('改期成功');
+            setIsRescheduleMode(false);
+            setViewingBooking(null);
+            fetchBookings();
+        } catch (err) {
+            alert('改期失敗: ' + err.message);
+        } finally {
+            setIsSavingReschedule(false);
         }
     };
 
@@ -1423,6 +1508,35 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
         }
     };
 
+    // 切換時段隱藏狀態並儲存到 system_settings
+    const toggleSlotHidden = async (timeStr) => {
+        const displayTime = timeStr.slice(0, 5); // "HH:mm:ss" -> "HH:mm"
+        const newHidden = hiddenSlots.includes(displayTime)
+            ? hiddenSlots.filter(t => t !== displayTime)
+            : [...hiddenSlots, displayTime];
+        setHiddenSlots(newHidden);
+        setIsSavingHidden(true);
+        try {
+            const dateStr = format(selectedDate, 'yyyy-MM-dd');
+            const res = await adminFetch(`/api/hidden-slots/${dateStr}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hidden_slots: newHidden })
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error);
+            }
+        } catch (err) {
+            alert('儲存失敗: ' + err.message);
+            setHiddenSlots(hiddenSlots);
+        } finally {
+            setIsSavingHidden(false);
+        }
+    };
+
+    const [showHiddenManager, setShowHiddenManager] = useState(false);
+
     const handleExportSheet = () => {
         const dateStr = format(selectedDate, 'yyyy-MM-dd');
         const dayOfWeek = format(selectedDate, 'EEEE', { locale: undefined }); // Monday, Tuesday...
@@ -1589,12 +1703,25 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
             )}
             <div className="card" style={{ overflowX: 'auto' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #e5e7eb' }}>
+                    <div style={{ display: 'flex', gap: '8px' }}>
                     <button
                         onClick={() => setShowGroupModal(true)}
                         style={{ padding: '4px 12px', fontSize: '0.8rem', border: '1px solid #1d4ed8', borderRadius: '6px', background: '#dbeafe', color: '#1d4ed8', cursor: 'pointer', fontWeight: 'bold' }}
                     >
                         + 果嶺隊預約
                     </button>
+                    <button
+                        onClick={() => setShowHiddenManager(!showHiddenManager)}
+                        style={{
+                            padding: '4px 12px', fontSize: '0.8rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold',
+                            border: showHiddenManager ? '1px solid #dc2626' : '1px solid #6b7280',
+                            background: showHiddenManager ? '#fef2f2' : '#f9fafb',
+                            color: showHiddenManager ? '#dc2626' : '#6b7280'
+                        }}
+                    >
+                        {showHiddenManager ? '完成隱藏管理' : `隱藏時段${hiddenSlots.length > 0 ? ` (${hiddenSlots.length})` : ''}`}
+                    </button>
+                    </div>
                     <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid #d1d5db' }}>
                         <button
                             onClick={() => setSlotFilter('all')}
@@ -1624,6 +1751,7 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr style={{ textAlign: 'left', borderBottom: '2px solid #e5e7eb' }}>
+                            {showHiddenManager && <th style={{ padding: '12px', width: '50px' }}>隱藏</th>}
                             <th style={{ padding: '12px' }}>預約時段</th>
                             <th style={{ padding: '12px' }}>狀態</th>
                             <th style={{ padding: '12px' }}>訂位人</th>
@@ -1642,24 +1770,39 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                             const displayTime = format(slot, 'HH:mm');
                             const booking = getBookingAt(timeStr);
                             const linkedBooking = getLinkedBooking(slot);
+                            const isHidden = hiddenSlots.includes(displayTime);
                             let bg = 'transparent';
-                            if (booking) {
+                            if (isHidden && !booking) {
+                                bg = '#f3f4f6';
+                            } else if (booking) {
                                 if (booking.status === 'checked_in') {
                                     bg = '#dcfce7';
                                 } else if (booking.players_count === 1) {
-                                    bg = '#fefce8'; // 淡黃色 - 1人
+                                    bg = '#fefce8';
                                 } else if (booking.players_count === 2) {
-                                    bg = '#fce7f3'; // 粉紅色 - 2人
+                                    bg = '#fce7f3';
                                 } else {
-                                    bg = '#ffffff'; // 白色 - 3~4人
+                                    bg = '#ffffff';
                                 }
                             } else if (linkedBooking) {
                                 bg = '#fef3c7';
                             }
 
                             return (
-                                <tr key={timeStr} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: bg }}>
-                                    <td style={{ padding: '12px', fontWeight: 'bold' }}>{displayTime}</td>
+                                <tr key={timeStr} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: bg, opacity: isHidden && !booking ? 0.5 : 1 }}>
+                                    {showHiddenManager && (
+                                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={isHidden}
+                                                onChange={() => toggleSlotHidden(timeStr)}
+                                                disabled={isSavingHidden || !!booking}
+                                                style={{ width: '18px', height: '18px', cursor: booking ? 'not-allowed' : 'pointer', accentColor: '#dc2626' }}
+                                                title={booking ? '已有預約，無法隱藏' : (isHidden ? '取消隱藏此時段' : '隱藏此時段')}
+                                            />
+                                        </td>
+                                    )}
+                                    <td style={{ padding: '12px', fontWeight: 'bold', textDecoration: isHidden ? 'line-through' : 'none', color: isHidden ? '#dc2626' : 'inherit' }}>{displayTime}</td>
                                     {booking ? (
                                         <>
                                             <td style={{ padding: '12px' }}>{booking.status === 'checked_in' ? '已報到' : '已預約'}</td>
@@ -1721,15 +1864,21 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                                             </td>
                                         </>
                                     ) : linkedBooking ? (
-                                        <td colSpan={5} style={{ padding: '12px', color: '#d97706' }}>轉場 (來自 {linkedBooking.time.slice(0, 5)}) - {linkedBooking.users?.display_name}</td>
+                                        <td colSpan={5} style={{ padding: '12px', color: '#d97706' }}>
+                                            轉場 (來自 {linkedBooking.time.slice(0, 5)}) - {linkedBooking.users?.display_name}
+                                        </td>
                                     ) : (
                                         <td colSpan={5} style={{ padding: '12px' }}>
-                                            <button
-                                                onClick={() => openManualBooking(timeStr)}
-                                                style={{ padding: '4px 10px', background: '#f3f4f6', border: '1px dashed #ccc', color: '#666', borderRadius: '4px', cursor: 'pointer' }}
-                                            >
-                                                + 手動預約
-                                            </button>
+                                            {isHidden ? (
+                                                <span style={{ fontSize: '0.8rem', color: '#dc2626' }}>此時段已對客人隱藏</span>
+                                            ) : (
+                                                <button
+                                                    onClick={() => openManualBooking(timeStr)}
+                                                    style={{ padding: '4px 10px', background: '#f3f4f6', border: '1px dashed #ccc', color: '#666', borderRadius: '4px', cursor: 'pointer' }}
+                                                >
+                                                    + 手動預約
+                                                </button>
+                                            )}
                                         </td>
                                     )}
                                 </tr>
@@ -1860,8 +2009,41 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
 
                         <div style={{ display: 'grid', gap: '15px' }}>
                             <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px' }}>
-                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', marginBottom: '4px' }}>預約日期與時間</label>
-                                <div style={{ fontWeight: 'bold' }}>{viewingBooking.date} {viewingBooking.time.slice(0, 5)}</div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                    <label style={{ fontSize: '0.75rem', color: '#666' }}>預約日期與時間</label>
+                                    {!isEditMode && !isRescheduleMode && viewingBooking.status !== 'cancelled' && (
+                                        <button
+                                            onClick={() => openRescheduleMode(viewingBooking)}
+                                            style={{ fontSize: '0.75rem', padding: '3px 10px', border: '1px solid #f59e0b', borderRadius: '4px', background: 'white', color: '#b45309', cursor: 'pointer' }}
+                                        >
+                                            改期
+                                        </button>
+                                    )}
+                                </div>
+                                {isRescheduleMode ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <input
+                                            type="date"
+                                            value={rescheduleDate}
+                                            onChange={e => loadRescheduleSlots(e.target.value)}
+                                            style={{ padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '0.9rem' }}
+                                        />
+                                        <select
+                                            value={rescheduleTime}
+                                            onChange={e => setRescheduleTime(e.target.value)}
+                                            style={{ padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '0.9rem' }}
+                                        >
+                                            <option value="">選擇時段</option>
+                                            {rescheduleSlots.map(s => (
+                                                <option key={s.time} value={s.time}>
+                                                    {s.time} ({s.type})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                ) : (
+                                    <div style={{ fontWeight: 'bold' }}>{viewingBooking.date} {viewingBooking.time.slice(0, 5)}</div>
+                                )}
                             </div>
 
                             <div style={{ background: '#f9fafb', padding: '12px', borderRadius: '8px' }}>
@@ -2001,9 +2183,9 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                             );
                         })()}
 
-                        <div style={{ marginTop: '25px', display: 'flex', gap: '8px' }}>
+                        <div style={{ marginTop: '25px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             {isEditMode ? (
-                                <>
+                                <div style={{ display: 'flex', gap: '8px' }}>
                                     <button
                                         onClick={() => setIsEditMode(false)}
                                         className="btn"
@@ -2019,15 +2201,45 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                                     >
                                         {isSavingEdit ? '儲存中...' : '儲存變更'}
                                     </button>
-                                </>
+                                </div>
+                            ) : isRescheduleMode ? (
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button
+                                        onClick={() => setIsRescheduleMode(false)}
+                                        className="btn"
+                                        style={{ flex: 1, padding: '12px 0', backgroundColor: '#e5e7eb', color: '#374151' }}
+                                    >
+                                        取消改期
+                                    </button>
+                                    <button
+                                        onClick={saveReschedule}
+                                        className="btn"
+                                        style={{ flex: 1, padding: '12px 0', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                                        disabled={isSavingReschedule || !rescheduleTime}
+                                    >
+                                        {isSavingReschedule ? '改期中...' : '確認改期'}
+                                    </button>
+                                </div>
                             ) : (
-                                <button
-                                    onClick={() => { setViewingBooking(null); setIsEditMode(false); }}
-                                    className="btn btn-primary"
-                                    style={{ width: '100%', padding: '12px 0' }}
-                                >
-                                    關閉內容
-                                </button>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    {viewingBooking.status !== 'cancelled' && (
+                                        <button
+                                            onClick={handleAdminCancel}
+                                            className="btn"
+                                            style={{ flex: 1, padding: '12px 0', backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}
+                                            disabled={isCancelling}
+                                        >
+                                            {isCancelling ? '取消中...' : '代客取消'}
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => { setViewingBooking(null); setIsEditMode(false); setIsRescheduleMode(false); }}
+                                        className="btn btn-primary"
+                                        style={{ flex: 1, padding: '12px 0' }}
+                                    >
+                                        關閉內容
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </div>

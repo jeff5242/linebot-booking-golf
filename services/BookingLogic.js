@@ -82,6 +82,18 @@ async function generateTimeSlots(date) {
     // 3. Generate Peak B
     generateForRange(settings.peak_b.start, settings.peak_b.end, 'Peak B');
 
+    // 4. Filter out hidden slots (stored in system_settings key 'hidden_slots')
+    const { data: hiddenData } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'hidden_slots')
+        .maybeSingle();
+
+    if (hiddenData?.value?.[date] && Array.isArray(hiddenData.value[date])) {
+        const hiddenSet = new Set(hiddenData.value[date]);
+        return slots.filter(s => !hiddenSet.has(s.time));
+    }
+
     return slots;
 }
 

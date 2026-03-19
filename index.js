@@ -589,6 +589,19 @@ app.post('/api/bookings', async (req, res) => {
       return res.status(400).json({ error: '該日期為休場日，無法預約' });
     }
 
+    // Check if time slot is hidden by admin (stored in system_settings)
+    const { data: hiddenData } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'hidden_slots')
+      .maybeSingle();
+    if (hiddenData?.value?.[date] && Array.isArray(hiddenData.value[date])) {
+      const timeShort = time.slice(0, 5);
+      if (hiddenData.value[date].includes(timeShort)) {
+        return res.status(400).json({ error: '此時段已被管理員關閉，無法預約' });
+      }
+    }
+
     // Check time slot availability (no duplicate booking at same date+time)
     const { data: existingBookings, error: checkError } = await supabase
       .from('bookings')
@@ -794,11 +807,11 @@ app.post('/api/bookings/:id/cancel', requireAuth('starter'), async (req, res) =>
   }
 });
 
-// 5.5 Update Booking (Edit players_info, players_count, holes, etc.)
+// 5.5 Update Booking (Edit players_info, players_count, holes, date, time, etc.)
 app.put('/api/bookings/:id', requireAuth('starter'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { players_info, players_count, holes, needs_cart, needs_caddie } = req.body;
+    const { players_info, players_count, holes, needs_cart, needs_caddie, date, time } = req.body;
 
     const updateData = {};
     if (players_info !== undefined) {
@@ -811,6 +824,42 @@ app.put('/api/bookings/:id', requireAuth('starter'), async (req, res) => {
     if (holes !== undefined) updateData.holes = Number(holes);
     if (needs_cart !== undefined) updateData.needs_cart = !!needs_cart;
     if (needs_caddie !== undefined) updateData.needs_caddie = !!needs_caddie;
+
+    // Handle date/time reschedule
+    if (date !== undefined || time !== undefined) {
+      // Fetch original booking to get current date/time
+      const { data: original, error: fetchErr } = await supabase
+        .from('bookings')
+        .select('date, time, status')
+        .eq('id', id)
+        .single();
+      if (fetchErr) throw fetchErr;
+      if (original.status === 'cancelled') {
+        return res.status(400).json({ error: '已取消的預約無法改期' });
+      }
+
+      const newDate = date || original.date;
+      const newTime = time || original.time;
+
+      // Check slot availability at new date/time (exclude self)
+      const { data: existingBookings, error: checkErr } = await supabase
+        .from('bookings')
+        .select('id')
+        .eq('date', newDate)
+        .eq('time', newTime)
+        .neq('status', 'cancelled')
+        .neq('id', id);
+      if (checkErr) throw checkErr;
+
+      const settings = await getSettings();
+      const maxGroupsPerSlot = parseInt(settings.max_groups_per_slot) || 1;
+      if (existingBookings && existingBookings.length >= maxGroupsPerSlot) {
+        return res.status(409).json({ error: '目標時段已額滿，請選擇其他時段' });
+      }
+
+      if (date !== undefined) updateData.date = date;
+      if (time !== undefined) updateData.time = time;
+    }
 
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({ error: '無更新內容' });
@@ -1117,7 +1166,62 @@ app.get('/api/calendar/conflicts/:date', requireAuth('operational_calendar'), as
   }
 });
 
-// 取得日期營運狀態（含全域設定合併）
+// ============================================
+// 隱藏時段 API (Hidden Slots) - 使用 system_settings 存儲
+// ============================================
+
+// 取得指定日期的隱藏時段
+app.get('/api/hidden-slots/:date', requireAuth('starter'), async (req, res) => {
+  try {
+    const { data } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'hidden_slots')
+      .maybeSingle();
+    const hiddenSlots = data?.value?.[req.params.date] || [];
+    res.json({ date: req.params.date, hidden_slots: hiddenSlots });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 更新指定日期的隱藏時段
+app.put('/api/hidden-slots/:date', requireAuth('starter'), async (req, res) => {
+  try {
+    const { hidden_slots } = req.body;
+    if (!Array.isArray(hidden_slots)) {
+      return res.status(400).json({ error: 'hidden_slots 必須為陣列' });
+    }
+
+    // 讀取現有資料
+    const { data: existing } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'hidden_slots')
+      .maybeSingle();
+
+    const allHidden = existing?.value || {};
+    if (hidden_slots.length > 0) {
+      allHidden[req.params.date] = hidden_slots;
+    } else {
+      delete allHidden[req.params.date];
+    }
+
+    await supabase
+      .from('system_settings')
+      .upsert({
+        key: 'hidden_slots',
+        value: allHidden,
+        updated_at: new Date()
+      });
+
+    res.json({ success: true, date: req.params.date, hidden_slots });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 取得日期營運狀態（含全域設定合併 + 隱藏時段）
 app.get('/api/calendar/status/:date', async (req, res) => {
   try {
     const globalSettings = await getSettings();
@@ -1125,6 +1229,15 @@ app.get('/api/calendar/status/:date', async (req, res) => {
       req.params.date,
       globalSettings
     );
+
+    // 附加隱藏時段資訊
+    const { data: hiddenData } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'hidden_slots')
+      .maybeSingle();
+    status.hidden_slots = hiddenData?.value?.[req.params.date] || [];
+
     res.json(status);
   } catch (error) {
     res.status(500).json({ error: error.message });
