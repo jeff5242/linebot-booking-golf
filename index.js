@@ -1709,10 +1709,16 @@ app.get('/api/member/bookings', async (req, res) => {
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
+    // 只顯示 7 天前至未來的預約
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const cutoffDate = sevenDaysAgo.toISOString().split('T')[0];
+
     const { data: bookings, count, error } = await supabase
       .from('bookings')
       .select('*', { count: 'exact' })
       .eq('user_id', user.id)
+      .gte('date', cutoffDate)
       .order('date', { ascending: false })
       .order('time', { ascending: false })
       .range(offset, offset + parseInt(limit) - 1);
@@ -1746,6 +1752,11 @@ app.get('/api/member/charge-cards', async (req, res) => {
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
+    // 只顯示 7 天前至未來的收費卡
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const cutoffDate = sevenDaysAgo.toISOString();
+
     // 先查詢用戶的 bookings IDs
     const { data: bookingIds } = await supabase
       .from('bookings')
@@ -1763,6 +1774,7 @@ app.get('/api/member/charge-cards', async (req, res) => {
       .select('*, caddies(name, caddy_number)', { count: 'exact' })
       .in('booking_id', ids)
       .neq('status', 'voided')
+      .gte('created_at', cutoffDate)
       .order('created_at', { ascending: false })
       .range(offset, offset + parseInt(limit) - 1);
 

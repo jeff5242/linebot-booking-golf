@@ -359,10 +359,14 @@ export function MemberCenter() {
                     {bookings.length === 0 ? (
                         <p style={{ textAlign: 'center', color: '#999', padding: '30px 0' }}>尚無預約紀錄</p>
                     ) : (
-                        bookings.map(b => (
+                        bookings.map(b => {
+                            const isPast = new Date(`${b.date}T${b.time || '23:59'}`) < new Date();
+                            return (
                             <div key={b.id} className="card" style={{
                                 borderLeft: `4px solid ${b.status === 'cancelled' ? '#d1d5db' : b.status === 'checked_in' ? '#10b981' : '#2e7d32'}`,
                                 marginBottom: '10px', padding: '14px',
+                                opacity: isPast ? 0.5 : 1,
+                                backgroundColor: isPast ? '#fafafa' : undefined,
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>
@@ -387,7 +391,7 @@ export function MemberCenter() {
                                     </div>
                                 </div>
                             </div>
-                        ))
+                        );})
                     )}
                     {/* 分頁 */}
                     {bookingsTotal > 10 && (
@@ -420,10 +424,16 @@ export function MemberCenter() {
                     {chargeCards.length === 0 ? (
                         <p style={{ textAlign: 'center', color: '#999', padding: '30px 0' }}>尚無收費卡紀錄</p>
                     ) : (
-                        chargeCards.map(card => (
+                        chargeCards.map(card => {
+                            const todayStr = new Date().toISOString().split('T')[0];
+                            const cardDateStr = card.created_at?.substring(0, 10);
+                            const isPast = cardDateStr < todayStr;
+                            return (
                             <div key={card.id} className="card" style={{
                                 borderLeft: '4px solid #f59e0b',
                                 marginBottom: '10px', padding: '14px',
+                                opacity: isPast ? 0.5 : 1,
+                                backgroundColor: isPast ? '#fafafa' : undefined,
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>
@@ -454,7 +464,7 @@ export function MemberCenter() {
                                     </div>
                                 </div>
                             </div>
-                        ))
+                        );})
                     )}
                     {chargeCardsTotal > 10 && (
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '12px' }}>
@@ -486,11 +496,15 @@ export function MemberCenter() {
                     {vouchers.length === 0 ? (
                         <p style={{ textAlign: 'center', color: '#999', padding: '30px 0' }}>尚無優惠券</p>
                     ) : (
-                        vouchers.map(v => (
+                        [...vouchers].sort((a, b) => {
+                            if (!!a.used_at !== !!b.used_at) return a.used_at ? 1 : -1;
+                            return new Date(b.created_at) - new Date(a.created_at);
+                        }).map(v => (
                             <div key={v.id} className="card" style={{
                                 borderLeft: `4px solid ${v.used_at ? '#d1d5db' : '#8b5cf6'}`,
                                 marginBottom: '10px', padding: '14px',
-                                opacity: v.used_at ? 0.6 : 1,
+                                opacity: v.used_at ? 0.5 : 1,
+                                backgroundColor: v.used_at ? '#fafafa' : '#faf5ff',
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>
