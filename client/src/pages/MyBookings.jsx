@@ -30,12 +30,18 @@ export function MyBookings() {
         if (!users || users.length === 0) return;
         const user = users[0];
 
+        // 只顯示 7 天前至未來的預約
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const cutoffDate = sevenDaysAgo.toISOString().split('T')[0];
+
         const { data } = await supabase
             .from('bookings')
             .select('*')
             .eq('user_id', user.id)
-            .order('date', { ascending: true })
-            .order('time', { ascending: true });
+            .gte('date', cutoffDate)
+            .order('date', { ascending: false })
+            .order('time', { ascending: false });
 
         setBookings(data || []);
     };
@@ -74,8 +80,15 @@ export function MyBookings() {
 
             {bookings.length === 0 && <p style={{ textAlign: 'center', color: '#666' }}>尚無預約紀錄</p>}
 
-            {bookings.map(b => (
-                <div key={b.id} className="card" style={{ borderLeft: `4px solid ${b.status === 'cancelled' ? 'grey' : 'var(--primary-color)'}` }}>
+            {bookings.map(b => {
+                const isPast = new Date(`${b.date}T${b.time || '23:59'}`) < new Date();
+                const isCancelled = b.status === 'cancelled';
+                return (
+                <div key={b.id} className="card" style={{
+                    borderLeft: `4px solid ${isCancelled ? '#ef4444' : b.status === 'checked_in' ? '#10b981' : 'var(--primary-color)'}`,
+                    opacity: (isPast || isCancelled) ? 0.5 : 1,
+                    backgroundColor: isCancelled ? '#fef2f2' : isPast ? '#fafafa' : undefined,
+                }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <div>
                             <h3 style={{ fontWeight: 'bold', fontSize: '1.2rem' }}>{b.date} {b.time.slice(0, 5)}</h3>
@@ -109,7 +122,7 @@ export function MyBookings() {
                         </div>
                     </div>
                 </div>
-            ))}
+            );})}
 
             {/* Booking Details Modal */}
             {selectedBooking && (

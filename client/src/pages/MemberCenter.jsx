@@ -361,12 +361,13 @@ export function MemberCenter() {
                     ) : (
                         bookings.map(b => {
                             const isPast = new Date(`${b.date}T${b.time || '23:59'}`) < new Date();
+                            const isCancelled = b.status === 'cancelled';
                             return (
                             <div key={b.id} className="card" style={{
-                                borderLeft: `4px solid ${b.status === 'cancelled' ? '#d1d5db' : b.status === 'checked_in' ? '#10b981' : '#2e7d32'}`,
+                                borderLeft: `4px solid ${isCancelled ? '#ef4444' : b.status === 'checked_in' ? '#10b981' : '#2e7d32'}`,
                                 marginBottom: '10px', padding: '14px',
-                                opacity: isPast ? 0.5 : 1,
-                                backgroundColor: isPast ? '#fafafa' : undefined,
+                                opacity: (isPast || isCancelled) ? 0.5 : 1,
+                                backgroundColor: isCancelled ? '#fef2f2' : isPast ? '#fafafa' : undefined,
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>
