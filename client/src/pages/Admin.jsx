@@ -11,6 +11,7 @@ import { OperationalCalendar } from '../components/OperationalCalendar';
 import ChargeCardModal from '../components/ChargeCardModal';
 import CaddyManagement from '../components/CaddyManagement';
 import RolePermissionManager from '../components/RolePermissionManager';
+import { BroadcastPanel } from '../components/BroadcastPanel';
 import { getAdminPermissions, getAdminInfo, adminFetch, clearAdminSession } from '../utils/adminApi';
 
 const ALL_TABS = [
@@ -25,6 +26,7 @@ const ALL_TABS = [
     { key: 'rate_management', label: '💰 費率管理' },
     { key: 'caddy_management', label: '🏌️ 桿弟管理' },
     { key: 'admins', label: '後台權限' },
+    { key: 'broadcast', label: '📢 訊息推播' },
 ];
 
 // ... (DepartureList, CheckInList components remain unchanged)
@@ -2797,6 +2799,7 @@ export function AdminDashboard() {
             {activeTab === 'operational_calendar' && <OperationalCalendar />}
             {activeTab === 'rate_management' && <RateManagement />}
             {activeTab === 'caddy_management' && <CaddyManagement />}
+            {activeTab === 'broadcast' && <BroadcastPanel />}
 
             {/* 收費卡彈窗 */}
             {chargeCardBooking && (

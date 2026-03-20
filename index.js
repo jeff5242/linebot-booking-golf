@@ -31,7 +31,7 @@ const RoleMgmt = require('./services/RoleManagement');
 const bcrypt = require('bcryptjs');
 const OtpService = require('./services/OtpService');
 const RichMenuService = require('./services/RichMenuService');
-const { sendPushMessage } = require('./services/LineNotification');
+const { sendPushMessage, broadcastLineMessage, multicastLineMessages } = require('./services/LineNotification');
 
 // Supabase 設定
 const supabase = createClient(
@@ -1424,6 +1424,147 @@ app.post('/api/charge-cards/:id/notify', requireAuth('starter'), async (req, res
     res.json(result);
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+// ============================================
+// 訊息推播 API (Broadcast)
+// ============================================
+
+// 預估受眾人數
+app.get('/api/broadcast/estimate', requireAuth('broadcast'), async (req, res) => {
+  try {
+    const { audience } = req.query;
+
+    if (audience === 'all') {
+      return res.json({ audience: 'all', estimated_count: null, note: '將發送給所有 LINE 好友' });
+    }
+
+    let query;
+    if (audience === 'registered') {
+      query = supabase.from('users').select('id', { count: 'exact', head: true }).not('line_user_id', 'is', null);
+    } else if (audience === 'has_bookings') {
+      const { data: userIds } = await supabase
+        .from('bookings')
+        .select('user_id')
+        .neq('status', 'cancelled');
+      const uniqueIds = [...new Set((userIds || []).map(b => b.user_id))];
+      if (uniqueIds.length === 0) return res.json({ audience, estimated_count: 0 });
+      const { count } = await supabase.from('users').select('id', { count: 'exact', head: true })
+        .not('line_user_id', 'is', null)
+        .in('id', uniqueIds);
+      return res.json({ audience, estimated_count: count || 0 });
+    } else if (audience === 'has_charges') {
+      const { data: bookingIds } = await supabase.from('charge_cards').select('booking_id').neq('status', 'voided');
+      const uniqueBookingIds = [...new Set((bookingIds || []).map(c => c.booking_id))];
+      if (uniqueBookingIds.length === 0) return res.json({ audience, estimated_count: 0 });
+      const { data: userIds } = await supabase.from('bookings').select('user_id').in('id', uniqueBookingIds);
+      const uniqueUserIds = [...new Set((userIds || []).map(b => b.user_id))];
+      if (uniqueUserIds.length === 0) return res.json({ audience, estimated_count: 0 });
+      const { count } = await supabase.from('users').select('id', { count: 'exact', head: true })
+        .not('line_user_id', 'is', null)
+        .in('id', uniqueUserIds);
+      return res.json({ audience, estimated_count: count || 0 });
+    } else {
+      return res.status(400).json({ error: '無效的受眾類型' });
+    }
+
+    const { count } = await query;
+    res.json({ audience, estimated_count: count || 0 });
+  } catch (error) {
+    console.error('Broadcast estimate error:', error);
+    res.status(500).json({ error: '預估人數失敗' });
+  }
+});
+
+// 發送推播訊息
+app.post('/api/broadcast/send', requireAuth('broadcast'), async (req, res) => {
+  try {
+    const { audience, message } = req.body;
+    if (!message || message.trim().length === 0) {
+      return res.status(400).json({ error: '訊息內容不能為空' });
+    }
+    if (message.length > 5000) {
+      return res.status(400).json({ error: '訊息內容不能超過 5000 字' });
+    }
+
+    const messages = [{ type: 'text', text: message.trim() }];
+    let result;
+    let estimatedCount = null;
+
+    if (audience === 'all') {
+      result = await broadcastLineMessage(messages);
+    } else {
+      // 查詢符合條件的 line_user_id
+      let userQuery;
+      if (audience === 'registered') {
+        userQuery = supabase.from('users').select('line_user_id').not('line_user_id', 'is', null);
+      } else if (audience === 'has_bookings') {
+        const { data: bookingUserIds } = await supabase.from('bookings').select('user_id').neq('status', 'cancelled');
+        const uniqueIds = [...new Set((bookingUserIds || []).map(b => b.user_id))];
+        if (uniqueIds.length === 0) return res.status(400).json({ error: '沒有符合條件的使用者' });
+        userQuery = supabase.from('users').select('line_user_id').not('line_user_id', 'is', null).in('id', uniqueIds);
+      } else if (audience === 'has_charges') {
+        const { data: chargeBookingIds } = await supabase.from('charge_cards').select('booking_id').neq('status', 'voided');
+        const uniqueBookingIds = [...new Set((chargeBookingIds || []).map(c => c.booking_id))];
+        if (uniqueBookingIds.length === 0) return res.status(400).json({ error: '沒有符合條件的使用者' });
+        const { data: bookingUserIds } = await supabase.from('bookings').select('user_id').in('id', uniqueBookingIds);
+        const uniqueUserIds = [...new Set((bookingUserIds || []).map(b => b.user_id))];
+        if (uniqueUserIds.length === 0) return res.status(400).json({ error: '沒有符合條件的使用者' });
+        userQuery = supabase.from('users').select('line_user_id').not('line_user_id', 'is', null).in('id', uniqueUserIds);
+      } else {
+        return res.status(400).json({ error: '無效的受眾類型' });
+      }
+
+      const { data: users } = await userQuery;
+      const lineUserIds = (users || []).map(u => u.line_user_id);
+      if (lineUserIds.length === 0) return res.status(400).json({ error: '沒有符合條件的使用者' });
+
+      estimatedCount = lineUserIds.length;
+      result = await multicastLineMessages(lineUserIds, messages);
+    }
+
+    // 寫入發送紀錄
+    const logEntry = {
+      id: uuid.v4(),
+      audience,
+      message: message.trim(),
+      estimated_count: estimatedCount,
+      actual_sent: audience === 'all' ? null : (result.sent || 0),
+      failed_count: audience === 'all' ? 0 : (result.failed || 0),
+      sent_by: req.admin?.name || 'unknown',
+      sent_at: new Date().toISOString(),
+      status: result.success ? 'completed' : 'failed',
+      error: result.reason || (result.errors?.length > 0 ? result.errors.join('; ') : null)
+    };
+
+    // 讀取並更新 broadcast_logs
+    const { data: existing } = await supabase.from('system_settings').select('value').eq('key', 'broadcast_logs').single();
+    const logs = Array.isArray(existing?.value) ? existing.value : [];
+    logs.unshift(logEntry);
+    const trimmedLogs = logs.slice(0, 100);
+
+    await supabase.from('system_settings').upsert({
+      key: 'broadcast_logs',
+      value: trimmedLogs,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'key' });
+
+    res.json({ success: result.success, log_entry: logEntry });
+  } catch (error) {
+    console.error('Broadcast send error:', error);
+    res.status(500).json({ error: '發送推播失敗' });
+  }
+});
+
+// 取得發送紀錄
+app.get('/api/broadcast/logs', requireAuth('broadcast'), async (req, res) => {
+  try {
+    const { data } = await supabase.from('system_settings').select('value').eq('key', 'broadcast_logs').single();
+    res.json({ logs: Array.isArray(data?.value) ? data.value : [] });
+  } catch (error) {
+    console.error('Broadcast logs error:', error);
+    res.status(500).json({ error: '取得發送紀錄失敗' });
   }
 });
 

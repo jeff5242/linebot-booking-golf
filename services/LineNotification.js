@@ -54,7 +54,49 @@ function buildChargeCardMessage({ playerName, caddyName, caddyNumber, departureT
     return [{ type: 'text', text }];
 }
 
+/**
+ * 廣播訊息給所有 LINE 好友
+ * @param {Array} messages - LINE 訊息陣列
+ */
+async function broadcastLineMessage(messages) {
+    try {
+        await client.broadcast({ messages });
+        return { success: true };
+    } catch (error) {
+        console.error('LINE Broadcast 失敗:', error.message);
+        return { success: false, reason: error.message };
+    }
+}
+
+/**
+ * 群發訊息給指定的 LINE 使用者（自動分批，每批 500 人）
+ * @param {string[]} lineUserIds - LINE User ID 陣列
+ * @param {Array} messages - LINE 訊息陣列
+ */
+async function multicastLineMessages(lineUserIds, messages) {
+    const BATCH_SIZE = 500;
+    let sent = 0;
+    let failed = 0;
+    const errors = [];
+
+    for (let i = 0; i < lineUserIds.length; i += BATCH_SIZE) {
+        const chunk = lineUserIds.slice(i, i + BATCH_SIZE);
+        try {
+            await client.multicast({ to: chunk, messages });
+            sent += chunk.length;
+        } catch (error) {
+            console.error(`LINE Multicast 失敗 (batch ${Math.floor(i / BATCH_SIZE) + 1}):`, error.message);
+            failed += chunk.length;
+            errors.push(error.message);
+        }
+    }
+
+    return { success: failed === 0, sent, failed, errors };
+}
+
 module.exports = {
     sendPushMessage,
-    buildChargeCardMessage
+    buildChargeCardMessage,
+    broadcastLineMessage,
+    multicastLineMessages
 };
