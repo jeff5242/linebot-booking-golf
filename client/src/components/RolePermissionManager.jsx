@@ -13,6 +13,7 @@ const ALL_TABS = [
     { key: 'rate_management', label: '💰 費率管理' },
     { key: 'caddy_management', label: '🏌️ 桿弟管理' },
     { key: 'admins', label: '後台權限' },
+    { key: 'broadcast', label: '📢 訊息推播' },
 ];
 
 export default function RolePermissionManager({ roles, onRolesChanged }) {
