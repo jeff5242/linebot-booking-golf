@@ -1086,7 +1086,7 @@ async function handleEvent(event) {
     messages: [
       {
         type: 'text',
-        text: `歡迎來到大衛營高爾夫球場！請使用下方選單操作。`,
+        text: `歡迎來到大衛營高爾夫球場！請使用下方選單預約擊球。\n操作不熟悉亦可訊息告知預約打球時間`,
       },
     ],
   });

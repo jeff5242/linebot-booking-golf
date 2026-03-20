@@ -591,7 +591,8 @@ export function Booking() {
                             }
                         }
 
-                        const isDisabled = !isAvailable || isTooLateFor18Holes || isTooSoon;
+                        const isBooked = !isAvailable;
+                        const isDisabled = isBooked || isTooLateFor18Holes || isTooSoon;
 
                         // Peak A: 橘色系, Peak B: 深棕色系
                         const colors = peakType === 'peak_b'
@@ -617,7 +618,7 @@ export function Booking() {
                                     position: 'relative'
                                 }}
                             >
-                                {timeLabel}
+                                {isBooked ? '已預約' : timeLabel}
                                 {peakType && (
                                     <span style={{
                                         position: 'absolute',
