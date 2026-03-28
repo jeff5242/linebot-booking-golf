@@ -22,7 +22,7 @@ const path = require('path');
 const { messagingApi } = require('@line/bot-sdk');
 
 const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-const LIFF_ID = '2008898874-4qus3SyN';
+const LIFF_ID = process.env.VITE_LIFF_ID || '2005749323-QSsGZ7ir';
 const LIFF_BASE_URL = `https://liff.line.me/${LIFF_ID}`;
 
 const client = new messagingApi.MessagingApiClient({ channelAccessToken });
@@ -32,44 +32,44 @@ const blobClient = new messagingApi.MessagingApiBlobClient({ channelAccessToken 
 // Rich Menu 定義
 // ============================
 
-// 登入前 Rich Menu — 2 格 (1200 x 405)
+// 登入前 Rich Menu — 2 格 (2500 x 843)
 const beforeLoginMenu = {
-    size: { width: 1200, height: 405 },
+    size: { width: 2500, height: 843 },
     selected: true,
     name: 'richmenu-before-login',
     chatBarText: '選單',
     areas: [
         {
-            // 左邊：升級會員 / 運勢卡
-            bounds: { x: 0, y: 0, width: 600, height: 405 },
+            // 左邊：綁定會員
+            bounds: { x: 0, y: 0, width: 1250, height: 843 },
             action: {
                 type: 'uri',
-                label: '升級會員 / 運勢卡',
-                uri: `${LIFF_BASE_URL}/fortune`,
+                label: '綁定會員',
+                uri: `${LIFF_BASE_URL}/register`,
             },
         },
         {
-            // 右邊：球場資訊
-            bounds: { x: 600, y: 0, width: 600, height: 405 },
+            // 右邊：球場預約
+            bounds: { x: 1250, y: 0, width: 1250, height: 843 },
             action: {
                 type: 'uri',
-                label: '球場資訊',
-                uri: `${LIFF_BASE_URL}/course-info`,
+                label: '球場預約',
+                uri: `${LIFF_BASE_URL}`,
             },
         },
     ],
 };
 
-// 登入後 Rich Menu — 3 格 (1200 x 405)
+// 登入後 Rich Menu — 3 格 (2500 x 843)
 const afterLoginMenu = {
-    size: { width: 1200, height: 405 },
+    size: { width: 2500, height: 843 },
     selected: true,
     name: 'richmenu-after-login',
     chatBarText: '選單',
     areas: [
         {
             // 左：會員專區
-            bounds: { x: 0, y: 0, width: 400, height: 405 },
+            bounds: { x: 0, y: 0, width: 833, height: 843 },
             action: {
                 type: 'uri',
                 label: '會員專區',
@@ -77,21 +77,21 @@ const afterLoginMenu = {
             },
         },
         {
-            // 中：運勢卡
-            bounds: { x: 400, y: 0, width: 400, height: 405 },
+            // 中：球場預約
+            bounds: { x: 833, y: 0, width: 834, height: 843 },
             action: {
                 type: 'uri',
-                label: '運勢卡',
-                uri: `${LIFF_BASE_URL}/fortune`,
+                label: '球場預約',
+                uri: `${LIFF_BASE_URL}`,
             },
         },
         {
-            // 右：球場資訊
-            bounds: { x: 800, y: 0, width: 400, height: 405 },
+            // 右：我的預約
+            bounds: { x: 1667, y: 0, width: 833, height: 843 },
             action: {
                 type: 'uri',
-                label: '球場資訊',
-                uri: `${LIFF_BASE_URL}/course-info`,
+                label: '我的預約',
+                uri: `${LIFF_BASE_URL}/my-bookings`,
             },
         },
     ],
@@ -135,29 +135,29 @@ async function main() {
     console.log(`  ✅ 建立成功: ${afterMenuId}`);
 
     // 4. 上傳圖片
-    const beforeImagePath = path.join(__dirname, '..', 'images', 'richmenu-before-login.png');
-    const afterImagePath = path.join(__dirname, '..', 'images', 'richmenu-after-login.png');
+    const beforeImagePath = path.join(__dirname, '..', 'images', 'richmenu-before-login.jpg');
+    const afterImagePath = path.join(__dirname, '..', 'images', 'richmenu-after-login.jpg');
 
     if (fs.existsSync(beforeImagePath)) {
         console.log('🖼️  上傳「登入前」圖片...');
         const beforeImage = fs.readFileSync(beforeImagePath);
-        const beforeBlob = new Blob([beforeImage], { type: 'image/png' });
+        const beforeBlob = new Blob([beforeImage], { type: 'image/jpeg' });
         await blobClient.setRichMenuImage(beforeMenuId, beforeBlob);
         console.log('  ✅ 上傳成功');
     } else {
         console.log(`  ⚠️  找不到圖片: ${beforeImagePath}`);
-        console.log('  請準備 1200x405 的 PNG 圖片後放到 images/richmenu-before-login.png');
+        console.log('  請準備 2500x843 的 JPG 圖片後放到 images/richmenu-before-login.jpg');
     }
 
     if (fs.existsSync(afterImagePath)) {
         console.log('🖼️  上傳「登入後」圖片...');
         const afterImage = fs.readFileSync(afterImagePath);
-        const afterBlob = new Blob([afterImage], { type: 'image/png' });
+        const afterBlob = new Blob([afterImage], { type: 'image/jpeg' });
         await blobClient.setRichMenuImage(afterMenuId, afterBlob);
         console.log('  ✅ 上傳成功');
     } else {
         console.log(`  ⚠️  找不到圖片: ${afterImagePath}`);
-        console.log('  請準備 1200x405 的 PNG 圖片後放到 images/richmenu-after-login.png');
+        console.log('  請準備 2500x843 的 JPG 圖片後放到 images/richmenu-after-login.jpg');
     }
 
     // 5. 設定「登入前」為預設 Rich Menu
