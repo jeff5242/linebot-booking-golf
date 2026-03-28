@@ -45,7 +45,7 @@ export const sendLiffMessage = async (text) => {
         return true;
     } catch (error) {
         console.error('Error sending LIFF message:', error);
-        alert(`Debug Error: ${error.message || error}`);
+        // debug alert removed — avoid showing raw errors to users
         return false;
     }
 };
