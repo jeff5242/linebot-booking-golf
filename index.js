@@ -1076,7 +1076,8 @@ async function handleEvent(event) {
 
   // 忽略 LIFF 自動發送的訊息（不回覆）
   const liffMessages = ['註冊會員', '註冊成功', '球場預約', '查看預約', '會員專區', '運勢卡', '球場資訊'];
-  if (liffMessages.includes(userMessage)) {
+  const liffPrefixes = ['已取消預約 '];
+  if (liffMessages.includes(userMessage) || liffPrefixes.some(p => userMessage.startsWith(p))) {
     return Promise.resolve(null);
   }
 

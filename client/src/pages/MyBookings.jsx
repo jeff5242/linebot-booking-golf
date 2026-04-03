@@ -3,6 +3,7 @@ import { supabase } from '../supabase';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
+import { sendLiffMessage } from '../utils/liffHelper';
 
 export function MyBookings() {
     const [bookings, setBookings] = useState([]);
@@ -48,8 +49,16 @@ export function MyBookings() {
 
     const handleCancel = async (id) => {
         if (!confirm('確定取消?')) return;
+        const booking = bookings.find(b => b.id === id);
         const { error } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', id);
-        if (!error) fetchMyBookings();
+        if (!error) {
+            if (booking) {
+                const dateStr = booking.date.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2/$3');
+                const timeStr = booking.time.slice(0, 5);
+                sendLiffMessage(`已取消預約 ${dateStr} ${timeStr}`);
+            }
+            fetchMyBookings();
+        }
     };
 
     return (
