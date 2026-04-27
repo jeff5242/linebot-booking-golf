@@ -36,7 +36,7 @@ export function Booking() {
 
     // Service Options
     const [needsCart, setNeedsCart] = useState(true);
-    const [needsCaddie, setNeedsCaddie] = useState(true);
+    const [needsCaddie, setNeedsCaddie] = useState(false);
 
     // Rate Config & User Tier
     const [rateConfig, setRateConfig] = useState(null);
@@ -828,15 +828,7 @@ export function Booking() {
                                         />
                                         <span>球車</span>
                                     </label>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={needsCaddie}
-                                            onChange={e => setNeedsCaddie(e.target.checked)}
-                                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                                        />
-                                        <span>桿弟</span>
-                                    </label>
+                                    {/* 桿弟選項暫時隱藏，尚未開放無桿弟服務 */}
                                 </div>
 
                                 <div style={{ marginTop: '16px', borderTop: '1px solid #e5e7eb', paddingTop: '12px' }}>

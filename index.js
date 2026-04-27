@@ -602,6 +602,23 @@ app.post('/api/bookings', async (req, res) => {
       }
     }
 
+    // Check duplicate booking: same user + date + time
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const { data: userRows } = await supabase.from('users').select('id').eq('phone', cleanPhone);
+    const userIds = (userRows || []).map(u => u.id);
+    if (userIds.length > 0) {
+      const { data: dupRows } = await supabase
+        .from('bookings')
+        .select('id')
+        .eq('date', date)
+        .eq('time', time)
+        .neq('status', 'cancelled')
+        .in('user_id', userIds);
+      if (dupRows && dupRows.length > 0) {
+        return res.status(409).json({ error: '您已預約此時段，請勿重複預約' });
+      }
+    }
+
     // Check time slot availability (no duplicate booking at same date+time)
     const { data: existingBookings, error: checkError } = await supabase
       .from('bookings')
@@ -1566,6 +1583,40 @@ app.get('/api/broadcast/logs', requireAuth('broadcast'), async (req, res) => {
   } catch (error) {
     console.error('Broadcast logs error:', error);
     res.status(500).json({ error: '取得發送紀錄失敗' });
+  }
+});
+
+// ============================================
+// 簡訊發送紀錄查詢 API
+// ============================================
+
+app.get('/api/sms-logs', requireAuth('sms_logs'), async (req, res) => {
+  try {
+    const { phone, status, page = 1, limit = 20 } = req.query;
+    const pageNum = Math.max(1, parseInt(page));
+    const pageSize = Math.min(100, Math.max(1, parseInt(limit)));
+    const offset = (pageNum - 1) * pageSize;
+
+    let query = supabase.from('sms_logs').select('*', { count: 'exact' });
+
+    if (phone) {
+      query = query.like('phone', `%${phone.replace(/[^0-9]/g, '')}%`);
+    }
+    if (status === 'success') {
+      query = query.eq('status', 'success');
+    } else if (status === 'error') {
+      query = query.eq('status', 'error');
+    }
+
+    const { data, count, error } = await query
+      .order('created_at', { ascending: false })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) throw error;
+    res.json({ logs: data || [], total: count || 0 });
+  } catch (error) {
+    console.error('SMS logs query error:', error);
+    res.status(500).json({ error: '查詢簡訊紀錄失敗' });
   }
 });
 
