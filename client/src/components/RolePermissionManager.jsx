@@ -14,6 +14,7 @@ const ALL_TABS = [
     { key: 'caddy_management', label: '🏌️ 桿弟管理' },
     { key: 'admins', label: '後台權限' },
     { key: 'broadcast', label: '📢 訊息推播' },
+    { key: 'sms_logs', label: '簡訊紀錄' },
 ];
 
 export default function RolePermissionManager({ roles, onRolesChanged }) {
