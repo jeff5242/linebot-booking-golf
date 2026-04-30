@@ -1587,6 +1587,126 @@ app.get('/api/broadcast/logs', requireAuth('broadcast'), async (req, res) => {
 });
 
 // ============================================
+// 票券使用明細報表 API
+// ============================================
+
+app.get('/api/reports/voucher-usage', requireAuth('voucher_report'), async (req, res) => {
+  try {
+    const { type = 'green_fee' } = req.query; // green_fee or product
+
+    // 1. 取得購入資料（含票號範圍），分頁取全部
+    const sheetPattern = type === 'product' ? '%商品券%' : '%果嶺%';
+    let purchases = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data, error } = await supabase
+        .from('vouchers_staging')
+        .select('id, purchase_date, invoice_number, ticket_range, unit_price, quantity, customer_name, phone, memo')
+        .like('sheet_name', sheetPattern)
+        .not('ticket_range', 'is', null)
+        .order('purchase_date')
+        .order('id')
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      purchases = purchases.concat(data || []);
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+
+    // 2. 取得使用紀錄，分頁取全部
+    const usageType = type === 'product' ? 'product' : 'green_fee';
+    let usages = [];
+    from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from('voucher_usage_log')
+        .select('ticket_number, usage_date, amount')
+        .eq('voucher_type', usageType)
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      usages = usages.concat(data || []);
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+
+    // 建立使用紀錄索引 (ticket_number -> { usage_date, amount })
+    const usageMap = {};
+    for (const u of (usages || [])) {
+      usageMap[u.ticket_number] = { date: u.usage_date, amount: u.amount };
+    }
+
+    // 3. 展開票號範圍，每張票一行
+    const rows = [];
+    let seq = 0;
+
+    for (const p of (purchases || [])) {
+      const range = p.ticket_range;
+      if (!range || !range.includes('-')) continue;
+
+      const [startStr, endStr] = range.split('-');
+      const start = parseInt(startStr);
+      const end = parseInt(endStr);
+      if (isNaN(start) || isNaN(end) || end < start || (end - start) > 500) continue;
+
+      const padLen = startStr.length;
+
+      for (let num = start; num <= end; num++) {
+        seq++;
+        const ticketNum = String(num).padStart(padLen, '0');
+        // 嘗試多種格式匹配
+        const usage = usageMap[ticketNum] || usageMap[String(num)] || usageMap[ticketNum.replace(/^0+/, '')];
+
+        const usageMonth = usage ? parseInt(usage.date.substring(5, 7)) : null;
+
+        rows.push({
+          seq,
+          purchase_date: p.purchase_date,
+          invoice_number: p.invoice_number,
+          ticket_number: ticketNum,
+          face_value: p.unit_price,
+          customer_name: p.customer_name,
+          phone: p.phone,
+          m07_date: usageMonth === 7 ? usage.date : null,
+          m07_amount: usageMonth === 7 ? usage.amount : null,
+          m08_date: usageMonth === 8 ? usage.date : null,
+          m08_amount: usageMonth === 8 ? usage.amount : null,
+          m09_date: usageMonth === 9 ? usage.date : null,
+          m09_amount: usageMonth === 9 ? usage.amount : null,
+          m10_date: usageMonth === 10 ? usage.date : null,
+          m10_amount: usageMonth === 10 ? usage.amount : null,
+          m11_date: usageMonth === 11 ? usage.date : null,
+          m11_amount: usageMonth === 11 ? usage.amount : null,
+          m12_date: usageMonth === 12 ? usage.date : null,
+          m12_amount: usageMonth === 12 ? usage.amount : null,
+          unused: !usage,
+          unused_amount: !usage ? p.unit_price : null,
+        });
+      }
+    }
+
+    // 4. 統計摘要
+    const totalTickets = rows.length;
+    const usedTickets = rows.filter(r => !r.unused).length;
+    const unusedTickets = totalTickets - usedTickets;
+    const usedByMonth = {};
+    for (let m = 7; m <= 12; m++) {
+      const key = `m${String(m).padStart(2, '0')}_amount`;
+      usedByMonth[m] = rows.filter(r => r[key] != null).length;
+    }
+
+    res.json({
+      type: type === 'product' ? '商品券' : '果嶺券',
+      summary: { totalTickets, usedTickets, unusedTickets, usedByMonth },
+      rows,
+    });
+  } catch (error) {
+    console.error('Voucher usage report error:', error);
+    res.status(500).json({ error: '報表產生失敗: ' + error.message });
+  }
+});
+
+// ============================================
 // 簡訊發送紀錄查詢 API
 // ============================================
 
