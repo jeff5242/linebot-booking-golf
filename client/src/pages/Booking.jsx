@@ -48,7 +48,7 @@ export function Booking() {
     // Load Main User Info and Settings
     useEffect(() => {
         document.title = '預約球場';
-        sendLiffMessage('開始預約');
+        // sendLiffMessage('開始預約'); // 移除：節省 LINE 推播額度
         loadMainUser();
         fetchSettings();
         fetchRateConfig();

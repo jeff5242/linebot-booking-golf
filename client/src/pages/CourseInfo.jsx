@@ -9,7 +9,7 @@ export function CourseInfo() {
     useEffect(() => {
         document.title = '球場資訊';
         // Send log
-        sendLiffMessage('查看球場資訊');
+        // sendLiffMessage('查看球場資訊'); // 移除：節省 LINE 推播額度
 
         const fetchRates = async () => {
             try {

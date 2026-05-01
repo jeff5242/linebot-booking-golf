@@ -17,7 +17,7 @@ export function Fortune() {
         };
         checkMember();
         // Send logs
-        sendLiffMessage('查看運勢卡');
+        // sendLiffMessage('查看運勢卡'); // 移除：節省 LINE 推播額度
     }, []);
 
     const fortunes = [
