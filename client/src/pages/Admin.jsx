@@ -13,6 +13,7 @@ import CaddyManagement from '../components/CaddyManagement';
 import RolePermissionManager from '../components/RolePermissionManager';
 import { BroadcastPanel } from '../components/BroadcastPanel';
 import { SmsLogPanel } from '../components/SmsLogPanel';
+import { VoucherUsageReport } from '../components/VoucherUsageReport';
 import { getAdminPermissions, getAdminInfo, adminFetch, clearAdminSession } from '../utils/adminApi';
 
 const ALL_TABS = [
@@ -29,6 +30,7 @@ const ALL_TABS = [
     { key: 'admins', label: '後台權限' },
     { key: 'broadcast', label: '📢 訊息推播' },
     { key: 'sms_logs', label: '簡訊紀錄' },
+    { key: 'voucher_report', label: '票券報表' },
 ];
 
 // ... (DepartureList, CheckInList components remain unchanged)
@@ -2803,6 +2805,7 @@ export function AdminDashboard() {
             {activeTab === 'caddy_management' && <CaddyManagement />}
             {activeTab === 'broadcast' && <BroadcastPanel />}
             {activeTab === 'sms_logs' && <SmsLogPanel />}
+            {activeTab === 'voucher_report' && <VoucherUsageReport />}
 
             {/* 收費卡彈窗 */}
             {chargeCardBooking && (

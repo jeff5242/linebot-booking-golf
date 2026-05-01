@@ -15,6 +15,7 @@ const ALL_TABS = [
     { key: 'admins', label: '後台權限' },
     { key: 'broadcast', label: '📢 訊息推播' },
     { key: 'sms_logs', label: '簡訊紀錄' },
+    { key: 'voucher_report', label: '票券報表' },
 ];
 
 export default function RolePermissionManager({ roles, onRolesChanged }) {
