@@ -114,14 +114,14 @@ export function Register() {
                 if (existingUser.display_name) localStorage.setItem('golf_user_name', existingUser.display_name);
 
                 // Logging for existing member
-                await sendLiffMessage('登入會員中心');
+                // await sendLiffMessage('登入會員中心'); // 移除：節省 LINE 推播額度
 
                 // Direct redirect, no form render
                 window.location.href = '/member';
                 return;
             } else {
                 // New user landing on register page
-                await sendLiffMessage('註冊會員');
+                // await sendLiffMessage('註冊會員'); // 移除：節省 LINE 推播額度
             }
         } catch (err) {
             console.error('LIFF check failed', err);
@@ -214,7 +214,7 @@ export function Register() {
 
             showModal('註冊成功！');
             await refreshRichMenu(lineUserId);
-            await sendLiffMessage('註冊成功');
+            // await sendLiffMessage('註冊成功'); // 移除：節省 LINE 推播額度
             window.location.href = '/member';
 
         } catch (error) {
