@@ -246,6 +246,9 @@ export function Booking() {
             });
             setShowMessageModal(true);
 
+            // 通知 LINE OA（以用戶身份發訊息，讓後台一對一聊天看得到）
+            sendLiffMessage(`已預約成功 ${format(selectedDate, 'yyyy-MM-dd')} ${format(pendingTime, 'HH:mm')} ${selectedHoles}洞 ${playersCount}人`);
+
             // 重新載入預約資料
             fetchBookings();
 
