@@ -136,7 +136,7 @@ export function VoucherUsageReport() {
                     匯出 CSV
                 </button>
                 <span style={{ fontSize: '13px', color: '#6b7280' }}>
-                    {loading ? '載入中...' : `共 ${filteredRows.length} 張`}
+                    {loading ? '載入中...' : `共 ${summary?.totalTickets ?? filteredRows.length} 張`}
                 </span>
             </div>
 
