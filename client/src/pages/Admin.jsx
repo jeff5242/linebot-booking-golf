@@ -544,12 +544,26 @@ function VoucherManagement() {
         setLogs(data || []);
     };
 
-    const handleOpenDetail = (voucher) => {
+    const handleOpenDetail = async (voucher) => {
         setSelectedVoucher(voucher);
         fetchLogs(voucher.id);
         setActionMode(null);
         setActionReason('');
         setNewExpiryDate('');
+
+        // 查詢該客戶的紙本票號區段
+        const phone = voucher.users?.phone;
+        if (phone) {
+            const { data: staging } = await supabase
+                .from('vouchers_staging')
+                .select('id, customer_name, unit_price, quantity, ticket_range')
+                .eq('phone', phone)
+                .order('unit_price', { ascending: false })
+                .order('id');
+            setStagingRecords(staging || []);
+        } else {
+            setStagingRecords([]);
+        }
     };
 
     const handleAction = async () => {
@@ -986,6 +1000,26 @@ function VoucherManagement() {
                                     </div>
                                 )}
                             </div>
+
+                            {/* Staging Ticket Range */}
+                            {stagingRecords.length > 0 && (
+                                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '12px', marginBottom: '10px' }}>
+                                    <h4 style={{ margin: '0 0 8px 0', color: '#92400e', fontSize: '0.9rem' }}>紙本票號區段</h4>
+                                    {stagingRecords.map(s => (
+                                        <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #fef3c7' }}>
+                                            <span style={{
+                                                padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 'bold',
+                                                backgroundColor: s.unit_price === 200 ? '#dbeafe' : '#dcfce7',
+                                                color: s.unit_price === 200 ? '#1d4ed8' : '#166534'
+                                            }}>
+                                                {s.unit_price === 200 ? '果嶺券' : '商品券'}
+                                            </span>
+                                            <span style={{ fontFamily: 'monospace', fontSize: '1rem', fontWeight: 'bold', color: '#b45309' }}>{s.ticket_range}</span>
+                                            <span style={{ fontSize: '0.85rem', color: '#666' }}>{s.quantity} 張</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
 
                             {/* Actions Area */}
                             <div style={{ borderTop: '1px solid #eee', marginTop: '20px', paddingTop: '20px' }}>
