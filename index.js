@@ -1621,7 +1621,7 @@ app.get('/api/reports/voucher-usage', requireAuth('voucher_report'), async (req,
     while (true) {
       const { data, error } = await supabase
         .from('voucher_usage_log')
-        .select('ticket_number, usage_date, amount')
+        .select('ticket_number, usage_date, amount, source_month')
         .eq('voucher_type', usageType)
         .range(from, from + pageSize - 1);
       if (error) throw error;
@@ -1633,7 +1633,7 @@ app.get('/api/reports/voucher-usage', requireAuth('voucher_report'), async (req,
     // 建立使用紀錄索引 (ticket_number -> { usage_date, amount })
     const usageMap = {};
     for (const u of (usages || [])) {
-      usageMap[u.ticket_number] = { date: u.usage_date, amount: u.amount };
+      usageMap[u.ticket_number] = { date: u.usage_date, amount: u.amount, source_month: u.source_month };
     }
 
     // 3. 展開票號範圍，每張票一行
@@ -1664,7 +1664,10 @@ app.get('/api/reports/voucher-usage', requireAuth('voucher_report'), async (req,
           // 嘗試多種格式匹配
           const usage = usageMap[ticketNum] || usageMap[String(num)] || usageMap[ticketNum.replace(/^0+/, '')];
 
-          const usageMonth = usage ? parseInt(usage.date.substring(5, 7)) : null;
+          // 優先用 source_month（與 Excel 來源一致），fallback 用 usage_date
+          const usageMonth = usage
+            ? (usage.source_month ? parseInt(usage.source_month.replace(/\D/g, '').slice(-2)) : parseInt(usage.date.substring(5, 7)))
+            : null;
 
           rows.push({
             seq,
@@ -1693,14 +1696,20 @@ app.get('/api/reports/voucher-usage', requireAuth('voucher_report'), async (req,
       }
     }
 
-    // 4. 統計摘要
-    const totalTickets = rows.length;
-    const usedTickets = rows.filter(r => !r.unused).length;
+    // 4. 統計摘要（直接從原始資料計算，避免重疊範圍影響）
+    const totalTickets = purchases
+      .filter(p => p.customer_name !== '無記名核銷')
+      .reduce((sum, p) => sum + (p.quantity || 0), 0);
+    const usedTickets = usages.length;
     const unusedTickets = totalTickets - usedTickets;
     const usedByMonth = {};
     for (let m = 7; m <= 12; m++) {
-      const key = `m${String(m).padStart(2, '0')}_amount`;
-      usedByMonth[m] = rows.filter(r => r[key] != null).length;
+      usedByMonth[m] = usages.filter(u => {
+        const um = u.source_month
+          ? parseInt(u.source_month.replace(/\D/g, '').slice(-2))
+          : parseInt(u.usage_date.substring(5, 7));
+        return um === m;
+      }).length;
     }
 
     res.json({
