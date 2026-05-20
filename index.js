@@ -1595,7 +1595,7 @@ app.get('/api/reports/voucher-usage', requireAuth('voucher_report'), async (req,
     const { type = 'green_fee' } = req.query; // green_fee or product
 
     // 1. 取得購入資料（含票號範圍），分頁取全部
-    const sheetPattern = type === 'product' ? '%商品券%' : '%果嶺%';
+    const unitPrice = type === 'product' ? 100 : 200;
     let purchases = [];
     let from = 0;
     const pageSize = 1000;
@@ -1603,7 +1603,7 @@ app.get('/api/reports/voucher-usage', requireAuth('voucher_report'), async (req,
       const { data, error } = await supabase
         .from('vouchers_staging')
         .select('id, purchase_date, invoice_number, ticket_range, unit_price, quantity, customer_name, phone, memo')
-        .like('sheet_name', sheetPattern)
+        .eq('unit_price', unitPrice)
         .not('ticket_range', 'is', null)
         .order('purchase_date')
         .order('id')
@@ -1641,47 +1641,55 @@ app.get('/api/reports/voucher-usage', requireAuth('voucher_report'), async (req,
     let seq = 0;
 
     for (const p of (purchases || [])) {
-      const range = p.ticket_range;
-      if (!range || !range.includes('-')) continue;
+      const rangeField = p.ticket_range;
+      if (!rangeField || !rangeField.includes('-')) continue;
 
-      const [startStr, endStr] = range.split('-');
-      const start = parseInt(startStr);
-      const end = parseInt(endStr);
-      if (isNaN(start) || isNaN(end) || end < start || (end - start) > 500) continue;
+      // 支援逗號分隔的多段票號（如 "06289-06300,09025-09030"）
+      const segments = rangeField.split(',');
 
-      const padLen = startStr.length;
+      for (const segment of segments) {
+        const trimmed = segment.trim();
+        if (!trimmed.includes('-')) continue;
 
-      for (let num = start; num <= end; num++) {
-        seq++;
-        const ticketNum = String(num).padStart(padLen, '0');
-        // 嘗試多種格式匹配
-        const usage = usageMap[ticketNum] || usageMap[String(num)] || usageMap[ticketNum.replace(/^0+/, '')];
+        const [startStr, endStr] = trimmed.split('-');
+        const start = parseInt(startStr);
+        const end = parseInt(endStr);
+        if (isNaN(start) || isNaN(end) || end < start || (end - start) > 500) continue;
 
-        const usageMonth = usage ? parseInt(usage.date.substring(5, 7)) : null;
+        const padLen = startStr.length;
 
-        rows.push({
-          seq,
-          purchase_date: p.purchase_date,
-          invoice_number: p.invoice_number,
-          ticket_number: ticketNum,
-          face_value: p.unit_price,
-          customer_name: p.customer_name,
-          phone: p.phone,
-          m07_date: usageMonth === 7 ? usage.date : null,
-          m07_amount: usageMonth === 7 ? usage.amount : null,
-          m08_date: usageMonth === 8 ? usage.date : null,
-          m08_amount: usageMonth === 8 ? usage.amount : null,
-          m09_date: usageMonth === 9 ? usage.date : null,
-          m09_amount: usageMonth === 9 ? usage.amount : null,
-          m10_date: usageMonth === 10 ? usage.date : null,
-          m10_amount: usageMonth === 10 ? usage.amount : null,
-          m11_date: usageMonth === 11 ? usage.date : null,
-          m11_amount: usageMonth === 11 ? usage.amount : null,
-          m12_date: usageMonth === 12 ? usage.date : null,
-          m12_amount: usageMonth === 12 ? usage.amount : null,
-          unused: !usage,
-          unused_amount: !usage ? p.unit_price : null,
-        });
+        for (let num = start; num <= end; num++) {
+          seq++;
+          const ticketNum = String(num).padStart(padLen, '0');
+          // 嘗試多種格式匹配
+          const usage = usageMap[ticketNum] || usageMap[String(num)] || usageMap[ticketNum.replace(/^0+/, '')];
+
+          const usageMonth = usage ? parseInt(usage.date.substring(5, 7)) : null;
+
+          rows.push({
+            seq,
+            purchase_date: p.purchase_date,
+            invoice_number: p.invoice_number,
+            ticket_number: ticketNum,
+            face_value: p.unit_price,
+            customer_name: p.customer_name,
+            phone: p.phone,
+            m07_date: usageMonth === 7 ? usage.date : null,
+            m07_amount: usageMonth === 7 ? usage.amount : null,
+            m08_date: usageMonth === 8 ? usage.date : null,
+            m08_amount: usageMonth === 8 ? usage.amount : null,
+            m09_date: usageMonth === 9 ? usage.date : null,
+            m09_amount: usageMonth === 9 ? usage.amount : null,
+            m10_date: usageMonth === 10 ? usage.date : null,
+            m10_amount: usageMonth === 10 ? usage.amount : null,
+            m11_date: usageMonth === 11 ? usage.date : null,
+            m11_amount: usageMonth === 11 ? usage.amount : null,
+            m12_date: usageMonth === 12 ? usage.date : null,
+            m12_amount: usageMonth === 12 ? usage.amount : null,
+            unused: !usage,
+            unused_amount: !usage ? p.unit_price : null,
+          });
+        }
       }
     }
 
