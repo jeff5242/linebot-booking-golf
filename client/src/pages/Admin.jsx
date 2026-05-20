@@ -493,6 +493,9 @@ function VoucherManagement() {
     const [isImporting, setIsImporting] = useState(false);
     const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
 
+    // Staging ticket range lookup
+    const [stagingRecords, setStagingRecords] = useState([]);
+
     useEffect(() => {
         fetchVouchers();
     }, [filterStatus, filterSource]);
@@ -518,6 +521,21 @@ function VoucherManagement() {
             }
             setVouchers(filtered);
         }
+
+        // 同時查詢 vouchers_staging 的票號區段
+        if (keyword && keyword.trim()) {
+            const k = keyword.trim();
+            const { data: staging } = await supabase
+                .from('vouchers_staging')
+                .select('id, customer_name, phone, unit_price, quantity, ticket_range, purchase_date')
+                .or(`customer_name.ilike.%${k}%,phone.ilike.%${k}%`)
+                .order('unit_price', { ascending: false })
+                .order('id');
+            setStagingRecords(staging || []);
+        } else {
+            setStagingRecords([]);
+        }
+
         setLoading(false);
     };
 
@@ -834,6 +852,47 @@ function VoucherManagement() {
                     📥 紙券批次轉入
                 </button>
             </div>
+
+            {/* Staging Ticket Range Results */}
+            {stagingRecords.length > 0 && (
+                <div style={{ marginBottom: '20px', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
+                    <div style={{ background: '#fffbeb', padding: '10px 15px', borderBottom: '1px solid #e5e7eb', fontWeight: 'bold', color: '#92400e' }}>
+                        紙本票號區段（共 {stagingRecords.length} 筆）
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={{ textAlign: 'left', borderBottom: '2px solid #e5e7eb', background: '#fefce8' }}>
+                                <th style={{ padding: '10px 12px' }}>客戶</th>
+                                <th style={{ padding: '10px 12px' }}>電話</th>
+                                <th style={{ padding: '10px 12px' }}>券別</th>
+                                <th style={{ padding: '10px 12px' }}>張數</th>
+                                <th style={{ padding: '10px 12px' }}>票號範圍</th>
+                                <th style={{ padding: '10px 12px' }}>購買日期</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {stagingRecords.map(s => (
+                                <tr key={s.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                    <td style={{ padding: '10px 12px', fontWeight: 'bold' }}>{s.customer_name}</td>
+                                    <td style={{ padding: '10px 12px', fontSize: '0.9rem', color: '#666' }}>{s.phone}</td>
+                                    <td style={{ padding: '10px 12px' }}>
+                                        <span style={{
+                                            padding: '2px 8px', borderRadius: '4px', fontSize: '0.85rem', fontWeight: 'bold',
+                                            backgroundColor: s.unit_price === 200 ? '#dbeafe' : '#dcfce7',
+                                            color: s.unit_price === 200 ? '#1d4ed8' : '#166534'
+                                        }}>
+                                            {s.unit_price === 200 ? '果嶺券 $200' : '商品券 $100'}
+                                        </span>
+                                    </td>
+                                    <td style={{ padding: '10px 12px', fontWeight: 'bold' }}>{s.quantity}</td>
+                                    <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '1rem', color: '#b45309', fontWeight: 'bold' }}>{s.ticket_range}</td>
+                                    <td style={{ padding: '10px 12px', fontSize: '0.9rem' }}>{s.purchase_date || '-'}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
             {/* Voucher List */}
             <div style={{ overflowX: 'auto' }}>
