@@ -569,31 +569,33 @@ export function MemberCenter() {
                             請向櫃檯或自動報到機出示此 QR Code
                         </p>
                         <div style={{
-                            background: '#f9fafb', padding: '25px', borderRadius: '12px',
+                            background: '#f9fafb', padding: '20px', borderRadius: '12px',
                             marginBottom: '20px', border: '2px dashed #e5e7eb',
+                            display: 'flex', flexDirection: 'column', alignItems: 'center',
                         }}>
                             <QRCodeSVG
                                 value={JSON.stringify({ phone: userPhone || profile?.phone })}
-                                size={200}
+                                size={220}
                                 level="H"
+                                style={{ width: '100%', height: 'auto', maxWidth: '220px' }}
                             />
+                            <div style={{ width: '100%', marginTop: '14px', overflow: 'hidden', display: 'flex', justifyContent: 'center' }}>
+                                <Barcode
+                                    value={userPhone || profile?.phone || ''}
+                                    format="CODE39"
+                                    width={1.2}
+                                    height={45}
+                                    displayValue={false}
+                                    margin={0}
+                                />
+                            </div>
+                            <p style={{
+                                fontSize: '1.1rem', fontWeight: 'bold', color: '#374151',
+                                margin: '10px 0 0 0', fontFamily: 'monospace', letterSpacing: '2px',
+                            }}>
+                                {userPhone || profile?.phone}
+                            </p>
                         </div>
-                        <div style={{ marginBottom: '16px' }}>
-                            <Barcode
-                                value={userPhone || profile?.phone || ''}
-                                format="CODE39"
-                                width={1.5}
-                                height={50}
-                                displayValue={false}
-                                margin={0}
-                            />
-                        </div>
-                        <p style={{
-                            fontSize: '1.2rem', fontWeight: 'bold', color: '#374151',
-                            margin: '0 0 20px 0', fontFamily: 'monospace', letterSpacing: '1px',
-                        }}>
-                            {userPhone || profile?.phone}
-                        </p>
                         <button
                             onClick={() => setShowQR(false)}
                             style={{
