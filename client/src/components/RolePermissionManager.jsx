@@ -187,6 +187,30 @@ export default function RolePermissionManager({ roles, onRolesChanged }) {
                     </tbody>
                 </table>
             </div>
+
+            <div style={{
+                marginTop: '16px', padding: '14px', background: '#fffbeb',
+                border: '1px solid #fde68a', borderRadius: '8px',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                flexWrap: 'wrap', gap: '10px',
+            }}>
+                <span style={{ fontSize: '13px', color: '#92400e' }}>
+                    權限修改後，該用戶需重新登入才會生效
+                </span>
+                <button
+                    onClick={() => {
+                        sessionStorage.clear();
+                        window.location.href = '/admin/login';
+                    }}
+                    style={{
+                        padding: '8px 16px', borderRadius: '6px', border: 'none',
+                        background: '#dc2626', color: '#fff', cursor: 'pointer',
+                        fontWeight: 'bold', fontSize: '13px',
+                    }}
+                >
+                    重新登入
+                </button>
+            </div>
         </div>
     );
 }
