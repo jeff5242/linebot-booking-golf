@@ -54,6 +54,14 @@ export function VoucherOpsPanel({ preSelectedUser }) {
         }, 300);
     };
 
+    const safeJson = async (res, label) => {
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text.startsWith('<') ? `${label}：伺服器回應 ${res.status}，請確認後端已部署` : text);
+        }
+        return res.json();
+    };
+
     const selectUser = async (user) => {
         setSelectedUser(user);
         setSearchQuery('');
@@ -61,7 +69,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
         setLoading(true);
         try {
             const res = await adminFetch(`/api/voucher-ops/customer/${user.id}`);
-            const data = await res.json();
+            const data = await safeJson(res, '載入客人資料');
             setCustomerData(data);
             fetchHistory(user.id, 1);
         } catch (err) {

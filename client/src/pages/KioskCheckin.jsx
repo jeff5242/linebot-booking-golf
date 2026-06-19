@@ -84,6 +84,7 @@ function KioskScanner() {
     const [voucherSummary, setVoucherSummary] = useState(null);
     const [cameraError, setCameraError] = useState(null);
     const [retryTrigger, setRetryTrigger] = useState(0);
+    const [facingMode, setFacingMode] = useState('environment');
     const scannerRef = useRef(null);
     const processingRef = useRef(false);
     const resetTimerRef = useRef(null);
@@ -188,12 +189,15 @@ function KioskScanner() {
     useEffect(() => {
         if (isShowingResult) return;
 
+        const container = document.getElementById('kiosk-reader');
+        if (container) container.innerHTML = '';
+
         const scanner = new Html5Qrcode('kiosk-reader');
         scannerRef.current = scanner;
         setCameraError(null);
 
         scanner.start(
-            { facingMode: 'environment' },
+            { facingMode },
             { fps: 10, qrbox: { width: 280, height: 280 } },
             (text) => handleScanRef.current(text),
             () => {}
@@ -204,7 +208,7 @@ function KioskScanner() {
         return () => {
             scanner.stop().catch(() => {});
         };
-    }, [isShowingResult, retryTrigger]);
+    }, [isShowingResult, retryTrigger, facingMode]);
 
     useEffect(() => {
         return () => clearTimeout(resetTimerRef.current);
@@ -235,6 +239,14 @@ function KioskScanner() {
                     <div style={styles.scannerArea}>
                         <h2 style={styles.scanTitle}>請掃描 QR Code 報到</h2>
                         <div id="kiosk-reader" style={styles.readerContainer}></div>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '12px' }}>
+                            <button
+                                onClick={() => setFacingMode(m => m === 'environment' ? 'user' : 'environment')}
+                                style={styles.cameraSwitchBtn}
+                            >
+                                🔄 {facingMode === 'environment' ? '切換前鏡頭' : '切換後鏡頭'}
+                            </button>
+                        </div>
                         {cameraError ? (
                             <div style={styles.cameraErrorBox}>
                                 <p style={{ margin: '0 0 12px', fontWeight: '600', fontSize: '1.1rem' }}>相機啟動失敗</p>
@@ -380,6 +392,16 @@ const styles = {
         border: 'none',
         borderRadius: '8px',
         fontSize: '1rem',
+        fontWeight: 600,
+        cursor: 'pointer',
+    },
+    cameraSwitchBtn: {
+        padding: '10px 20px',
+        background: '#fff',
+        color: '#374151',
+        border: '2px solid #d1d5db',
+        borderRadius: '8px',
+        fontSize: '0.95rem',
         fontWeight: 600,
         cursor: 'pointer',
     },
