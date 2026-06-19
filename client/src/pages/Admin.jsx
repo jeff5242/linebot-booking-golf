@@ -14,6 +14,7 @@ import RolePermissionManager from '../components/RolePermissionManager';
 import { BroadcastPanel } from '../components/BroadcastPanel';
 import { SmsLogPanel } from '../components/SmsLogPanel';
 import { VoucherUsageReport } from '../components/VoucherUsageReport';
+import { VoucherOpsPanel } from '../components/VoucherOpsPanel';
 import { getAdminPermissions, getAdminInfo, adminFetch, clearAdminSession } from '../utils/adminApi';
 
 const ALL_TABS = [
@@ -31,6 +32,7 @@ const ALL_TABS = [
     { key: 'broadcast', label: '📢 訊息推播' },
     { key: 'sms_logs', label: '簡訊紀錄' },
     { key: 'voucher_report', label: '票券報表' },
+    { key: 'voucher_ops', label: '🎟️ 發券/用券' },
 ];
 
 // ... (DepartureList, CheckInList components remain unchanged)
@@ -2448,6 +2450,7 @@ function UserManagement() {
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
+    const [voucherOpsUser, setVoucherOpsUser] = useState(null);
 
     // Filter states
     const [filters, setFilters] = useState({
@@ -2584,13 +2587,14 @@ function UserManagement() {
                             <th style={{ padding: '10px' }}>擊球身分</th>
                             <th style={{ padding: '10px' }}>有效日期</th>
                             <th style={{ padding: '10px' }}>LINE ID</th>
+                            <th style={{ padding: '10px' }}>票券操作</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={6} style={{ padding: '20px', textAlign: 'center', color: '#666' }}>載入中...</td></tr>
+                            <tr><td colSpan={7} style={{ padding: '20px', textAlign: 'center', color: '#666' }}>載入中...</td></tr>
                         ) : users.length === 0 ? (
-                            <tr><td colSpan={6} style={{ padding: '20px', textAlign: 'center', color: '#666' }}>無符合條件的用戶</td></tr>
+                            <tr><td colSpan={7} style={{ padding: '20px', textAlign: 'center', color: '#666' }}>無符合條件的用戶</td></tr>
                         ) : users.map(u => (
                             <tr key={u.id} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '10px', color: '#666' }}>{u.member_no || '-'}</td>
@@ -2604,6 +2608,14 @@ function UserManagement() {
                                 </td>
                                 <td style={{ padding: '10px', fontSize: '0.8rem', color: '#666' }}>
                                     {u.line_user_id ? '✅ 已綁定' : '未綁定'}
+                                </td>
+                                <td style={{ padding: '10px', whiteSpace: 'nowrap' }}>
+                                    <button
+                                        onClick={() => setVoucherOpsUser({ id: u.id, display_name: u.display_name, phone: u.phone, member_no: u.member_no })}
+                                        style={{ padding: '4px 10px', fontSize: '12px', border: '1px solid #2563eb', borderRadius: '4px', background: '#eff6ff', color: '#2563eb', cursor: 'pointer', marginRight: '4px' }}
+                                    >
+                                        🎟️ 票券
+                                    </button>
                                 </td>
                             </tr>
                         ))}
@@ -2631,6 +2643,19 @@ function UserManagement() {
                     下一頁 →
                 </button>
             </div>
+
+            {/* Voucher Ops Modal */}
+            {voucherOpsUser && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={() => setVoucherOpsUser(null)}>
+                    <div style={{ backgroundColor: 'white', borderRadius: '12px', width: '95%', maxWidth: '700px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>🎟️ 票券操作 - {voucherOpsUser.display_name}</h3>
+                            <button onClick={() => setVoucherOpsUser(null)} style={{ border: 'none', background: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#6b7280' }}>✕</button>
+                        </div>
+                        <VoucherOpsPanel preSelectedUser={voucherOpsUser} />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -2899,6 +2924,7 @@ export function AdminDashboard() {
             {activeTab === 'broadcast' && <BroadcastPanel />}
             {activeTab === 'sms_logs' && <SmsLogPanel />}
             {activeTab === 'voucher_report' && <VoucherUsageReport />}
+            {activeTab === 'voucher_ops' && <VoucherOpsPanel />}
 
             {/* 收費卡彈窗 */}
             {chargeCardBooking && (
