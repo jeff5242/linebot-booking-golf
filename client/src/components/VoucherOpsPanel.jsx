@@ -354,7 +354,6 @@ function VoucherCard({ title, color, bg, summary, unitPrice, onIssue, onRedeem }
                 總計 {summary.total} 張 / 面額 ${unitPrice}
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={onIssue} style={{ ...actionBtnStyle, background: '#2563eb', color: '#fff' }}>發券</button>
                 <button onClick={onRedeem} disabled={summary.active === 0} style={{ ...actionBtnStyle, background: summary.active > 0 ? '#dc2626' : '#d1d5db', color: '#fff' }}>用券</button>
             </div>
         </div>
