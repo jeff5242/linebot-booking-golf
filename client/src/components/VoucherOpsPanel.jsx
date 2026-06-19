@@ -380,21 +380,41 @@ function PackageIssueSection({ userId, onIssued, settings }) {
     const validityYears = settings?.validity_years ?? 2;
     const gfPrice = settings?.green_fee?.unit_price ?? 200;
     const pdPrice = settings?.product?.unit_price ?? 100;
+    const MIN_RENEWAL_MONTHS = 9;
+    const EXPIRY_MONTHS = 13;
+    const GRACE_MONTHS = 1;
     const [issuing, setIssuing] = useState(false);
     const [showPackageModal, setShowPackageModal] = useState(null);
     const [lastPurchaseDate, setLastPurchaseDate] = useState(null);
     const [customStartDate, setCustomStartDate] = useState('');
     const [loadingDate, setLoadingDate] = useState(false);
+    const [renewalStatus, setRenewalStatus] = useState(null);
 
     const openPackageModal = async (pkgIndex) => {
         setShowPackageModal(pkgIndex);
         setLoadingDate(true);
+        setRenewalStatus(null);
         try {
             const res = await adminFetch(`/api/voucher-ops/last-purchase/${userId}`);
             const data = await res.json();
             setLastPurchaseDate(data.lastPurchaseDate);
             if (data.lastPurchaseDate) {
                 const last = new Date(data.lastPurchaseDate);
+                const today = new Date();
+
+                const addMonths = (d, m) => { const r = new Date(d); r.setMonth(r.getMonth() + m); return r; };
+                const renewableDate = addMonths(last, MIN_RENEWAL_MONTHS);
+                const expiryDate = addMonths(last, EXPIRY_MONTHS);
+                const suspendDate = addMonths(last, EXPIRY_MONTHS + GRACE_MONTHS);
+
+                if (today < renewableDate) {
+                    setRenewalStatus({ type: 'too_early', date: renewableDate.toISOString().slice(0, 10) });
+                } else if (today >= suspendDate) {
+                    setRenewalStatus({ type: 'suspended', date: suspendDate.toISOString().slice(0, 10), expiryDate: expiryDate.toISOString().slice(0, 10) });
+                } else if (today >= expiryDate) {
+                    setRenewalStatus({ type: 'grace', expiryDate: expiryDate.toISOString().slice(0, 10), deadline: suspendDate.toISOString().slice(0, 10) });
+                }
+
                 const next = new Date(last.getTime() + validityYears * 365.25 * 24 * 60 * 60 * 1000);
                 setCustomStartDate(next.toISOString().slice(0, 10));
             } else {
@@ -461,11 +481,35 @@ function PackageIssueSection({ userId, onIssued, settings }) {
 
                         {loadingDate ? (
                             <div style={{ color: '#9ca3af', marginBottom: '16px' }}>查詢上次購買日期...</div>
+                        ) : renewalStatus?.type === 'too_early' ? (
+                            <div style={{ padding: '14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', marginBottom: '16px' }}>
+                                <div style={{ color: '#dc2626', fontWeight: '600', marginBottom: '6px' }}>尚未到續約期限</div>
+                                <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                                    上次購買日期：{lastPurchaseDate}<br />
+                                    需滿 {MIN_RENEWAL_MONTHS} 個月後才可續約購買<br />
+                                    可續約日期：<b>{renewalStatus.date}</b>
+                                </div>
+                            </div>
+                        ) : renewalStatus?.type === 'suspended' ? (
+                            <div style={{ padding: '14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', marginBottom: '16px' }}>
+                                <div style={{ color: '#dc2626', fontWeight: '600', marginBottom: '6px' }}>會員已停權</div>
+                                <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                                    上次購買日期：{lastPurchaseDate}<br />
+                                    會員過期日：{renewalStatus.expiryDate}（購買後 {EXPIRY_MONTHS} 個月）<br />
+                                    續約寬限期已於 <b>{renewalStatus.date}</b> 截止<br />
+                                    該用戶已無白金會員資格，僅能使用來賓卡
+                                </div>
+                            </div>
                         ) : (
                             <div style={{ marginBottom: '16px' }}>
                                 {lastPurchaseDate && (
                                     <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
-                                        上次購買日期：{lastPurchaseDate}（+2年 = {customStartDate}）
+                                        上次購買日期：{lastPurchaseDate}（+{validityYears}年 = {customStartDate}）
+                                    </div>
+                                )}
+                                {renewalStatus?.type === 'grace' && (
+                                    <div style={{ padding: '10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', marginBottom: '10px', fontSize: '13px', color: '#92400e' }}>
+                                        會員已於 {renewalStatus.expiryDate} 過期，寬限期至 <b>{renewalStatus.deadline}</b>，請儘速續約
                                     </div>
                                 )}
                                 <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>效期起始日</label>
@@ -481,7 +525,16 @@ function PackageIssueSection({ userId, onIssued, settings }) {
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                             <button onClick={() => setShowPackageModal(null)} style={cancelBtnStyle}>取消</button>
-                            <button onClick={handleIssuePackage} disabled={issuing} style={{ ...actionBtnStyle, background: issuing ? '#d1d5db' : '#7c3aed', color: '#fff' }}>
+                            <button
+                                onClick={handleIssuePackage}
+                                disabled={issuing || renewalStatus?.type === 'too_early' || renewalStatus?.type === 'suspended'}
+                                style={{
+                                    ...actionBtnStyle,
+                                    background: (issuing || renewalStatus?.type === 'too_early' || renewalStatus?.type === 'suspended') ? '#d1d5db' : '#7c3aed',
+                                    color: '#fff',
+                                    cursor: (renewalStatus?.type === 'too_early' || renewalStatus?.type === 'suspended') ? 'not-allowed' : 'pointer',
+                                }}
+                            >
                                 {issuing ? '處理中...' : '確認發券'}
                             </button>
                         </div>
