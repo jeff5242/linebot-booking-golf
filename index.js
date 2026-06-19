@@ -32,6 +32,7 @@ const bcrypt = require('bcryptjs');
 const OtpService = require('./services/OtpService');
 const RichMenuService = require('./services/RichMenuService');
 const { sendPushMessage, broadcastLineMessage, multicastLineMessages } = require('./services/LineNotification');
+const VoucherOps = require('./services/VoucherOps');
 
 // Supabase 設定
 const supabase = createClient(
@@ -2166,6 +2167,133 @@ app.get('/api/member/vouchers', async (req, res) => {
   } catch (error) {
     console.error('Member Vouchers Error:', error);
     res.status(500).json({ error: '讀取優惠券失敗' });
+  }
+});
+
+// ============================================
+// 票券發券/用券 API (Voucher Operations)
+// ============================================
+
+app.get('/api/voucher-ops/settings', requireAuth('vouchers'), async (req, res) => {
+  try {
+    const settings = await VoucherOps.getIssueSettings();
+    res.json(settings);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/voucher-ops/settings', requireAuth('settings'), async (req, res) => {
+  try {
+    const updated = await VoucherOps.updateIssueSettings(req.body);
+    res.json({ success: true, settings: updated });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/voucher-ops/search-users', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const users = await VoucherOps.searchUsers(req.query.q);
+    res.json({ users });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/voucher-ops/customer/:userId', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const result = await VoucherOps.getCustomerVouchers(req.params.userId);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/voucher-ops/issue', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const { user_id, voucher_type, quantity } = req.body;
+    const adminInfo = req.admin;
+    const result = await VoucherOps.issueVouchers({
+      userId: user_id,
+      voucherType: voucher_type,
+      quantity,
+      operatorName: adminInfo?.name || 'Admin',
+    });
+    res.json({ success: true, ...result, message: `成功發出 ${quantity} 張${voucher_type === 'green_fee' ? '果嶺券' : '商品券'}` });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/voucher-ops/redeem', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const { user_id, voucher_type, quantity } = req.body;
+    const adminInfo = req.admin;
+    const result = await VoucherOps.redeemVouchers({
+      userId: user_id,
+      voucherType: voucher_type,
+      quantity,
+      operatorName: adminInfo?.name || 'Admin',
+    });
+    res.json({ success: true, ...result, message: `成功核銷 ${result.redeemed} 張` });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/voucher-ops/void', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const { voucher_ids, reason } = req.body;
+    const adminInfo = req.admin;
+    const result = await VoucherOps.voidVouchers({
+      voucherIds: voucher_ids,
+      reason,
+      operatorName: adminInfo?.name || 'Admin',
+    });
+    res.json({ success: true, ...result, message: `已作廢 ${result.voided} 張` });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/voucher-ops/history', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const { user_id, voucher_type, page = 1, limit = 20 } = req.query;
+    const result = await VoucherOps.getHistory({
+      userId: user_id,
+      voucherType: voucher_type,
+      page: parseInt(page),
+      limit: Math.min(100, parseInt(limit) || 20),
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/voucher-ops/issue-package', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const { user_id, package_index, valid_from } = req.body;
+    const adminInfo = req.admin;
+    const result = await VoucherOps.issuePackage({
+      userId: user_id,
+      packageIndex: package_index,
+      operatorName: adminInfo?.name || 'Admin',
+      validFrom: valid_from,
+    });
+    res.json({ success: true, ...result, message: `成功發出「${result.package.name}」：果嶺券 ${result.green_fee.count} 張 + 商品券 ${result.product.count} 張` });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/voucher-ops/last-purchase/:userId', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const lastDate = await VoucherOps.getLastPurchaseDate(req.params.userId);
+    res.json({ lastPurchaseDate: lastDate });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

@@ -100,13 +100,14 @@ export function SmsLogPanel() {
                             <th style={thStyle}>用途</th>
                             <th style={thStyle}>狀態</th>
                             <th style={thStyle}>錯誤訊息</th>
+                            <th style={thStyle}>驗證碼</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: '#9ca3af' }}>載入中...</td></tr>
+                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '24px', color: '#9ca3af' }}>載入中...</td></tr>
                         ) : logs.length === 0 ? (
-                            <tr><td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: '#9ca3af' }}>無紀錄</td></tr>
+                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '24px', color: '#9ca3af' }}>無紀錄</td></tr>
                         ) : logs.map((log, i) => {
                             const st = STATUS_LABELS[log.status] || { text: log.status, color: '#6b7280', bg: '#f9fafb' };
                             return (
@@ -124,6 +125,9 @@ export function SmsLogPanel() {
                                     </td>
                                     <td style={{ ...tdStyle, maxWidth: '300px', wordBreak: 'break-all', color: '#dc2626', fontSize: '12px' }}>
                                         {log.error_message || '-'}
+                                    </td>
+                                    <td style={{ ...tdStyle, fontFamily: 'monospace', fontWeight: 'bold', fontSize: '14px', color: '#2563eb' }}>
+                                        {log.otp_code || '-'}
                                     </td>
                                 </tr>
                             );
