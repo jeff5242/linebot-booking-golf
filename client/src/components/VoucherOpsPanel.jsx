@@ -28,6 +28,8 @@ export function VoucherOpsPanel({ preSelectedUser }) {
     const [issueSettings, setIssueSettings] = useState(null);
 
     const searchTimerRef = useRef(null);
+    const barcodeBufferRef = useRef('');
+    const barcodeTimerRef = useRef(null);
 
     useEffect(() => {
         adminFetch('/api/voucher-ops/settings')
@@ -35,6 +37,61 @@ export function VoucherOpsPanel({ preSelectedUser }) {
             .then(data => setIssueSettings(data))
             .catch(() => {});
     }, []);
+
+    useEffect(() => {
+        const BARCODE_MAX_INTERVAL = 80;
+        const BARCODE_MIN_LENGTH = 6;
+
+        const handleKeyDown = (e) => {
+            const tag = e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+            if (e.key === 'Enter' && barcodeBufferRef.current.length >= BARCODE_MIN_LENGTH) {
+                const scanned = barcodeBufferRef.current;
+                barcodeBufferRef.current = '';
+                clearTimeout(barcodeTimerRef.current);
+
+                let phone = scanned;
+                try {
+                    const json = JSON.parse(scanned);
+                    if (json.phone) phone = json.phone;
+                } catch {}
+
+                handleBarcodeScan(phone);
+                return;
+            }
+
+            if (e.key.length === 1) {
+                clearTimeout(barcodeTimerRef.current);
+                barcodeBufferRef.current += e.key;
+                barcodeTimerRef.current = setTimeout(() => {
+                    barcodeBufferRef.current = '';
+                }, BARCODE_MAX_INTERVAL);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
+    const handleBarcodeScan = async (phone) => {
+        setLoading(true);
+        try {
+            const res = await adminFetch(`/api/voucher-ops/search-users?q=${encodeURIComponent(phone)}`);
+            const data = await res.json();
+            const users = data.users || [];
+            const match = users.find(u => u.phone === phone) || users[0];
+            if (match) {
+                selectUser(match);
+            } else {
+                alert(`查無用戶：${phone}`);
+                setLoading(false);
+            }
+        } catch {
+            alert('條碼查詢失敗');
+            setLoading(false);
+        }
+    };
 
     useEffect(() => {
         if (preSelectedUser) {
