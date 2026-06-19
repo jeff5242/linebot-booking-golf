@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
+import Barcode from 'react-barcode';
 
 const apiUrl = import.meta.env.VITE_API_URL || '';
 
@@ -575,6 +576,16 @@ export function MemberCenter() {
                                 value={JSON.stringify({ phone: userPhone || profile?.phone })}
                                 size={200}
                                 level="H"
+                            />
+                        </div>
+                        <div style={{ marginBottom: '16px' }}>
+                            <Barcode
+                                value={userPhone || profile?.phone || ''}
+                                format="CODE39"
+                                width={1.5}
+                                height={50}
+                                displayValue={false}
+                                margin={0}
                             />
                         </div>
                         <p style={{

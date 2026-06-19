@@ -89,19 +89,39 @@ function KioskScanner() {
     const processingRef = useRef(false);
     const resetTimerRef = useRef(null);
     const handleScanRef = useRef(null);
+    const facingModeRef = useRef(facingMode);
 
-    const isShowingResult = !!scanResult;
+    const restartCamera = async () => {
+        const scanner = scannerRef.current;
+        if (!scanner) return;
+        try {
+            const state = scanner.getState();
+            if (state === 2) await scanner.stop();
+        } catch {}
+        setCameraError(null);
+        try {
+            await scanner.start(
+                { facingMode: facingModeRef.current },
+                { fps: 10, qrbox: { width: 280, height: 280 } },
+                (text) => handleScanRef.current(text),
+                () => {}
+            );
+        } catch (err) {
+            setCameraError(err.message || '無法啟動相機');
+        }
+    };
 
-    const clearResult = () => {
+    const clearResultAndRestart = () => {
         clearTimeout(resetTimerRef.current);
         setScanResult(null);
         setVoucherSummary(null);
         processingRef.current = false;
+        restartCamera();
     };
 
     const scheduleReset = (ms) => {
         clearTimeout(resetTimerRef.current);
-        resetTimerRef.current = setTimeout(clearResult, ms);
+        resetTimerRef.current = setTimeout(clearResultAndRestart, ms);
     };
 
     handleScanRef.current = async (decodedText) => {
@@ -187,17 +207,14 @@ function KioskScanner() {
     };
 
     useEffect(() => {
-        if (isShowingResult) return;
-
         const container = document.getElementById('kiosk-reader');
         if (container) container.innerHTML = '';
 
         const scanner = new Html5Qrcode('kiosk-reader');
         scannerRef.current = scanner;
-        setCameraError(null);
 
         scanner.start(
-            { facingMode },
+            { facingMode: facingModeRef.current },
             { fps: 10, qrbox: { width: 280, height: 280 } },
             (text) => handleScanRef.current(text),
             () => {}
@@ -206,13 +223,21 @@ function KioskScanner() {
         });
 
         return () => {
+            clearTimeout(resetTimerRef.current);
             scanner.stop().catch(() => {});
         };
-    }, [isShowingResult, retryTrigger, facingMode]);
+    }, []);
 
     useEffect(() => {
-        return () => clearTimeout(resetTimerRef.current);
-    }, []);
+        facingModeRef.current = facingMode;
+        if (!scannerRef.current) return;
+        restartCamera();
+    }, [facingMode]);
+
+    const handleRetry = () => {
+        setRetryTrigger(n => n + 1);
+        restartCamera();
+    };
 
     const toggleFullscreen = () => {
         if (document.fullscreenElement) {
@@ -235,7 +260,7 @@ function KioskScanner() {
             </div>
 
             <div style={styles.mainContent}>
-                {!scanResult ? (
+                <div style={{ display: scanResult ? 'none' : 'block' }}>
                     <div style={styles.scannerArea}>
                         <h2 style={styles.scanTitle}>請掃描 QR Code 報到</h2>
                         <div id="kiosk-reader" style={styles.readerContainer}></div>
@@ -251,18 +276,20 @@ function KioskScanner() {
                             <div style={styles.cameraErrorBox}>
                                 <p style={{ margin: '0 0 12px', fontWeight: '600', fontSize: '1.1rem' }}>相機啟動失敗</p>
                                 <p style={{ margin: '0 0 16px', fontSize: '0.9rem' }}>{cameraError}</p>
-                                <button onClick={() => setRetryTrigger(n => n + 1)} style={styles.retryBtn}>重新啟動相機</button>
+                                <button onClick={handleRetry} style={styles.retryBtn}>重新啟動相機</button>
                             </div>
                         ) : (
                             <p style={styles.scanHint}>將手機 QR Code 對準鏡頭</p>
                         )}
                     </div>
-                ) : scanResult.error ? (
+                </div>
+
+                {scanResult && (scanResult.error ? (
                     <div style={styles.resultCardError}>
                         <div style={{ fontSize: '3.5rem' }}>❌</div>
                         <h2 style={styles.resultTitle}>{scanResult.title}</h2>
                         <p style={{ color: '#6b7280' }}>{scanResult.detail}</p>
-                        <button onClick={clearResult} style={styles.continueBtn('#dc2626')}>繼續掃描</button>
+                        <button onClick={clearResultAndRestart} style={styles.continueBtn('#dc2626')}>繼續掃描</button>
                     </div>
                 ) : (
                     <div style={{ width: '100%', maxWidth: '520px' }}>
@@ -300,11 +327,11 @@ function KioskScanner() {
                             </div>
                         )}
 
-                        <button onClick={clearResult} style={styles.continueBtn('#2E7D32')}>
+                        <button onClick={clearResultAndRestart} style={styles.continueBtn('#2E7D32')}>
                             繼續掃描下一位
                         </button>
                     </div>
-                )}
+                ))}
             </div>
         </div>
     );
