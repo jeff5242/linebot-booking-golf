@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { adminFetch } from '../utils/adminApi';
+import { adminFetch, hasPermission } from '../utils/adminApi';
 
 const VOUCHER_TYPE_LABELS = {
     green_fee: '果嶺券',
@@ -24,8 +24,17 @@ export function VoucherOpsPanel({ preSelectedUser }) {
     const [history, setHistory] = useState([]);
     const [historyTotal, setHistoryTotal] = useState(0);
     const [historyPage, setHistoryPage] = useState(1);
+    const [showSettings, setShowSettings] = useState(false);
+    const [issueSettings, setIssueSettings] = useState(null);
 
     const searchTimerRef = useRef(null);
+
+    useEffect(() => {
+        adminFetch('/api/voucher-ops/settings')
+            .then(r => r.json())
+            .then(data => setIssueSettings(data))
+            .catch(() => {});
+    }, []);
 
     useEffect(() => {
         if (preSelectedUser) {
@@ -132,7 +141,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
         const qty = parseInt(modal.quantity);
         if (!qty || qty < 1) return alert('請輸入使用張數');
         const label = VOUCHER_TYPE_LABELS[modal.voucherType];
-        const unitPrice = modal.voucherType === 'green_fee' ? 200 : 100;
+        const unitPrice = modal.voucherType === 'green_fee' ? (issueSettings?.green_fee?.unit_price ?? 200) : (issueSettings?.product?.unit_price ?? 100);
         if (!confirm(`確定要核銷 ${qty} 張${label}嗎？\n折抵金額：$${qty * unitPrice}`)) return;
         try {
             const res = await adminFetch('/api/voucher-ops/redeem', {
@@ -160,7 +169,14 @@ export function VoucherOpsPanel({ preSelectedUser }) {
 
     return (
         <div style={{ padding: '16px' }}>
-            <h3 style={{ marginBottom: '16px', fontSize: '1.1rem', fontWeight: 'bold' }}>發券 / 用券</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 'bold', margin: 0 }}>發券 / 用券</h3>
+                {hasPermission('settings') && (
+                    <button onClick={() => setShowSettings(true)} style={settingsBtnStyle} title="發券設定">
+                        ⚙️ 設定
+                    </button>
+                )}
+            </div>
 
             {/* Search */}
             <div style={{ marginBottom: '20px', position: 'relative' }}>
@@ -214,6 +230,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                 <PackageIssueSection
                     userId={selectedUser?.id}
                     onIssued={refreshCustomerData}
+                    settings={issueSettings}
                 />
             )}
 
@@ -225,7 +242,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                         color="#1d4ed8"
                         bg="#eff6ff"
                         summary={summary.green_fee}
-                        unitPrice={200}
+                        unitPrice={issueSettings?.green_fee?.unit_price ?? 200}
                         onIssue={() => openIssueModal('green_fee')}
                         onRedeem={() => openRedeemModal('green_fee')}
                     />
@@ -234,7 +251,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                         color="#166534"
                         bg="#f0fdf4"
                         summary={summary.product}
-                        unitPrice={100}
+                        unitPrice={issueSettings?.product?.unit_price ?? 100}
                         onIssue={() => openIssueModal('product')}
                         onRedeem={() => openRedeemModal('product')}
                     />
@@ -292,6 +309,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                     <IssueModal
                         voucherType={modal.voucherType}
                         quantity={modal.quantity}
+                        unitPrice={modal.voucherType === 'green_fee' ? (issueSettings?.green_fee?.unit_price ?? 200) : (issueSettings?.product?.unit_price ?? 100)}
                         userName={selectedUser?.display_name}
                         onQuantityChange={q => setModal(prev => ({ ...prev, quantity: q }))}
                         onConfirm={handleIssue}
@@ -303,6 +321,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                         voucherType={modal.voucherType}
                         available={modal.voucherType === 'green_fee' ? summary?.green_fee?.active || 0 : summary?.product?.active || 0}
                         quantity={modal.quantity}
+                        unitPrice={modal.voucherType === 'green_fee' ? (issueSettings?.green_fee?.unit_price ?? 200) : (issueSettings?.product?.unit_price ?? 100)}
                         userName={selectedUser?.display_name}
                         onQuantityChange={q => setModal(prev => ({ ...prev, quantity: q }))}
                         onConfirm={handleRedeem}
@@ -310,6 +329,14 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                     />
                 )}
             </ModalOverlay>}
+
+            {showSettings && (
+                <SettingsModal
+                    settings={issueSettings}
+                    onSave={(updated) => { setIssueSettings(updated); setShowSettings(false); }}
+                    onClose={() => setShowSettings(false)}
+                />
+            )}
         </div>
     );
 }
@@ -343,12 +370,16 @@ function StatItem({ label, value, color }) {
     );
 }
 
-const PACKAGES = [
+const DEFAULT_PACKAGES = [
     { name: 'A 套本 $6,600', price: 6600, green_fee: 18, product: 30 },
     { name: 'B 套本 $2,800', price: 2800, green_fee: 9, product: 10 },
 ];
 
-function PackageIssueSection({ userId, onIssued }) {
+function PackageIssueSection({ userId, onIssued, settings }) {
+    const PACKAGES = settings?.packages || DEFAULT_PACKAGES;
+    const validityYears = settings?.validity_years ?? 2;
+    const gfPrice = settings?.green_fee?.unit_price ?? 200;
+    const pdPrice = settings?.product?.unit_price ?? 100;
     const [issuing, setIssuing] = useState(false);
     const [showPackageModal, setShowPackageModal] = useState(null);
     const [lastPurchaseDate, setLastPurchaseDate] = useState(null);
@@ -364,7 +395,7 @@ function PackageIssueSection({ userId, onIssued }) {
             setLastPurchaseDate(data.lastPurchaseDate);
             if (data.lastPurchaseDate) {
                 const last = new Date(data.lastPurchaseDate);
-                const next = new Date(last.getTime() + 2 * 365.25 * 24 * 60 * 60 * 1000);
+                const next = new Date(last.getTime() + validityYears * 365.25 * 24 * 60 * 60 * 1000);
                 setCustomStartDate(next.toISOString().slice(0, 10));
             } else {
                 setCustomStartDate(new Date().toISOString().slice(0, 10));
@@ -423,8 +454,8 @@ function PackageIssueSection({ userId, onIssued }) {
                     <div>
                         <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem' }}>套本發券 - {PACKAGES[showPackageModal].name}</h3>
                         <div style={{ padding: '12px', background: '#f5f3ff', borderRadius: '8px', marginBottom: '16px' }}>
-                            <div style={{ marginBottom: '6px' }}>果嶺券：<b>{PACKAGES[showPackageModal].green_fee}</b> 張 x $200 = <b>${PACKAGES[showPackageModal].green_fee * 200}</b></div>
-                            <div>商品券：<b>{PACKAGES[showPackageModal].product}</b> 張 x $100 = <b>${PACKAGES[showPackageModal].product * 100}</b></div>
+                            <div style={{ marginBottom: '6px' }}>果嶺券：<b>{PACKAGES[showPackageModal].green_fee}</b> 張 x ${gfPrice} = <b>${PACKAGES[showPackageModal].green_fee * gfPrice}</b></div>
+                            <div>商品券：<b>{PACKAGES[showPackageModal].product}</b> 張 x ${pdPrice} = <b>${PACKAGES[showPackageModal].product * pdPrice}</b></div>
                             <div style={{ marginTop: '8px', borderTop: '1px solid #ddd6fe', paddingTop: '8px', fontWeight: 'bold' }}>總計：${PACKAGES[showPackageModal].price}</div>
                         </div>
 
@@ -444,7 +475,7 @@ function PackageIssueSection({ userId, onIssued }) {
                                     onChange={e => setCustomStartDate(e.target.value)}
                                     style={{ ...inputStyle, width: '100%' }}
                                 />
-                                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>效期 2 年（可調整起始日）</div>
+                                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>效期 {validityYears} 年（可調整起始日）</div>
                             </div>
                         )}
 
@@ -471,7 +502,7 @@ function ModalOverlay({ children, onClose }) {
     );
 }
 
-function IssueModal({ voucherType, quantity, userName, onQuantityChange, onConfirm, onCancel }) {
+function IssueModal({ voucherType, quantity, unitPrice, userName, onQuantityChange, onConfirm, onCancel }) {
     const label = VOUCHER_TYPE_LABELS[voucherType];
     return (
         <div>
@@ -492,7 +523,7 @@ function IssueModal({ voucherType, quantity, userName, onQuantityChange, onConfi
             </div>
             {quantity && parseInt(quantity) > 0 && (
                 <div style={{ padding: '10px', background: '#f0f9ff', borderRadius: '6px', marginBottom: '16px', fontSize: '14px' }}>
-                    金額小計：<b>${parseInt(quantity) * (voucherType === 'green_fee' ? 200 : 100)}</b> 元
+                    金額小計：<b>${parseInt(quantity) * unitPrice}</b> 元
                 </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
@@ -503,10 +534,9 @@ function IssueModal({ voucherType, quantity, userName, onQuantityChange, onConfi
     );
 }
 
-function RedeemModal({ voucherType, available, quantity, userName, onQuantityChange, onConfirm, onCancel }) {
+function RedeemModal({ voucherType, available, quantity, unitPrice, userName, onQuantityChange, onConfirm, onCancel }) {
     const qty = parseInt(quantity) || 0;
     const label = VOUCHER_TYPE_LABELS[voucherType];
-    const unitPrice = voucherType === 'green_fee' ? 200 : 100;
     return (
         <div>
             <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem' }}>{label}核銷</h3>
@@ -541,6 +571,134 @@ function RedeemModal({ voucherType, available, quantity, userName, onQuantityCha
     );
 }
 
+function SettingsModal({ settings, onSave, onClose }) {
+    const defaults = {
+        green_fee: { unit_price: 200, default_quantity: 10 },
+        product: { unit_price: 100, default_quantity: 10 },
+        packages: DEFAULT_PACKAGES,
+        validity_years: 2,
+    };
+    const [form, setForm] = useState({ ...defaults, ...settings });
+    const [saving, setSaving] = useState(false);
+
+    const updateField = (path, value) => {
+        setForm(prev => {
+            const next = JSON.parse(JSON.stringify(prev));
+            const keys = path.split('.');
+            let obj = next;
+            for (let i = 0; i < keys.length - 1; i++) {
+                obj = obj[keys[i]];
+            }
+            obj[keys[keys.length - 1]] = value;
+            return next;
+        });
+    };
+
+    const updatePackage = (idx, field, value) => {
+        setForm(prev => {
+            const next = JSON.parse(JSON.stringify(prev));
+            next.packages[idx][field] = value;
+            return next;
+        });
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            const res = await adminFetch('/api/voucher-ops/settings', {
+                method: 'POST',
+                body: JSON.stringify(form),
+            });
+            const data = await res.json();
+            if (data.error) {
+                alert('儲存失敗: ' + data.error);
+            } else {
+                alert('設定已儲存');
+                onSave(form);
+            }
+        } catch (err) {
+            alert('儲存失敗: ' + err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const fieldRow = { display: 'flex', gap: '12px', marginBottom: '12px', alignItems: 'center' };
+    const fieldLabel = { width: '120px', fontSize: '14px', fontWeight: '500', flexShrink: 0 };
+    const fieldInput = { ...inputStyle, width: '100%', flex: 1 };
+
+    return (
+        <ModalOverlay onClose={onClose}>
+            <div>
+                <h3 style={{ margin: '0 0 20px', fontSize: '1.1rem' }}>⚙️ 發券設定</h3>
+
+                <div style={{ marginBottom: '20px' }}>
+                    <h4 style={sectionTitle}>果嶺券</h4>
+                    <div style={fieldRow}>
+                        <span style={fieldLabel}>單價</span>
+                        <input type="number" value={form.green_fee.unit_price} onChange={e => updateField('green_fee.unit_price', parseInt(e.target.value) || 0)} style={fieldInput} />
+                    </div>
+                    <div style={fieldRow}>
+                        <span style={fieldLabel}>預設張數</span>
+                        <input type="number" value={form.green_fee.default_quantity} onChange={e => updateField('green_fee.default_quantity', parseInt(e.target.value) || 0)} style={fieldInput} />
+                    </div>
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                    <h4 style={sectionTitle}>商品券</h4>
+                    <div style={fieldRow}>
+                        <span style={fieldLabel}>單價</span>
+                        <input type="number" value={form.product.unit_price} onChange={e => updateField('product.unit_price', parseInt(e.target.value) || 0)} style={fieldInput} />
+                    </div>
+                    <div style={fieldRow}>
+                        <span style={fieldLabel}>預設張數</span>
+                        <input type="number" value={form.product.default_quantity} onChange={e => updateField('product.default_quantity', parseInt(e.target.value) || 0)} style={fieldInput} />
+                    </div>
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                    <h4 style={sectionTitle}>有效年限</h4>
+                    <div style={fieldRow}>
+                        <span style={fieldLabel}>年數</span>
+                        <input type="number" min="1" max="10" value={form.validity_years} onChange={e => updateField('validity_years', parseInt(e.target.value) || 2)} style={fieldInput} />
+                    </div>
+                </div>
+
+                <div style={{ marginBottom: '16px' }}>
+                    <h4 style={sectionTitle}>套本設定</h4>
+                    {(form.packages || []).map((pkg, i) => (
+                        <div key={i} style={{ padding: '12px', background: '#f5f3ff', borderRadius: '8px', marginBottom: '10px' }}>
+                            <div style={fieldRow}>
+                                <span style={fieldLabel}>名稱</span>
+                                <input type="text" value={pkg.name} onChange={e => updatePackage(i, 'name', e.target.value)} style={fieldInput} />
+                            </div>
+                            <div style={fieldRow}>
+                                <span style={fieldLabel}>售價</span>
+                                <input type="number" value={pkg.price} onChange={e => updatePackage(i, 'price', parseInt(e.target.value) || 0)} style={fieldInput} />
+                            </div>
+                            <div style={fieldRow}>
+                                <span style={fieldLabel}>果嶺券張數</span>
+                                <input type="number" value={pkg.green_fee} onChange={e => updatePackage(i, 'green_fee', parseInt(e.target.value) || 0)} style={fieldInput} />
+                            </div>
+                            <div style={fieldRow}>
+                                <span style={fieldLabel}>商品券張數</span>
+                                <input type="number" value={pkg.product} onChange={e => updatePackage(i, 'product', parseInt(e.target.value) || 0)} style={fieldInput} />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                    <button onClick={onClose} style={cancelBtnStyle}>取消</button>
+                    <button onClick={handleSave} disabled={saving} style={{ ...actionBtnStyle, background: saving ? '#d1d5db' : '#2563eb', color: '#fff' }}>
+                        {saving ? '儲存中...' : '儲存設定'}
+                    </button>
+                </div>
+            </div>
+        </ModalOverlay>
+    );
+}
+
 function formatTime(iso) {
     if (!iso) return '-';
     const d = new Date(iso);
@@ -561,3 +719,5 @@ const actionBtnStyle = { padding: '8px 20px', border: 'none', borderRadius: '6px
 const cancelBtnStyle = { padding: '8px 20px', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', background: '#fff', color: '#374151' };
 const linkBtnStyle = { padding: '4px 12px', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', background: '#fff', color: '#6b7280' };
 const pageBtnStyle = (disabled) => ({ padding: '6px 14px', fontSize: '13px', border: '1px solid #d1d5db', borderRadius: '6px', backgroundColor: disabled ? '#f3f4f6' : '#fff', color: disabled ? '#9ca3af' : '#374151', cursor: disabled ? 'default' : 'pointer' });
+const settingsBtnStyle = { padding: '6px 14px', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', background: '#fff', color: '#374151' };
+const sectionTitle = { fontSize: '0.9rem', fontWeight: '600', color: '#374151', marginBottom: '10px', marginTop: 0 };
