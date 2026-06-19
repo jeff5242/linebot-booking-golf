@@ -653,6 +653,24 @@ function RedeemModal({ voucherType, available, quantity, unitPrice, userName, on
             <div style={{ marginBottom: '8px', color: '#2563eb' }}>可用張數：<b>{available}</b> 張</div>
             <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>使用張數</label>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                    {[2, 4, 6, 8].map(n => (
+                        <button
+                            key={n}
+                            onClick={() => onQuantityChange(String(n))}
+                            disabled={n > available}
+                            style={{
+                                flex: 1, padding: '10px 0', borderRadius: '8px', fontWeight: 'bold', fontSize: '15px',
+                                cursor: n > available ? 'not-allowed' : 'pointer',
+                                border: qty === n ? '2px solid #1d4ed8' : '1px solid #d1d5db',
+                                background: qty === n ? '#eff6ff' : '#fff',
+                                color: n > available ? '#d1d5db' : qty === n ? '#1d4ed8' : '#374151',
+                            }}
+                        >
+                            {n} 張
+                        </button>
+                    ))}
+                </div>
                 <input
                     type="number"
                     min="1"
