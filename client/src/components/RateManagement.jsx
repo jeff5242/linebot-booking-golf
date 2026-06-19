@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Calculator, Save, Send, Check, X, History, Users, TrendingUp } from 'lucide-react';
+import { DollarSign, Calculator, Save, Send, Check, X, History, Users, TrendingUp, Package } from 'lucide-react';
 import { adminFetch } from '../utils/adminApi';
 
 export function RateManagement() {
     const [rateConfig, setRateConfig] = useState(null);
     const [loading, setLoading] = useState(true);
     const [msg, setMsg] = useState('');
+    const [voucherSettings, setVoucherSettings] = useState(null);
+    const [voucherSaving, setVoucherSaving] = useState(false);
 
     // 試算工具狀態
     const [calculator, setCalculator] = useState({
@@ -28,7 +30,54 @@ export function RateManagement() {
 
     useEffect(() => {
         fetchActiveRate();
+        fetchVoucherSettings();
     }, []);
+
+    const fetchVoucherSettings = async () => {
+        try {
+            const res = await adminFetch('/api/voucher-ops/settings');
+            if (res.ok) {
+                const data = await res.json();
+                setVoucherSettings(data);
+            }
+        } catch {}
+    };
+
+    const updatePackageField = (index, field, value) => {
+        setVoucherSettings(prev => ({
+            ...prev,
+            packages: prev.packages.map((pkg, i) =>
+                i === index ? { ...pkg, [field]: field === 'name' ? value : (parseInt(value) || 0) } : pkg
+            ),
+        }));
+    };
+
+    const updateVoucherPrice = (type, value) => {
+        setVoucherSettings(prev => ({
+            ...prev,
+            [type]: { ...prev[type], unit_price: parseInt(value) || 0 },
+        }));
+    };
+
+    const handleSaveVoucherSettings = async () => {
+        setVoucherSaving(true);
+        try {
+            const res = await adminFetch('/api/voucher-ops/settings', {
+                method: 'POST',
+                body: JSON.stringify(voucherSettings),
+            });
+            if (res.ok) {
+                setMsg('✅ 票券套本設定已儲存！');
+                setTimeout(() => setMsg(''), 3000);
+            } else {
+                throw new Error('儲存失敗');
+            }
+        } catch (err) {
+            setMsg('❌ 票券設定儲存失敗: ' + err.message);
+        } finally {
+            setVoucherSaving(false);
+        }
+    };
 
     useEffect(() => {
         if (rateConfig) {
@@ -289,6 +338,98 @@ export function RateManagement() {
                             ))}
                         </div>
                     </div>
+
+                    {/* 票券套本設定 */}
+                    {voucherSettings && (
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-2">
+                                    <Package className="w-5 h-5 text-purple-600" />
+                                    <h3 className="text-lg font-semibold text-gray-900">票券套本設定</h3>
+                                </div>
+                                <button
+                                    onClick={handleSaveVoucherSettings}
+                                    disabled={voucherSaving}
+                                    className="flex items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50 transition-colors"
+                                >
+                                    <Save className="w-3.5 h-3.5" />
+                                    {voucherSaving ? '儲存中...' : '儲存'}
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">果嶺券單價</label>
+                                    <input
+                                        type="number"
+                                        value={voucherSettings.green_fee?.unit_price ?? 200}
+                                        onChange={(e) => updateVoucherPrice('green_fee', e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded text-center"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">商品券單價</label>
+                                    <input
+                                        type="number"
+                                        value={voucherSettings.product?.unit_price ?? 100}
+                                        onChange={(e) => updateVoucherPrice('product', e.target.value)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded text-center"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-purple-50">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left font-semibold text-gray-700">套本名稱</th>
+                                            <th className="px-4 py-3 text-center font-semibold text-gray-700">果嶺券張數</th>
+                                            <th className="px-4 py-3 text-center font-semibold text-gray-700">商品券張數</th>
+                                            <th className="px-4 py-3 text-center font-semibold text-gray-700">售價</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {(voucherSettings.packages || []).map((pkg, i) => (
+                                            <tr key={i} className="hover:bg-gray-50">
+                                                <td className="px-4 py-3">
+                                                    <input
+                                                        type="text"
+                                                        value={pkg.name}
+                                                        onChange={(e) => updatePackageField(i, 'name', e.target.value)}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded"
+                                                    />
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <input
+                                                        type="number"
+                                                        value={pkg.green_fee}
+                                                        onChange={(e) => updatePackageField(i, 'green_fee', e.target.value)}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded text-center"
+                                                    />
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <input
+                                                        type="number"
+                                                        value={pkg.product}
+                                                        onChange={(e) => updatePackageField(i, 'product', e.target.value)}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded text-center"
+                                                    />
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <input
+                                                        type="number"
+                                                        value={pkg.price}
+                                                        onChange={(e) => updatePackageField(i, 'price', e.target.value)}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded text-center"
+                                                    />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
 
                     {/* 基礎費用 */}
                     <div className="bg-white rounded-lg shadow p-6">
