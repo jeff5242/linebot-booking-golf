@@ -382,10 +382,11 @@ export function RateManagement() {
                                 <table className="w-full text-sm">
                                     <thead className="bg-purple-50">
                                         <tr>
-                                            <th className="px-4 py-3 text-left font-semibold text-gray-700">套本名稱</th>
+                                            <th className="px-4 py-3 text-left font-semibold text-gray-700" style={{ minWidth: '240px' }}>套本名稱</th>
                                             <th className="px-4 py-3 text-center font-semibold text-gray-700">果嶺券張數</th>
                                             <th className="px-4 py-3 text-center font-semibold text-gray-700">商品券張數</th>
                                             <th className="px-4 py-3 text-center font-semibold text-gray-700">售價</th>
+                                            <th className="px-4 py-3 text-center font-semibold text-gray-700" style={{ width: '50px' }}></th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
@@ -397,6 +398,7 @@ export function RateManagement() {
                                                         value={pkg.name}
                                                         onChange={(e) => updatePackageField(i, 'name', e.target.value)}
                                                         className="w-full px-3 py-2 border border-gray-300 rounded"
+                                                        style={{ minWidth: '200px' }}
                                                     />
                                                 </td>
                                                 <td className="px-4 py-3">
@@ -423,11 +425,34 @@ export function RateManagement() {
                                                         className="w-full px-3 py-2 border border-gray-300 rounded text-center"
                                                     />
                                                 </td>
+                                                <td className="px-2 py-3 text-center">
+                                                    {(voucherSettings.packages || []).length > 1 && (
+                                                        <button
+                                                            onClick={() => setVoucherSettings(prev => ({
+                                                                ...prev,
+                                                                packages: prev.packages.filter((_, idx) => idx !== i),
+                                                            }))}
+                                                            className="text-red-400 hover:text-red-600 text-lg"
+                                                            title="刪除此套本"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    )}
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             </div>
+                            <button
+                                onClick={() => setVoucherSettings(prev => ({
+                                    ...prev,
+                                    packages: [...(prev.packages || []), { name: '新套本', price: 0, green_fee: 0, product: 0 }],
+                                }))}
+                                className="mt-3 flex items-center gap-1 text-purple-600 hover:text-purple-800 text-sm font-medium"
+                            >
+                                + 新增套本
+                            </button>
                         </div>
                     )}
 

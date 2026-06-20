@@ -794,7 +794,14 @@ function SettingsModal({ settings, onSave, onClose }) {
                 <div style={{ marginBottom: '16px' }}>
                     <h4 style={sectionTitle}>套本設定</h4>
                     {(form.packages || []).map((pkg, i) => (
-                        <div key={i} style={{ padding: '12px', background: '#f5f3ff', borderRadius: '8px', marginBottom: '10px' }}>
+                        <div key={i} style={{ padding: '12px', background: '#f5f3ff', borderRadius: '8px', marginBottom: '10px', position: 'relative' }}>
+                            {(form.packages || []).length > 1 && (
+                                <button
+                                    onClick={() => setForm(prev => ({ ...prev, packages: prev.packages.filter((_, idx) => idx !== i) }))}
+                                    style={{ position: 'absolute', top: '8px', right: '10px', background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '16px' }}
+                                    title="刪除此套本"
+                                >✕</button>
+                            )}
                             <div style={fieldRow}>
                                 <span style={fieldLabel}>名稱</span>
                                 <input type="text" value={pkg.name} onChange={e => updatePackage(i, 'name', e.target.value)} style={fieldInput} />
@@ -813,6 +820,12 @@ function SettingsModal({ settings, onSave, onClose }) {
                             </div>
                         </div>
                     ))}
+                    <button
+                        onClick={() => setForm(prev => ({ ...prev, packages: [...(prev.packages || []), { name: '新套本', price: 0, green_fee: 0, product: 0 }] }))}
+                        style={{ background: 'none', border: 'none', color: '#7c3aed', cursor: 'pointer', fontSize: '14px', fontWeight: '500', padding: '4px 0' }}
+                    >
+                        + 新增套本
+                    </button>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
