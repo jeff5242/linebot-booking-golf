@@ -2201,18 +2201,36 @@ app.get('/api/member/vouchers', async (req, res) => {
       return res.status(404).json({ error: '找不到會員' });
     }
 
-    const { data: vouchers, error } = await supabase
+    // 1. 舊系統 membership_benefits_issued
+    let oldVouchers = [];
+    const { data: oldData } = await supabase
       .from('membership_benefits_issued')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
+    if (oldData) oldVouchers = oldData;
 
-    if (error) {
-      // 表可能不存在，回傳空
-      return res.json({ vouchers: [] });
-    }
+    // 2. 電子票券 vouchers 表
+    const { data: digitalVouchers } = await supabase
+      .from('vouchers')
+      .select('id, code, product_name, price, status, valid_from, valid_until, created_at, redeemed_at, source_type')
+      .eq('user_id', user.id)
+      .in('product_name', ['果嶺券', '商品券'])
+      .eq('source_type', 'digital_purchase')
+      .order('created_at', { ascending: false });
 
-    res.json({ vouchers: vouchers || [] });
+    const mapped = (digitalVouchers || []).map(v => ({
+      id: `dv_${v.id}`,
+      benefit_type: v.product_name === '商品券' ? 'merchandise_voucher' : 'green_fee_voucher',
+      amount: v.price,
+      voucher_code: v.code,
+      used_at: v.status === 'redeemed' ? v.redeemed_at : null,
+      expires_at: v.valid_until,
+      created_at: v.created_at,
+      status: v.status,
+    }));
+
+    res.json({ vouchers: [...oldVouchers, ...mapped] });
   } catch (error) {
     console.error('Member Vouchers Error:', error);
     res.status(500).json({ error: '讀取優惠券失敗' });

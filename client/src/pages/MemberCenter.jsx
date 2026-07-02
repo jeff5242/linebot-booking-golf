@@ -498,20 +498,26 @@ export function MemberCenter() {
                     {vouchers.length === 0 ? (
                         <p style={{ textAlign: 'center', color: '#999', padding: '30px 0' }}>尚無優惠券</p>
                     ) : (
-                        [...vouchers].sort((a, b) => {
+                        [...vouchers]
+                        .filter(v => v.status !== 'void')
+                        .sort((a, b) => {
                             if (!!a.used_at !== !!b.used_at) return a.used_at ? 1 : -1;
                             return new Date(b.created_at) - new Date(a.created_at);
-                        }).map(v => (
+                        }).map(v => {
+                            const isUsed = !!v.used_at || v.status === 'redeemed';
+                            const label = v.benefit_type === 'merchandise_voucher' ? '商品券'
+                                : v.benefit_type === 'green_fee_voucher' ? '果嶺券' : '折抵券';
+                            return (
                             <div key={v.id} className="card" style={{
-                                borderLeft: `4px solid ${v.used_at ? '#d1d5db' : '#8b5cf6'}`,
+                                borderLeft: `4px solid ${isUsed ? '#d1d5db' : '#8b5cf6'}`,
                                 marginBottom: '10px', padding: '14px',
-                                opacity: v.used_at ? 0.5 : 1,
-                                backgroundColor: v.used_at ? '#fafafa' : '#faf5ff',
+                                opacity: isUsed ? 0.5 : 1,
+                                backgroundColor: isUsed ? '#fafafa' : '#faf5ff',
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <div>
                                         <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>
-                                            {v.benefit_type === 'merchandise_voucher' ? '商品券' : '折抵券'}
+                                            {label}
                                         </div>
                                         <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#8b5cf6', marginTop: '2px' }}>
                                             {formatMoney(v.amount)}
@@ -523,7 +529,7 @@ export function MemberCenter() {
                                         )}
                                     </div>
                                     <div style={{ textAlign: 'right' }}>
-                                        {v.used_at ? (
+                                        {isUsed ? (
                                             <span style={{
                                                 padding: '2px 8px', borderRadius: '12px', fontSize: '0.7rem',
                                                 fontWeight: 'bold', backgroundColor: '#f3f4f6', color: '#6b7280',
@@ -546,7 +552,8 @@ export function MemberCenter() {
                                     </div>
                                 </div>
                             </div>
-                        ))
+                            );
+                        })
                     )}
                 </div>
             )}
