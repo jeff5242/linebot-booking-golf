@@ -185,22 +185,92 @@ async function redeemVouchers({ userId, voucherType, quantity, operatorName }) {
 async function voidVouchers({ voucherIds, reason, operatorName }) {
   if (!voucherIds || voucherIds.length === 0) throw new Error('請選擇要作廢的券');
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from('vouchers')
     .update({ status: 'void' })
     .in('id', voucherIds)
-    .eq('status', 'active');
+    .in('status', ['active', 'redeemed'])
+    .select('id');
   if (error) throw error;
 
-  const logEntries = voucherIds.map(id => ({
+  const voidedIds = (updated || []).map(v => v.id);
+  if (voidedIds.length > 0) {
+    const logEntries = voidedIds.map(id => ({
+      voucher_id: id,
+      action: 'voided',
+      operator_name: operatorName,
+      memo: reason || '作廢',
+    }));
+    await supabase.from('voucher_logs').insert(logEntries);
+  }
+
+  return { voided: voidedIds.length };
+}
+
+async function reverseRedeem({ userId, voucherType, quantity, operatorName, reason }) {
+  if (!VOUCHER_TYPES[voucherType]) throw new Error('無效的券種');
+  if (!quantity || quantity < 1) throw new Error('請輸入張數');
+
+  const productName = VOUCHER_TYPES[voucherType].product_name;
+  const { data: redeemed, error } = await supabase
+    .from('vouchers')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('product_name', productName)
+    .eq('status', 'redeemed')
+    .order('redeemed_at', { ascending: false })
+    .limit(quantity);
+  if (error) throw error;
+  if (!redeemed || redeemed.length < quantity) {
+    throw new Error(`已核銷的${productName}不足，目前僅有 ${redeemed?.length || 0} 張`);
+  }
+
+  const toReverse = redeemed.map(v => v.id);
+  const { error: updateError } = await supabase
+    .from('vouchers')
+    .update({ status: 'active', redeemed_at: null, redeemed_by: null })
+    .in('id', toReverse);
+  if (updateError) throw updateError;
+
+  const logEntries = toReverse.map(id => ({
     voucher_id: id,
-    action: 'voided',
+    action: 'reversed',
     operator_name: operatorName,
-    memo: reason || '作廢',
+    memo: reason || `撤銷核銷 ${productName}`,
   }));
   await supabase.from('voucher_logs').insert(logEntries);
 
-  return { voided: voucherIds.length };
+  return { reversed: toReverse.length };
+}
+
+async function cancelAllVouchers({ userId, reason, operatorName }) {
+  const { data: vouchers, error } = await supabase
+    .from('vouchers')
+    .select('id, product_name, status')
+    .eq('user_id', userId)
+    .in('product_name', ['果嶺券', '商品券'])
+    .in('status', ['active', 'redeemed']);
+  if (error) throw error;
+  if (!vouchers || vouchers.length === 0) throw new Error('該用戶沒有可退的券');
+
+  const ids = vouchers.map(v => v.id);
+  const { error: updateError } = await supabase
+    .from('vouchers')
+    .update({ status: 'void' })
+    .in('id', ids);
+  if (updateError) throw updateError;
+
+  const logEntries = ids.map(id => ({
+    voucher_id: id,
+    action: 'voided',
+    operator_name: operatorName,
+    memo: reason || '全部退券',
+  }));
+  await supabase.from('voucher_logs').insert(logEntries);
+
+  const activeCount = vouchers.filter(v => v.status === 'active').length;
+  const redeemedCount = vouchers.filter(v => v.status === 'redeemed').length;
+  return { voided: ids.length, activeCount, redeemedCount };
 }
 
 async function getCustomerVouchers(userId) {
@@ -213,9 +283,10 @@ async function getCustomerVouchers(userId) {
 
   const { data: vouchers, error } = await supabase
     .from('vouchers')
-    .select('id, code, product_name, price, status, created_at, redeemed_at, redeemed_by')
+    .select('id, code, product_name, price, status, source_type, valid_from, valid_until, created_at, redeemed_at, redeemed_by')
     .eq('user_id', userId)
     .in('product_name', ['果嶺券', '商品券'])
+    .neq('source_type', 'paper_converted')
     .order('created_at', { ascending: false });
   if (error) throw error;
 
@@ -224,15 +295,62 @@ async function getCustomerVouchers(userId) {
     green_fee: { active: 0, redeemed: 0, voided: 0, total: 0 },
     product: { active: 0, redeemed: 0, voided: 0, total: 0 },
   };
+  let validUntil = null;
   for (const v of all) {
     const key = v.product_name === '果嶺券' ? 'green_fee' : 'product';
     summary[key].total++;
     if (v.status === 'active') summary[key].active++;
     else if (v.status === 'redeemed') summary[key].redeemed++;
     else if (v.status === 'void') summary[key].voided++;
+    if (v.valid_until && (!validUntil || v.valid_until > validUntil)) {
+      validUntil = v.valid_until;
+    }
   }
 
-  return { user, summary, vouchers: all };
+  return { user, summary, vouchers: all, validUntil };
+}
+
+async function updateVoucherExpiry({ userId, validUntil, operatorName, reason }) {
+  if (!validUntil) throw new Error('請選擇到期日');
+
+  const { data: vouchers, error } = await supabase
+    .from('vouchers')
+    .select('id')
+    .eq('user_id', userId)
+    .in('product_name', ['果嶺券', '商品券'])
+    .neq('source_type', 'paper_converted')
+    .in('status', ['active', 'redeemed']);
+  if (error) throw error;
+  if (!vouchers || vouchers.length === 0) throw new Error('該用戶沒有可修改的券');
+
+  const ids = vouchers.map(v => v.id);
+  const { error: updateError } = await supabase
+    .from('vouchers')
+    .update({ valid_until: validUntil })
+    .in('id', ids);
+  if (updateError) throw updateError;
+
+  const logEntries = ids.map(id => ({
+    voucher_id: id,
+    action: 'extended',
+    operator_name: operatorName,
+    memo: reason || `修改到期日為 ${validUntil}`,
+  }));
+  await supabase.from('voucher_logs').insert(logEntries);
+
+  return { updated: ids.length, validUntil };
+}
+
+async function getPaperVoucherExpiry(userId) {
+  const { data } = await supabase
+    .from('vouchers')
+    .select('valid_until')
+    .eq('user_id', userId)
+    .eq('source_type', 'paper_converted')
+    .not('valid_until', 'is', null)
+    .order('valid_until', { ascending: false })
+    .limit(1);
+  return data?.[0]?.valid_until || null;
 }
 
 async function searchUsers(query) {
@@ -264,7 +382,7 @@ async function getHistory({ userId, voucherType, page = 1, limit = 20 }) {
   }
 
   query = query
-    .in('action', ['issued', 'redeemed', 'voided'])
+    .in('action', ['issued', 'redeemed', 'voided', 'reversed', 'extended'])
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -280,7 +398,11 @@ module.exports = {
   issueVouchers,
   redeemVouchers,
   voidVouchers,
+  reverseRedeem,
+  cancelAllVouchers,
   getCustomerVouchers,
+  updateVoucherExpiry,
+  getPaperVoucherExpiry,
   searchUsers,
   getHistory,
   issuePackage,

@@ -1,0 +1,254 @@
+'use strict';
+
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+);
+
+const PRODUCT_NAMES = ['果嶺券', '商品券'];
+
+async function getSalesReport({ startDate, endDate, voucherType, userId }) {
+  let query = supabase
+    .from('voucher_logs')
+    .select('id, action, created_at, operator_name, memo, vouchers!inner(id, code, product_name, price, user_id, source_type, valid_from, valid_until, users!inner(display_name, phone, member_no))')
+    .eq('action', 'issued')
+    .in('vouchers.product_name', PRODUCT_NAMES)
+    .eq('vouchers.source_type', 'digital_purchase')
+    .order('created_at', { ascending: false });
+
+  if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+  if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+  if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
+  if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
+  if (userId) query = query.eq('vouchers.user_id', userId);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const logs = data || [];
+
+  const grouped = {};
+  for (const log of logs) {
+    const v = log.vouchers;
+    const key = `${v.user_id}_${v.product_name}_${log.created_at.slice(0, 10)}`;
+    if (!grouped[key]) {
+      grouped[key] = {
+        date: log.created_at.slice(0, 10),
+        customer_name: v.users.display_name || '',
+        phone: v.users.phone || '',
+        member_no: v.users.member_no || '',
+        product_name: v.product_name,
+        unit_price: v.price,
+        quantity: 0,
+        total_amount: 0,
+        valid_from: v.valid_from,
+        valid_until: v.valid_until,
+        operator_name: log.operator_name || '',
+      };
+    }
+    grouped[key].quantity += 1;
+    grouped[key].total_amount += v.price;
+  }
+
+  const rows = Object.values(grouped).sort((a, b) => b.date.localeCompare(a.date));
+
+  const summary = {
+    totalRecords: rows.length,
+    totalQuantity: rows.reduce((s, r) => s + r.quantity, 0),
+    totalAmount: rows.reduce((s, r) => s + r.total_amount, 0),
+    greenFeeQty: rows.filter(r => r.product_name === '果嶺券').reduce((s, r) => s + r.quantity, 0),
+    productQty: rows.filter(r => r.product_name === '商品券').reduce((s, r) => s + r.quantity, 0),
+  };
+
+  return { rows, summary };
+}
+
+async function getRedemptionReport({ startDate, endDate, granularity = 'daily' }) {
+  let query = supabase
+    .from('voucher_logs')
+    .select('id, action, created_at, operator_name, vouchers!inner(id, product_name, price, source_type)')
+    .eq('action', 'redeemed')
+    .in('vouchers.product_name', PRODUCT_NAMES)
+    .eq('vouchers.source_type', 'digital_purchase')
+    .order('created_at', { ascending: true });
+
+  if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+  if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const logs = data || [];
+
+  const buckets = {};
+  for (const log of logs) {
+    const dt = log.created_at.slice(0, 10);
+    let key;
+    if (granularity === 'yearly') key = dt.slice(0, 4);
+    else if (granularity === 'monthly') key = dt.slice(0, 7);
+    else key = dt;
+
+    if (!buckets[key]) {
+      buckets[key] = { period: key, green_fee_qty: 0, green_fee_amount: 0, product_qty: 0, product_amount: 0, total_qty: 0, total_amount: 0 };
+    }
+
+    const b = buckets[key];
+    const v = log.vouchers;
+    if (v.product_name === '果嶺券') {
+      b.green_fee_qty += 1;
+      b.green_fee_amount += v.price;
+    } else {
+      b.product_qty += 1;
+      b.product_amount += v.price;
+    }
+    b.total_qty += 1;
+    b.total_amount += v.price;
+  }
+
+  const rows = Object.values(buckets).sort((a, b) =>
+    granularity === 'daily' ? b.period.localeCompare(a.period) : a.period.localeCompare(b.period)
+  );
+
+  const summary = {
+    totalQuantity: logs.length,
+    totalAmount: logs.reduce((s, l) => s + (l.vouchers?.price || 0), 0),
+    greenFeeQty: logs.filter(l => l.vouchers?.product_name === '果嶺券').length,
+    productQty: logs.filter(l => l.vouchers?.product_name === '商品券').length,
+  };
+
+  return { rows, summary, granularity };
+}
+
+async function getBalanceReport() {
+  const { data, error } = await supabase
+    .from('vouchers')
+    .select('user_id, product_name, price, status, valid_until, source_type, users!inner(display_name, phone, member_no)')
+    .in('product_name', PRODUCT_NAMES)
+    .eq('source_type', 'digital_purchase')
+    .in('status', ['active', 'redeemed']);
+
+  if (error) throw error;
+
+  const vouchers = data || [];
+  const userMap = {};
+
+  for (const v of vouchers) {
+    if (!userMap[v.user_id]) {
+      userMap[v.user_id] = {
+        user_id: v.user_id,
+        customer_name: v.users.display_name || '',
+        phone: v.users.phone || '',
+        member_no: v.users.member_no || '',
+        green_fee_active: 0,
+        green_fee_redeemed: 0,
+        green_fee_total: 0,
+        product_active: 0,
+        product_redeemed: 0,
+        product_total: 0,
+        valid_until: null,
+        total_active_value: 0,
+      };
+    }
+
+    const u = userMap[v.user_id];
+    const isGreen = v.product_name === '果嶺券';
+
+    if (isGreen) {
+      u.green_fee_total += 1;
+      if (v.status === 'active') { u.green_fee_active += 1; u.total_active_value += v.price; }
+      else u.green_fee_redeemed += 1;
+    } else {
+      u.product_total += 1;
+      if (v.status === 'active') { u.product_active += 1; u.total_active_value += v.price; }
+      else u.product_redeemed += 1;
+    }
+
+    if (v.valid_until && (!u.valid_until || v.valid_until > u.valid_until)) {
+      u.valid_until = v.valid_until;
+    }
+  }
+
+  const rows = Object.values(userMap)
+    .filter(u => u.green_fee_active > 0 || u.product_active > 0)
+    .sort((a, b) => (b.green_fee_active + b.product_active) - (a.green_fee_active + a.product_active));
+
+  const summary = {
+    totalCustomers: rows.length,
+    totalActiveGreenFee: rows.reduce((s, r) => s + r.green_fee_active, 0),
+    totalActiveProduct: rows.reduce((s, r) => s + r.product_active, 0),
+    totalActiveValue: rows.reduce((s, r) => s + r.total_active_value, 0),
+  };
+
+  return { rows, summary };
+}
+
+async function getExpiryWarningReport({ daysThreshold = 30 }) {
+  const today = new Date();
+  const thresholdDate = new Date(today);
+  thresholdDate.setDate(thresholdDate.getDate() + daysThreshold);
+  const todayStr = today.toISOString().slice(0, 10);
+  const thresholdStr = thresholdDate.toISOString().slice(0, 10);
+
+  const { data, error } = await supabase
+    .from('vouchers')
+    .select('user_id, product_name, price, status, valid_until, source_type, users!inner(display_name, phone, member_no)')
+    .in('product_name', PRODUCT_NAMES)
+    .eq('source_type', 'digital_purchase')
+    .eq('status', 'active')
+    .gte('valid_until', todayStr)
+    .lte('valid_until', thresholdStr);
+
+  if (error) throw error;
+
+  const vouchers = data || [];
+  const userMap = {};
+
+  for (const v of vouchers) {
+    if (!userMap[v.user_id]) {
+      userMap[v.user_id] = {
+        user_id: v.user_id,
+        customer_name: v.users.display_name || '',
+        phone: v.users.phone || '',
+        member_no: v.users.member_no || '',
+        green_fee_count: 0,
+        product_count: 0,
+        total_value: 0,
+        valid_until: v.valid_until,
+      };
+    }
+
+    const u = userMap[v.user_id];
+    if (v.product_name === '果嶺券') u.green_fee_count += 1;
+    else u.product_count += 1;
+    u.total_value += v.price;
+
+    if (v.valid_until < u.valid_until) u.valid_until = v.valid_until;
+  }
+
+  const rows = Object.values(userMap).sort((a, b) => a.valid_until.localeCompare(b.valid_until));
+
+  const daysRemaining = (dateStr) => {
+    const diff = new Date(dateStr) - today;
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
+
+  const rowsWithDays = rows.map(r => ({ ...r, days_remaining: daysRemaining(r.valid_until) }));
+
+  const summary = {
+    totalCustomers: rows.length,
+    totalVouchers: vouchers.length,
+    totalValue: vouchers.reduce((s, v) => s + v.price, 0),
+    urgentCount: rowsWithDays.filter(r => r.days_remaining <= 7).length,
+  };
+
+  return { rows: rowsWithDays, summary, daysThreshold };
+}
+
+module.exports = {
+  getSalesReport,
+  getRedemptionReport,
+  getBalanceReport,
+  getExpiryWarningReport,
+};

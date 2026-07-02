@@ -14,6 +14,7 @@ import RolePermissionManager from '../components/RolePermissionManager';
 import { BroadcastPanel } from '../components/BroadcastPanel';
 import { SmsLogPanel } from '../components/SmsLogPanel';
 import { VoucherUsageReport } from '../components/VoucherUsageReport';
+import { VoucherReportPanel } from '../components/VoucherReportPanel';
 import { VoucherOpsPanel } from '../components/VoucherOpsPanel';
 import { getAdminPermissions, getAdminInfo, adminFetch, clearAdminSession } from '../utils/adminApi';
 
@@ -31,7 +32,8 @@ const ALL_TABS = [
     { key: 'admins', label: '後台權限' },
     { key: 'broadcast', label: '📢 訊息推播' },
     { key: 'sms_logs', label: '簡訊紀錄' },
-    { key: 'voucher_report', label: '票券報表' },
+    { key: 'voucher_report', label: '📊 電子票券報表' },
+    { key: 'paper_report', label: '紙券明細' },
     { key: 'voucher_ops', label: '🎟️ 發券/用券' },
 ];
 
@@ -2923,7 +2925,8 @@ export function AdminDashboard() {
             {activeTab === 'caddy_management' && <CaddyManagement />}
             {activeTab === 'broadcast' && <BroadcastPanel />}
             {activeTab === 'sms_logs' && <SmsLogPanel />}
-            {activeTab === 'voucher_report' && <VoucherUsageReport />}
+            {activeTab === 'voucher_report' && <VoucherReportPanel />}
+            {activeTab === 'paper_report' && <VoucherUsageReport />}
             {activeTab === 'voucher_ops' && <VoucherOpsPanel />}
 
             {/* 收費卡彈窗 */}

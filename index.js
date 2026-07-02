@@ -33,6 +33,7 @@ const OtpService = require('./services/OtpService');
 const RichMenuService = require('./services/RichMenuService');
 const { sendPushMessage, broadcastLineMessage, multicastLineMessages } = require('./services/LineNotification');
 const VoucherOps = require('./services/VoucherOps');
+const VoucherReports = require('./services/VoucherReports');
 
 // Supabase 設定
 const supabase = createClient(
@@ -1741,6 +1742,54 @@ app.get('/api/reports/voucher-usage', requireAuth('voucher_report'), async (req,
 });
 
 // ============================================
+// 電子票券報表 API
+// ============================================
+
+app.get('/api/reports/voucher-sales', requireAuth('voucher_report'), async (req, res) => {
+  try {
+    const { startDate, endDate, voucherType, userId } = req.query;
+    const result = await VoucherReports.getSalesReport({ startDate, endDate, voucherType, userId });
+    res.json(result);
+  } catch (error) {
+    console.error('Sales report error:', error);
+    res.status(500).json({ error: '報表產生失敗: ' + error.message });
+  }
+});
+
+app.get('/api/reports/voucher-redemption', requireAuth('voucher_report'), async (req, res) => {
+  try {
+    const { startDate, endDate, granularity } = req.query;
+    const result = await VoucherReports.getRedemptionReport({ startDate, endDate, granularity });
+    res.json(result);
+  } catch (error) {
+    console.error('Redemption report error:', error);
+    res.status(500).json({ error: '報表產生失敗: ' + error.message });
+  }
+});
+
+app.get('/api/reports/voucher-balance', requireAuth('voucher_report'), async (req, res) => {
+  try {
+    const result = await VoucherReports.getBalanceReport();
+    res.json(result);
+  } catch (error) {
+    console.error('Balance report error:', error);
+    res.status(500).json({ error: '報表產生失敗: ' + error.message });
+  }
+});
+
+app.get('/api/reports/voucher-expiry-warning', requireAuth('voucher_report'), async (req, res) => {
+  try {
+    const { days } = req.query;
+    const daysThreshold = parseInt(days) || 30;
+    const result = await VoucherReports.getExpiryWarningReport({ daysThreshold });
+    res.json(result);
+  } catch (error) {
+    console.error('Expiry warning report error:', error);
+    res.status(500).json({ error: '報表產生失敗: ' + error.message });
+  }
+});
+
+// ============================================
 // 簡訊發送紀錄查詢 API
 // ============================================
 
@@ -2257,6 +2306,38 @@ app.post('/api/voucher-ops/void', requireAuth('voucher_ops'), async (req, res) =
   }
 });
 
+app.post('/api/voucher-ops/reverse-redeem', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const { user_id, voucher_type, quantity, reason } = req.body;
+    const adminInfo = req.admin;
+    const result = await VoucherOps.reverseRedeem({
+      userId: user_id,
+      voucherType: voucher_type,
+      quantity,
+      operatorName: adminInfo?.name || 'Admin',
+      reason,
+    });
+    res.json({ success: true, ...result, message: `已撤銷核銷 ${result.reversed} 張` });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/voucher-ops/cancel-all', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const { user_id, reason } = req.body;
+    const adminInfo = req.admin;
+    const result = await VoucherOps.cancelAllVouchers({
+      userId: user_id,
+      reason,
+      operatorName: adminInfo?.name || 'Admin',
+    });
+    res.json({ success: true, ...result, message: `已退券 ${result.voided} 張（可用 ${result.activeCount} + 已核銷 ${result.redeemedCount}）` });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 app.get('/api/voucher-ops/history', requireAuth('voucher_ops'), async (req, res) => {
   try {
     const { user_id, voucher_type, page = 1, limit = 20 } = req.query;
@@ -2292,6 +2373,31 @@ app.get('/api/voucher-ops/last-purchase/:userId', requireAuth('voucher_ops'), as
   try {
     const lastDate = await VoucherOps.getLastPurchaseDate(req.params.userId);
     res.json({ lastPurchaseDate: lastDate });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/voucher-ops/update-expiry', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const { user_id, valid_until, reason } = req.body;
+    const adminInfo = req.admin;
+    const result = await VoucherOps.updateVoucherExpiry({
+      userId: user_id,
+      validUntil: valid_until,
+      operatorName: adminInfo?.name || 'Admin',
+      reason,
+    });
+    res.json({ success: true, ...result, message: `已更新 ${result.updated} 張券的到期日為 ${result.validUntil}` });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/voucher-ops/paper-expiry/:userId', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const expiry = await VoucherOps.getPaperVoucherExpiry(req.params.userId);
+    res.json({ paperExpiry: expiry });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

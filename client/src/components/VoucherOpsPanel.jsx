@@ -10,6 +10,8 @@ const ACTION_LABELS = {
     issued: { text: '發券', color: '#2563eb', bg: '#eff6ff' },
     redeemed: { text: '核銷', color: '#dc2626', bg: '#fef2f2' },
     voided: { text: '作廢', color: '#6b7280', bg: '#f9fafb' },
+    reversed: { text: '撤銷核銷', color: '#d97706', bg: '#fffbeb' },
+    extended: { text: '修改到期日', color: '#059669', bg: '#ecfdf5' },
 };
 
 export function VoucherOpsPanel({ preSelectedUser }) {
@@ -169,6 +171,108 @@ export function VoucherOpsPanel({ preSelectedUser }) {
         setModal({ type: 'redeem', voucherType, quantity: '' });
     };
 
+    const openReverseRedeemModal = (voucherType) => {
+        setModal({ type: 'reverse_redeem', voucherType, quantity: '', reason: '' });
+    };
+
+    const openCancelAllModal = () => {
+        setModal({ type: 'cancel_all', reason: '' });
+    };
+
+    const openExpiryModal = async () => {
+        const currentExpiry = customerData?.validUntil ? customerData.validUntil.slice(0, 10) : '';
+        setModal({ type: 'update_expiry', validUntil: currentExpiry, reason: '', paperExpiry: null, loadingPaper: true });
+        try {
+            const res = await adminFetch(`/api/voucher-ops/paper-expiry/${selectedUser.id}`);
+            const data = await res.json();
+            setModal(prev => prev ? { ...prev, paperExpiry: data.paperExpiry, loadingPaper: false } : prev);
+        } catch {
+            setModal(prev => prev ? { ...prev, loadingPaper: false } : prev);
+        }
+    };
+
+    const handleUpdateExpiry = async () => {
+        if (!modal.validUntil) return alert('請選擇到期日');
+        if (!confirm(`確定要將此客人所有電子票券的到期日修改為 ${modal.validUntil} 嗎？`)) return;
+        try {
+            const res = await adminFetch('/api/voucher-ops/update-expiry', {
+                method: 'POST',
+                body: JSON.stringify({
+                    user_id: selectedUser.id,
+                    valid_until: modal.validUntil,
+                    reason: modal.reason || undefined,
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(data.message);
+                setModal(null);
+                refreshCustomerData();
+            } else {
+                alert('修改失敗: ' + data.error);
+            }
+        } catch (err) {
+            alert('修改失敗: ' + err.message);
+        }
+    };
+
+    const handleReverseRedeem = async () => {
+        const qty = parseInt(modal.quantity);
+        if (!qty || qty < 1) return alert('請輸入張數');
+        const label = VOUCHER_TYPE_LABELS[modal.voucherType];
+        if (!confirm(`確定要撤銷核銷 ${qty} 張${label}嗎？\n撤銷後券會恢復為可用狀態`)) return;
+        try {
+            const res = await adminFetch('/api/voucher-ops/reverse-redeem', {
+                method: 'POST',
+                body: JSON.stringify({
+                    user_id: selectedUser.id,
+                    voucher_type: modal.voucherType,
+                    quantity: qty,
+                    reason: modal.reason || undefined,
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(data.message);
+                setModal(null);
+                refreshCustomerData();
+            } else {
+                alert('撤銷失敗: ' + data.error);
+            }
+        } catch (err) {
+            alert('撤銷失敗: ' + err.message);
+        }
+    };
+
+    const handleCancelAll = async () => {
+        if (!modal.reason.trim()) return alert('請輸入退券原因');
+        const greenActive = summary?.green_fee?.active || 0;
+        const greenRedeemed = summary?.green_fee?.redeemed || 0;
+        const prodActive = summary?.product?.active || 0;
+        const prodRedeemed = summary?.product?.redeemed || 0;
+        const total = greenActive + greenRedeemed + prodActive + prodRedeemed;
+        if (!confirm(`確定要退券（全部作廢）嗎？\n\n將作廢所有可用及已核銷的券共 ${total} 張\n（果嶺券：可用${greenActive}+已核銷${greenRedeemed}，商品券：可用${prodActive}+已核銷${prodRedeemed}）\n\n此操作無法復原！`)) return;
+        try {
+            const res = await adminFetch('/api/voucher-ops/cancel-all', {
+                method: 'POST',
+                body: JSON.stringify({
+                    user_id: selectedUser.id,
+                    reason: modal.reason,
+                }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(data.message);
+                setModal(null);
+                refreshCustomerData();
+            } else {
+                alert('退券失敗: ' + data.error);
+            }
+        } catch (err) {
+            alert('退券失敗: ' + err.message);
+        }
+    };
+
     const handleIssue = async () => {
         const qty = parseInt(modal.quantity);
         if (!qty || qty < 1) return alert('請輸入正確的張數');
@@ -280,6 +384,21 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                 </div>
             )}
 
+            {/* Expiry Info */}
+            {customerData && !loading && (summary?.green_fee?.active > 0 || summary?.product?.active > 0 || summary?.green_fee?.redeemed > 0 || summary?.product?.redeemed > 0) && (
+                <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                        <span style={{ fontSize: '14px', color: '#374151' }}>票券到期日：</span>
+                        <span style={{ fontWeight: 'bold', fontSize: '14px', color: customerData.validUntil ? '#059669' : '#9ca3af' }}>
+                            {customerData.validUntil ? customerData.validUntil.slice(0, 10) : '未設定'}
+                        </span>
+                    </div>
+                    <button onClick={openExpiryModal} style={{ padding: '6px 14px', border: '1px solid #059669', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', background: '#fff', color: '#059669', fontWeight: '500' }}>
+                        修改到期日
+                    </button>
+                </div>
+            )}
+
             {loading && <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af' }}>載入中...</div>}
 
             {/* Package Issue */}
@@ -297,6 +416,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                     <VoucherCard
                         title="果嶺券"
                         color="#1d4ed8"
+                        onReverseRedeem={() => openReverseRedeemModal('green_fee')}
                         bg="#eff6ff"
                         summary={summary.green_fee}
                         unitPrice={issueSettings?.green_fee?.unit_price ?? 200}
@@ -311,7 +431,17 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                         unitPrice={issueSettings?.product?.unit_price ?? 100}
                         onIssue={() => openIssueModal('product')}
                         onRedeem={() => openRedeemModal('product')}
+                        onReverseRedeem={() => openReverseRedeemModal('product')}
                     />
+                </div>
+            )}
+
+            {/* Cancel All Button */}
+            {summary && !loading && (summary.green_fee.active > 0 || summary.green_fee.redeemed > 0 || summary.product.active > 0 || summary.product.redeemed > 0) && (
+                <div style={{ marginBottom: '24px', textAlign: 'right' }}>
+                    <button onClick={openCancelAllModal} style={{ padding: '8px 16px', border: '1px solid #dc2626', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', background: '#fff', color: '#dc2626', fontWeight: '500' }}>
+                        全部退券（作廢）
+                    </button>
                 </div>
             )}
 
@@ -385,6 +515,42 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                         onCancel={() => setModal(null)}
                     />
                 )}
+                {modal.type === 'reverse_redeem' && (
+                    <ReverseRedeemModal
+                        voucherType={modal.voucherType}
+                        redeemed={modal.voucherType === 'green_fee' ? summary?.green_fee?.redeemed || 0 : summary?.product?.redeemed || 0}
+                        quantity={modal.quantity}
+                        reason={modal.reason}
+                        userName={selectedUser?.display_name}
+                        onQuantityChange={q => setModal(prev => ({ ...prev, quantity: q }))}
+                        onReasonChange={r => setModal(prev => ({ ...prev, reason: r }))}
+                        onConfirm={handleReverseRedeem}
+                        onCancel={() => setModal(null)}
+                    />
+                )}
+                {modal.type === 'cancel_all' && (
+                    <CancelAllModal
+                        userName={selectedUser?.display_name}
+                        summary={summary}
+                        reason={modal.reason}
+                        onReasonChange={r => setModal(prev => ({ ...prev, reason: r }))}
+                        onConfirm={handleCancelAll}
+                        onCancel={() => setModal(null)}
+                    />
+                )}
+                {modal.type === 'update_expiry' && (
+                    <ExpiryModal
+                        userName={selectedUser?.display_name}
+                        validUntil={modal.validUntil}
+                        reason={modal.reason}
+                        paperExpiry={modal.paperExpiry}
+                        loadingPaper={modal.loadingPaper}
+                        onDateChange={d => setModal(prev => ({ ...prev, validUntil: d }))}
+                        onReasonChange={r => setModal(prev => ({ ...prev, reason: r }))}
+                        onConfirm={handleUpdateExpiry}
+                        onCancel={() => setModal(null)}
+                    />
+                )}
             </ModalOverlay>}
 
             {showSettings && (
@@ -398,7 +564,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
     );
 }
 
-function VoucherCard({ title, color, bg, summary, unitPrice, onIssue, onRedeem }) {
+function VoucherCard({ title, color, bg, summary, unitPrice, onIssue, onRedeem, onReverseRedeem }) {
     return (
         <div style={{ border: `1px solid ${color}33`, borderRadius: '10px', padding: '16px', background: bg }}>
             <div style={{ fontWeight: 'bold', fontSize: '1rem', color, marginBottom: '12px' }}>{title}</div>
@@ -412,6 +578,9 @@ function VoucherCard({ title, color, bg, summary, unitPrice, onIssue, onRedeem }
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
                 <button onClick={onRedeem} disabled={summary.active === 0} style={{ ...actionBtnStyle, background: summary.active > 0 ? '#dc2626' : '#d1d5db', color: '#fff' }}>用券</button>
+                {summary.redeemed > 0 && (
+                    <button onClick={onReverseRedeem} style={{ ...actionBtnStyle, background: '#fff', border: '1px solid #d97706', color: '#d97706' }}>撤銷核銷</button>
+                )}
             </div>
         </div>
     );
@@ -537,15 +706,6 @@ function PackageIssueSection({ userId, onIssued, settings }) {
 
                         {loadingDate ? (
                             <div style={{ color: '#9ca3af', marginBottom: '16px' }}>查詢上次購買日期...</div>
-                        ) : renewalStatus?.type === 'too_early' ? (
-                            <div style={{ padding: '14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', marginBottom: '16px' }}>
-                                <div style={{ color: '#dc2626', fontWeight: '600', marginBottom: '6px' }}>尚未到續約期限</div>
-                                <div style={{ fontSize: '13px', color: '#6b7280' }}>
-                                    上次購買日期：{lastPurchaseDate}<br />
-                                    需滿 {MIN_RENEWAL_MONTHS} 個月後才可續約購買<br />
-                                    可續約日期：<b>{renewalStatus.date}</b>
-                                </div>
-                            </div>
                         ) : renewalStatus?.type === 'suspended' ? (
                             <div style={{ padding: '14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', marginBottom: '16px' }}>
                                 <div style={{ color: '#dc2626', fontWeight: '600', marginBottom: '6px' }}>會員已停權</div>
@@ -561,6 +721,11 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                                 {lastPurchaseDate && (
                                     <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
                                         上次購買日期：{lastPurchaseDate}（+{validityYears}年 = {customStartDate}）
+                                    </div>
+                                )}
+                                {renewalStatus?.type === 'too_early' && (
+                                    <div style={{ padding: '10px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', marginBottom: '10px', fontSize: '13px', color: '#1e40af' }}>
+                                        提前續約：新券效期將從舊券到期日（{customStartDate}）起算 {validityYears} 年
                                     </div>
                                 )}
                                 {renewalStatus?.type === 'grace' && (
@@ -583,12 +748,12 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                             <button onClick={() => setShowPackageModal(null)} style={cancelBtnStyle}>取消</button>
                             <button
                                 onClick={handleIssuePackage}
-                                disabled={issuing || renewalStatus?.type === 'too_early' || renewalStatus?.type === 'suspended'}
+                                disabled={issuing || renewalStatus?.type === 'suspended'}
                                 style={{
                                     ...actionBtnStyle,
-                                    background: (issuing || renewalStatus?.type === 'too_early' || renewalStatus?.type === 'suspended') ? '#d1d5db' : '#7c3aed',
+                                    background: (issuing || renewalStatus?.type === 'suspended') ? '#d1d5db' : '#7c3aed',
                                     color: '#fff',
-                                    cursor: (renewalStatus?.type === 'too_early' || renewalStatus?.type === 'suspended') ? 'not-allowed' : 'pointer',
+                                    cursor: renewalStatus?.type === 'suspended' ? 'not-allowed' : 'pointer',
                                 }}
                             >
                                 {issuing ? '處理中...' : '確認發券'}
@@ -836,6 +1001,148 @@ function SettingsModal({ settings, onSave, onClose }) {
                 </div>
             </div>
         </ModalOverlay>
+    );
+}
+
+function ExpiryModal({ userName, validUntil, reason, paperExpiry, loadingPaper, onDateChange, onReasonChange, onConfirm, onCancel }) {
+    const paperPlusYear = paperExpiry ? (() => {
+        const d = new Date(paperExpiry);
+        d.setFullYear(d.getFullYear() + 1);
+        return d.toISOString().slice(0, 10);
+    })() : null;
+
+    return (
+        <div>
+            <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: '#059669' }}>修改票券到期日</h3>
+            <div style={{ marginBottom: '12px', color: '#6b7280' }}>客人：<b>{userName}</b></div>
+
+            {loadingPaper ? (
+                <div style={{ color: '#9ca3af', marginBottom: '12px', fontSize: '13px' }}>查詢紙券到期日...</div>
+            ) : paperExpiry && (
+                <div style={{ padding: '10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', marginBottom: '16px', fontSize: '13px', color: '#92400e' }}>
+                    <div>原紙券到期日：<b>{paperExpiry.slice(0, 10)}</b></div>
+                    <div style={{ marginTop: '4px' }}>
+                        建議到期日（+1年）：<b>{paperPlusYear}</b>
+                        <button
+                            onClick={() => onDateChange(paperPlusYear)}
+                            style={{ marginLeft: '8px', padding: '2px 10px', border: '1px solid #d97706', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', background: '#fff', color: '#d97706' }}
+                        >
+                            套用
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>新到期日</label>
+                <input
+                    type="date"
+                    value={validUntil}
+                    onChange={e => onDateChange(e.target.value)}
+                    autoFocus
+                    style={{ ...inputStyle, width: '100%' }}
+                />
+            </div>
+            <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>原因（選填）</label>
+                <input
+                    type="text"
+                    value={reason}
+                    onChange={e => onReasonChange(e.target.value)}
+                    style={{ ...inputStyle, width: '100%' }}
+                    placeholder="例：紙券轉換延期、客戶續約"
+                />
+            </div>
+            <div style={{ padding: '10px', background: '#f0f9ff', borderRadius: '6px', marginBottom: '16px', fontSize: '13px', color: '#1e40af' }}>
+                此操作會修改該客人所有電子票券（可用＋已核銷）的到期日
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button onClick={onCancel} style={cancelBtnStyle}>取消</button>
+                <button onClick={onConfirm} disabled={!validUntil} style={{ ...actionBtnStyle, background: validUntil ? '#059669' : '#d1d5db', color: '#fff' }}>確認修改</button>
+            </div>
+        </div>
+    );
+}
+
+function ReverseRedeemModal({ voucherType, redeemed, quantity, reason, userName, onQuantityChange, onReasonChange, onConfirm, onCancel }) {
+    const qty = parseInt(quantity) || 0;
+    const label = VOUCHER_TYPE_LABELS[voucherType];
+    return (
+        <div>
+            <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: '#d97706' }}>撤銷核銷 - {label}</h3>
+            <div style={{ marginBottom: '12px', color: '#6b7280' }}>客人：<b>{userName}</b></div>
+            <div style={{ marginBottom: '8px', color: '#dc2626' }}>已核銷張數：<b>{redeemed}</b> 張</div>
+            <div style={{ padding: '10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', marginBottom: '16px', fontSize: '13px', color: '#92400e' }}>
+                撤銷核銷後，券會恢復為「可用」狀態（從最近核銷的開始撤銷）
+            </div>
+            <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>撤銷張數</label>
+                <input
+                    type="number"
+                    min="1"
+                    max={redeemed}
+                    value={quantity}
+                    onChange={e => onQuantityChange(e.target.value)}
+                    autoFocus
+                    style={{ ...inputStyle, width: '100%' }}
+                    placeholder="請輸入撤銷張數"
+                />
+            </div>
+            <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>原因（選填）</label>
+                <input
+                    type="text"
+                    value={reason}
+                    onChange={e => onReasonChange(e.target.value)}
+                    style={{ ...inputStyle, width: '100%' }}
+                    placeholder="例：誤核銷、客人退貨"
+                />
+            </div>
+            {qty > redeemed && (
+                <div style={{ color: '#dc2626', fontSize: '13px', marginBottom: '12px' }}>超過已核銷張數</div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button onClick={onCancel} style={cancelBtnStyle}>取消</button>
+                <button onClick={onConfirm} disabled={qty < 1 || qty > redeemed} style={{ ...actionBtnStyle, background: qty >= 1 && qty <= redeemed ? '#d97706' : '#d1d5db', color: '#fff' }}>確認撤銷</button>
+            </div>
+        </div>
+    );
+}
+
+function CancelAllModal({ userName, summary, reason, onReasonChange, onConfirm, onCancel }) {
+    const greenActive = summary?.green_fee?.active || 0;
+    const greenRedeemed = summary?.green_fee?.redeemed || 0;
+    const prodActive = summary?.product?.active || 0;
+    const prodRedeemed = summary?.product?.redeemed || 0;
+    const total = greenActive + greenRedeemed + prodActive + prodRedeemed;
+    return (
+        <div>
+            <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: '#dc2626' }}>全部退券（作廢）</h3>
+            <div style={{ marginBottom: '12px', color: '#6b7280' }}>客人：<b>{userName}</b></div>
+            <div style={{ padding: '14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', marginBottom: '16px' }}>
+                <div style={{ fontWeight: '600', color: '#dc2626', marginBottom: '8px' }}>以下所有券將被作廢：</div>
+                <div style={{ fontSize: '14px', color: '#374151' }}>
+                    <div>果嶺券：可用 {greenActive} 張 + 已核銷 {greenRedeemed} 張</div>
+                    <div>商品券：可用 {prodActive} 張 + 已核銷 {prodRedeemed} 張</div>
+                    <div style={{ marginTop: '8px', fontWeight: 'bold', borderTop: '1px solid #fecaca', paddingTop: '8px' }}>共計 {total} 張</div>
+                </div>
+            </div>
+            <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>退券原因（必填）</label>
+                <input
+                    type="text"
+                    value={reason}
+                    onChange={e => onReasonChange(e.target.value)}
+                    autoFocus
+                    style={{ ...inputStyle, width: '100%' }}
+                    placeholder="例：測試資料清除、客人退費"
+                />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button onClick={onCancel} style={cancelBtnStyle}>取消</button>
+                <button onClick={onConfirm} disabled={!reason?.trim()} style={{ ...actionBtnStyle, background: reason?.trim() ? '#dc2626' : '#d1d5db', color: '#fff' }}>確認退券</button>
+            </div>
+        </div>
     );
 }
 
