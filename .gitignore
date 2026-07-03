@@ -35,6 +35,12 @@ logs/
 # Temporary files
 *.tmp
 *.temp
+/_*.mjs
+
+# Test artifacts / screenshots
+screenshots/
+client/test-results/
+client/playwright-report/
 
 # Secrets
 google-service-account.json
