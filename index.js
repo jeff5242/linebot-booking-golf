@@ -2063,6 +2063,35 @@ app.get('/api/member/profile', async (req, res) => {
       .eq('user_id', user.id)
       .eq('status', 'checked_in');
 
+    // 可用票券計數（兩張表合併）
+    const { count: oldGreenFee } = await supabase
+      .from('membership_benefits_issued')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('benefit_type', 'green_fee_voucher')
+      .is('used_at', null);
+
+    const { count: oldMerchandise } = await supabase
+      .from('membership_benefits_issued')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('benefit_type', 'merchandise_voucher')
+      .is('used_at', null);
+
+    const { count: digitalGreenFee } = await supabase
+      .from('vouchers')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('product_name', '果嶺券')
+      .eq('status', 'active');
+
+    const { count: digitalMerchandise } = await supabase
+      .from('vouchers')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('product_name', '商品券')
+      .eq('status', 'active');
+
     res.json({
       user: {
         id: user.id,
@@ -2077,6 +2106,8 @@ app.get('/api/member/profile', async (req, res) => {
         totalBookings: totalBookings || 0,
         upcomingBookings: upcomingBookings || 0,
         completedRounds: completedRounds || 0,
+        activeGreenFeeVouchers: (oldGreenFee || 0) + (digitalGreenFee || 0),
+        activeMerchandiseVouchers: (oldMerchandise || 0) + (digitalMerchandise || 0),
       },
     });
   } catch (error) {
