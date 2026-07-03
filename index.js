@@ -1592,7 +1592,7 @@ app.get('/api/broadcast/logs', requireAuth('broadcast'), async (req, res) => {
 // 票券使用明細報表 API
 // ============================================
 
-app.get('/api/reports/voucher-usage', requireAuth('voucher_report'), async (req, res) => {
+app.get('/api/reports/voucher-usage', requireAuth('paper_report'), async (req, res) => {
   try {
     const { type = 'green_fee' } = req.query; // green_fee or product
 
@@ -2078,19 +2078,22 @@ app.get('/api/member/profile', async (req, res) => {
       .eq('benefit_type', 'merchandise_voucher')
       .is('used_at', null);
 
+    // 與 /api/member/vouchers 對齊：只算線上購買的電子票券（排除紙券轉入）
     const { count: digitalGreenFee } = await supabase
       .from('vouchers')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
       .eq('product_name', '果嶺券')
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .eq('source_type', 'digital_purchase');
 
     const { count: digitalMerchandise } = await supabase
       .from('vouchers')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
       .eq('product_name', '商品券')
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .eq('source_type', 'digital_purchase');
 
     res.json({
       user: {
