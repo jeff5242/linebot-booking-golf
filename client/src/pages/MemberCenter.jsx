@@ -273,26 +273,39 @@ export function MemberCenter() {
 
                 {/* 統計 */}
                 <div style={{
-                    display: 'flex', gap: '16px', marginTop: '16px',
+                    display: 'flex', gap: '12px', marginTop: '16px',
                     paddingTop: '12px', borderTop: `1px solid ${tierStyle.border}40`,
+                    flexWrap: 'wrap',
                 }}>
-                    <div style={{ textAlign: 'center', flex: 1 }}>
+                    <div style={{ textAlign: 'center', flex: '1 1 0', minWidth: '50px' }}>
                         <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#333' }}>
                             {stats.totalBookings || 0}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: '#999' }}>總預約</div>
+                        <div style={{ fontSize: '0.7rem', color: '#999' }}>總預約</div>
                     </div>
-                    <div style={{ textAlign: 'center', flex: 1 }}>
+                    <div style={{ textAlign: 'center', flex: '1 1 0', minWidth: '50px' }}>
                         <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#2e7d32' }}>
                             {stats.upcomingBookings || 0}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: '#999' }}>即將到來</div>
+                        <div style={{ fontSize: '0.7rem', color: '#999' }}>即將到來</div>
                     </div>
-                    <div style={{ textAlign: 'center', flex: 1 }}>
+                    <div style={{ textAlign: 'center', flex: '1 1 0', minWidth: '50px' }}>
                         <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#1565c0' }}>
                             {stats.completedRounds || 0}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: '#999' }}>已完成</div>
+                        <div style={{ fontSize: '0.7rem', color: '#999' }}>已完成</div>
+                    </div>
+                    <div style={{ textAlign: 'center', flex: '1 1 0', minWidth: '50px' }}>
+                        <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#2e7d32' }}>
+                            {stats.activeGreenFeeVouchers || 0}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#999' }}>果嶺券</div>
+                    </div>
+                    <div style={{ textAlign: 'center', flex: '1 1 0', minWidth: '50px' }}>
+                        <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: '#8b5cf6' }}>
+                            {stats.activeMerchandiseVouchers || 0}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#999' }}>商品券</div>
                     </div>
                 </div>
             </div>

@@ -150,12 +150,14 @@ async function redeemVouchers({ userId, voucherType, quantity, operatorName }) {
   if (!quantity || quantity < 1) throw new Error('請輸入使用張數');
 
   const productName = VOUCHER_TYPES[voucherType].product_name;
+  // 只操作線上電子票券，紙券轉入的走實體紙券流程（與 getCustomerVouchers 顯示邏輯一致）
   const { data: active, error } = await supabase
     .from('vouchers')
     .select('id')
     .eq('user_id', userId)
     .eq('product_name', productName)
     .eq('status', 'active')
+    .neq('source_type', 'paper_converted')
     .order('created_at', { ascending: true })
     .limit(quantity);
   if (error) throw error;
@@ -212,12 +214,14 @@ async function reverseRedeem({ userId, voucherType, quantity, operatorName, reas
   if (!quantity || quantity < 1) throw new Error('請輸入張數');
 
   const productName = VOUCHER_TYPES[voucherType].product_name;
+  // 只操作線上電子票券，紙券轉入的走實體紙券流程（與 getCustomerVouchers 顯示邏輯一致）
   const { data: redeemed, error } = await supabase
     .from('vouchers')
     .select('id')
     .eq('user_id', userId)
     .eq('product_name', productName)
     .eq('status', 'redeemed')
+    .neq('source_type', 'paper_converted')
     .order('redeemed_at', { ascending: false })
     .limit(quantity);
   if (error) throw error;
@@ -244,11 +248,13 @@ async function reverseRedeem({ userId, voucherType, quantity, operatorName, reas
 }
 
 async function cancelAllVouchers({ userId, reason, operatorName }) {
+  // 只退線上電子票券，紙券轉入的走實體紙券流程（與 getCustomerVouchers 顯示邏輯一致）
   const { data: vouchers, error } = await supabase
     .from('vouchers')
     .select('id, product_name, status')
     .eq('user_id', userId)
     .in('product_name', ['果嶺券', '商品券'])
+    .neq('source_type', 'paper_converted')
     .in('status', ['active', 'redeemed']);
   if (error) throw error;
   if (!vouchers || vouchers.length === 0) throw new Error('該用戶沒有可退的券');
