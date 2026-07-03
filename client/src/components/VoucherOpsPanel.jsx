@@ -602,7 +602,7 @@ const DEFAULT_PACKAGES = [
 
 function PackageIssueSection({ userId, onIssued, settings }) {
     const PACKAGES = settings?.packages || DEFAULT_PACKAGES;
-    const validityYears = settings?.validity_years ?? 2;
+    const validityYears = settings?.validity_years ?? 1;
     const gfPrice = settings?.green_fee?.unit_price ?? 200;
     const pdPrice = settings?.product?.unit_price ?? 100;
     const MIN_RENEWAL_MONTHS = 9;
@@ -614,12 +614,25 @@ function PackageIssueSection({ userId, onIssued, settings }) {
     const [customStartDate, setCustomStartDate] = useState('');
     const [loadingDate, setLoadingDate] = useState(false);
     const [renewalStatus, setRenewalStatus] = useState(null);
+    const [packageStatus, setPackageStatus] = useState(null);
 
     const openPackageModal = async (pkgIndex) => {
         setShowPackageModal(pkgIndex);
         setLoadingDate(true);
         setRenewalStatus(null);
+        setPackageStatus(null);
+        let ps = null;
         try {
+            // 套本購買狀態（是否已有 active 套本 / 可否續約 / 建議起始日）
+            try {
+                const psRes = await adminFetch(`/api/voucher-ops/package-status/${userId}`);
+                ps = await psRes.json();
+                setPackageStatus(ps);
+                if (ps.hasActive && ps.canIssue && ps.suggestedStartDate) {
+                    setCustomStartDate(ps.suggestedStartDate);
+                }
+            } catch { /* 狀態查詢失敗不擋開窗，後端發券時仍會把關 */ }
+
             const res = await adminFetch(`/api/voucher-ops/last-purchase/${userId}`);
             const data = await res.json();
             setLastPurchaseDate(data.lastPurchaseDate);
@@ -640,8 +653,11 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                     setRenewalStatus({ type: 'grace', expiryDate: expiryDate.toISOString().slice(0, 10), deadline: suspendDate.toISOString().slice(0, 10) });
                 }
 
-                const next = new Date(last.getTime() + validityYears * 365.25 * 24 * 60 * 60 * 1000);
-                setCustomStartDate(next.toISOString().slice(0, 10));
+                // 起始日以後端 package-status 的建議（舊套本到期日）為準；沒有才用推算
+                if (!(ps?.hasActive && ps?.suggestedStartDate)) {
+                    const next = new Date(last.getTime() + validityYears * 365.25 * 24 * 60 * 60 * 1000);
+                    setCustomStartDate(next.toISOString().slice(0, 10));
+                }
             } else {
                 setCustomStartDate(new Date().toISOString().slice(0, 10));
             }
@@ -706,6 +722,16 @@ function PackageIssueSection({ userId, onIssued, settings }) {
 
                         {loadingDate ? (
                             <div style={{ color: '#9ca3af', marginBottom: '16px' }}>查詢上次購買日期...</div>
+                        ) : (packageStatus?.hasActive && !packageStatus?.canIssue) ? (
+                            <div style={{ padding: '14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', marginBottom: '16px' }}>
+                                <div style={{ color: '#dc2626', fontWeight: '600', marginBottom: '6px' }}>已購買套本，不可重複購買</div>
+                                <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                                    目前套本：<b>{packageStatus.activePackage?.package_name}</b><br />
+                                    效期：{packageStatus.activePackage?.valid_from} ~ {packageStatus.activePackage?.valid_until}<br />
+                                    {packageStatus.reason}<br />
+                                    如需更換，請先於下方「全部退券」後再購買。
+                                </div>
+                            </div>
                         ) : renewalStatus?.type === 'suspended' ? (
                             <div style={{ padding: '14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', marginBottom: '16px' }}>
                                 <div style={{ color: '#dc2626', fontWeight: '600', marginBottom: '6px' }}>會員已停權</div>
@@ -718,6 +744,11 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                             </div>
                         ) : (
                             <div style={{ marginBottom: '16px' }}>
+                                {packageStatus?.hasActive && packageStatus?.canIssue && (
+                                    <div style={{ padding: '10px', background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '8px', marginBottom: '10px', fontSize: '13px', color: '#6d28d9' }}>
+                                        續約：舊套本「{packageStatus.activePackage?.package_name}」於 <b>{packageStatus.activePackage?.valid_until}</b> 到期，新券將從該日起算 {validityYears} 年
+                                    </div>
+                                )}
                                 {lastPurchaseDate && (
                                     <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
                                         上次購買日期：{lastPurchaseDate}（+{validityYears}年 = {customStartDate}）
@@ -738,26 +769,36 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                                     type="date"
                                     value={customStartDate}
                                     onChange={e => setCustomStartDate(e.target.value)}
-                                    style={{ ...inputStyle, width: '100%' }}
+                                    readOnly={packageStatus?.hasActive && packageStatus?.canIssue}
+                                    style={{ ...inputStyle, width: '100%', ...(packageStatus?.hasActive && packageStatus?.canIssue ? { background: '#f3f4f6', color: '#6b7280' } : {}) }}
                                 />
-                                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>效期 {validityYears} 年（可調整起始日）</div>
+                                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                                    {packageStatus?.hasActive && packageStatus?.canIssue
+                                        ? `續約起始日由系統鎖定為舊套本到期日（${customStartDate}），效期 ${validityYears} 年`
+                                        : `效期 ${validityYears} 年（可調整起始日）`}
+                                </div>
                             </div>
                         )}
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                             <button onClick={() => setShowPackageModal(null)} style={cancelBtnStyle}>取消</button>
-                            <button
-                                onClick={handleIssuePackage}
-                                disabled={issuing || renewalStatus?.type === 'suspended'}
-                                style={{
-                                    ...actionBtnStyle,
-                                    background: (issuing || renewalStatus?.type === 'suspended') ? '#d1d5db' : '#7c3aed',
-                                    color: '#fff',
-                                    cursor: renewalStatus?.type === 'suspended' ? 'not-allowed' : 'pointer',
-                                }}
-                            >
-                                {issuing ? '處理中...' : '確認發券'}
-                            </button>
+                            {(() => {
+                                const blocked = renewalStatus?.type === 'suspended' || (packageStatus?.hasActive && !packageStatus?.canIssue);
+                                return (
+                                    <button
+                                        onClick={handleIssuePackage}
+                                        disabled={issuing || blocked}
+                                        style={{
+                                            ...actionBtnStyle,
+                                            background: (issuing || blocked) ? '#d1d5db' : '#7c3aed',
+                                            color: '#fff',
+                                            cursor: blocked ? 'not-allowed' : 'pointer',
+                                        }}
+                                    >
+                                        {issuing ? '處理中...' : '確認發券'}
+                                    </button>
+                                );
+                            })()}
                         </div>
                     </div>
                 </ModalOverlay>
@@ -868,7 +909,7 @@ function SettingsModal({ settings, onSave, onClose }) {
         green_fee: { unit_price: 200, default_quantity: 10 },
         product: { unit_price: 100, default_quantity: 10 },
         packages: DEFAULT_PACKAGES,
-        validity_years: 2,
+        validity_years: 1,
     };
     const [form, setForm] = useState({ ...defaults, ...settings });
     const [saving, setSaving] = useState(false);
@@ -952,7 +993,7 @@ function SettingsModal({ settings, onSave, onClose }) {
                     <h4 style={sectionTitle}>有效年限</h4>
                     <div style={fieldRow}>
                         <span style={fieldLabel}>年數</span>
-                        <input type="number" min="1" max="10" value={form.validity_years} onChange={e => updateField('validity_years', parseInt(e.target.value) || 2)} style={fieldInput} />
+                        <input type="number" min="1" max="10" value={form.validity_years} onChange={e => updateField('validity_years', parseInt(e.target.value) || 1)} style={fieldInput} />
                     </div>
                 </div>
 
