@@ -15,6 +15,9 @@ const VOUCHER_TYPES = {
 
 const SETTINGS_KEY = 'voucher_issue_settings';
 
+// 套本可續約的最短間隔（距上次購買起算），與前端 PackageIssueSection 一致
+const MIN_RENEWAL_MONTHS = 9;
+
 const DEFAULT_ISSUE_SETTINGS = {
   green_fee: { default_quantity: 10, unit_price: 200 },
   product: { default_quantity: 10, unit_price: 100 },
@@ -22,8 +25,75 @@ const DEFAULT_ISSUE_SETTINGS = {
     { name: 'A 套本 $6,600', price: 6600, green_fee: 18, product: 30 },
     { name: 'B 套本 $2,800', price: 2800, green_fee: 9, product: 10 },
   ],
-  validity_years: 2,
+  validity_years: 1,
 };
+
+/** 日期字串加 N 年，回傳 YYYY-MM-DD */
+function addYears(dateStr, years) {
+  const d = new Date(dateStr);
+  d.setFullYear(d.getFullYear() + years);
+  return d.toISOString().slice(0, 10);
+}
+
+/** 取得客戶目前 active 的套本（最多一筆），無則回 null */
+async function getActivePackage(userId) {
+  const { data, error } = await supabase
+    .from('voucher_packages')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
+/**
+ * 判斷 active 套本是否已到可續約期（距 valid_from 起算滿 MIN_RENEWAL_MONTHS 個月）
+ * @returns {{ ok: boolean, reason?: string, renewableDate?: string }}
+ */
+function isRenewalEligible(activePkg) {
+  const basis = activePkg.valid_from || activePkg.created_at;
+  if (!basis) return { ok: true };
+  const renewable = new Date(basis);
+  renewable.setMonth(renewable.getMonth() + MIN_RENEWAL_MONTHS);
+  const renewableDate = renewable.toISOString().slice(0, 10);
+  if (new Date() < renewable) {
+    return { ok: false, reason: `尚未到續約期（可續約日 ${renewableDate}）`, renewableDate };
+  }
+  return { ok: true, renewableDate };
+}
+
+/**
+ * 取得客戶的套本購買狀態（給前端判斷可否發套本 / 是否續約 / 建議起始日）
+ */
+async function getPackageStatus(userId) {
+  const active = await getActivePackage(userId);
+  if (!active) {
+    return {
+      hasActive: false,
+      canIssue: true,
+      isRenewal: false,
+      suggestedStartDate: new Date().toISOString().slice(0, 10),
+    };
+  }
+  const eligible = isRenewalEligible(active);
+  return {
+    hasActive: true,
+    activePackage: {
+      package_name: active.package_name,
+      valid_from: active.valid_from,
+      valid_until: active.valid_until,
+    },
+    canIssue: eligible.ok,
+    isRenewal: eligible.ok,
+    reason: eligible.ok ? null : eligible.reason,
+    renewableDate: eligible.renewableDate,
+    suggestedStartDate: eligible.ok
+      ? (active.valid_until || new Date().toISOString().slice(0, 10))
+      : null,
+  };
+}
 
 function generateCode(voucherType) {
   const prefix = voucherType === 'green_fee' ? 'GF' : 'PD';
@@ -110,26 +180,89 @@ async function issuePackage({ userId, packageIndex, operatorName, validFrom }) {
   const pkg = packages[packageIndex];
   if (!pkg) throw new Error('無效的套本');
 
-  const validityYears = settings.validity_years || 2;
-  const startDate = validFrom || new Date().toISOString().slice(0, 10);
-  const endDate = new Date(new Date(startDate).getTime() + validityYears * 365.25 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const validityYears = settings.validity_years || 1;
+  const today = new Date().toISOString().slice(0, 10);
 
-  const greenResult = await issueVouchers({
-    userId, voucherType: 'green_fee', quantity: pkg.green_fee,
-    operatorName, validFrom: startDate, validUntil: endDate,
-  });
-  const productResult = await issueVouchers({
-    userId, voucherType: 'product', quantity: pkg.product,
-    operatorName, validFrom: startDate, validUntil: endDate,
-  });
+  // 檢查是否已有 active 套本：擋重複購買，或判斷為續約
+  const active = await getActivePackage(userId);
+  let startDate;
+  let isRenewal = false;
+  if (active) {
+    const eligible = isRenewalEligible(active);
+    if (!eligible.ok) {
+      throw new Error(`客戶已購買套本「${active.package_name}」，${eligible.reason}。如需更換請先全部退券。`);
+    }
+    // 續約：新券從舊套本到期日起算；若舊券已過期則改從今天起算，避免新券一發即過期
+    isRenewal = true;
+    startDate = (active.valid_until && active.valid_until > today) ? active.valid_until : today;
+  } else {
+    startDate = validFrom || today;
+  }
+  const endDate = addYears(startDate, validityYears);
 
-  return {
-    package: pkg,
-    green_fee: { count: greenResult.vouchers.length },
-    product: { count: productResult.vouchers.length },
-    validFrom: startDate,
-    validUntil: endDate,
-  };
+  // 續約時先釋放舊 active 名額（配合 partial unique index），失敗即中止
+  if (active) {
+    const { error: renewErr } = await supabase
+      .from('voucher_packages')
+      .update({ status: 'renewed' })
+      .eq('id', active.id)
+      .eq('status', 'active');
+    if (renewErr) throw renewErr;
+  }
+
+  // 先佔用套本名額（在發券之前）：靠 partial unique index 擋併發/重複點擊。
+  // 若此步失敗代表已有 active 套本，此時尚未發任何券，不會產生孤兒券。
+  const { data: pkgRow, error: pkgErr } = await supabase
+    .from('voucher_packages')
+    .insert({
+      user_id: userId,
+      package_index: packageIndex,
+      package_name: pkg.name,
+      price: pkg.price || 0,
+      green_fee_count: pkg.green_fee,
+      product_count: pkg.product,
+      valid_from: startDate,
+      valid_until: endDate,
+      is_renewal: isRenewal,
+      status: 'active',
+      operator_name: operatorName,
+    })
+    .select()
+    .single();
+  if (pkgErr) {
+    // 佔位失敗：若剛把舊套本改成 renewed，補償還原成 active
+    if (active) {
+      await supabase.from('voucher_packages').update({ status: 'active' }).eq('id', active.id);
+    }
+    throw new Error('已有進行中的套本或發券衝突，請重新整理後再試');
+  }
+
+  // 佔位成功才真正發券；發券失敗則補償刪除本次套本紀錄並還原舊套本
+  try {
+    const greenResult = await issueVouchers({
+      userId, voucherType: 'green_fee', quantity: pkg.green_fee,
+      operatorName, validFrom: startDate, validUntil: endDate,
+    });
+    const productResult = await issueVouchers({
+      userId, voucherType: 'product', quantity: pkg.product,
+      operatorName, validFrom: startDate, validUntil: endDate,
+    });
+
+    return {
+      package: pkg,
+      green_fee: { count: greenResult.vouchers.length },
+      product: { count: productResult.vouchers.length },
+      validFrom: startDate,
+      validUntil: endDate,
+      isRenewal,
+    };
+  } catch (err) {
+    await supabase.from('voucher_packages').delete().eq('id', pkgRow.id);
+    if (active) {
+      await supabase.from('voucher_packages').update({ status: 'active' }).eq('id', active.id);
+    }
+    throw err;
+  }
 }
 
 async function getLastPurchaseDate(userId) {
@@ -257,26 +390,41 @@ async function cancelAllVouchers({ userId, reason, operatorName }) {
     .neq('source_type', 'paper_converted')
     .in('status', ['active', 'redeemed']);
   if (error) throw error;
-  if (!vouchers || vouchers.length === 0) throw new Error('該用戶沒有可退的券');
 
-  const ids = vouchers.map(v => v.id);
-  const { error: updateError } = await supabase
-    .from('vouchers')
-    .update({ status: 'void' })
-    .in('id', ids);
-  if (updateError) throw updateError;
+  // 先解除套本綁定（不論有無可退券都要做，避免套本卡在 active 無法再購買）
+  const { data: cancelledPkgs } = await supabase
+    .from('voucher_packages')
+    .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .select('id');
+  const packagesReleased = (cancelledPkgs || []).length;
 
-  const logEntries = ids.map(id => ({
-    voucher_id: id,
-    action: 'voided',
-    operator_name: operatorName,
-    memo: reason || '全部退券',
-  }));
-  await supabase.from('voucher_logs').insert(logEntries);
+  const ids = (vouchers || []).map(v => v.id);
+  // 沒有可退券、也沒有套本可解除 → 視為無效操作
+  if (ids.length === 0 && packagesReleased === 0) {
+    throw new Error('該用戶沒有可退的券');
+  }
 
-  const activeCount = vouchers.filter(v => v.status === 'active').length;
-  const redeemedCount = vouchers.filter(v => v.status === 'redeemed').length;
-  return { voided: ids.length, activeCount, redeemedCount };
+  if (ids.length > 0) {
+    const { error: updateError } = await supabase
+      .from('vouchers')
+      .update({ status: 'void' })
+      .in('id', ids);
+    if (updateError) throw updateError;
+
+    const logEntries = ids.map(id => ({
+      voucher_id: id,
+      action: 'voided',
+      operator_name: operatorName,
+      memo: reason || '全部退券',
+    }));
+    await supabase.from('voucher_logs').insert(logEntries);
+  }
+
+  const activeCount = (vouchers || []).filter(v => v.status === 'active').length;
+  const redeemedCount = (vouchers || []).filter(v => v.status === 'redeemed').length;
+  return { voided: ids.length, activeCount, redeemedCount, packagesReleased };
 }
 
 async function getCustomerVouchers(userId) {
@@ -413,4 +561,5 @@ module.exports = {
   getHistory,
   issuePackage,
   getLastPurchaseDate,
+  getPackageStatus,
 };

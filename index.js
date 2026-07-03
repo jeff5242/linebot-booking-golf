@@ -2430,6 +2430,15 @@ app.get('/api/voucher-ops/last-purchase/:userId', requireAuth('voucher_ops'), as
   }
 });
 
+app.get('/api/voucher-ops/package-status/:userId', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const status = await VoucherOps.getPackageStatus(req.params.userId);
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/voucher-ops/update-expiry', requireAuth('voucher_ops'), async (req, res) => {
   try {
     const { user_id, valid_until, reason } = req.body;
