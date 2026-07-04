@@ -74,9 +74,10 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// 除錯用的 Middleware，記錄收到的請求來源
+// 除錯用的 Middleware，記錄收到的請求來源（遮蔽 query string 中的 lineUserId，避免身分憑證外洩到 log）
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url} - Origin: ${req.get('origin')}`);
+  const safeUrl = req.url.replace(/([?&]lineUserId=)[^&]+/gi, '$1***');
+  console.log(`${req.method} ${safeUrl} - Origin: ${req.get('origin')}`);
   next();
 });
 
@@ -2111,6 +2112,9 @@ app.get('/api/member/profile', async (req, res) => {
         completedRounds: completedRounds || 0,
         activeGreenFeeVouchers: (oldGreenFee || 0) + (digitalGreenFee || 0),
         activeMerchandiseVouchers: (oldMerchandise || 0) + (digitalMerchandise || 0),
+        // 可轉贈數（僅線上電子券 digital_purchase，與轉贈後端一致）
+        transferableGreenFeeVouchers: (digitalGreenFee || 0),
+        transferableMerchandiseVouchers: (digitalMerchandise || 0),
       },
     });
   } catch (error) {
@@ -2268,6 +2272,35 @@ app.get('/api/member/vouchers', async (req, res) => {
   } catch (error) {
     console.error('Member Vouchers Error:', error);
     res.status(500).json({ error: '讀取優惠券失敗' });
+  }
+});
+
+// 會員轉贈票券給另一位會員
+app.post('/api/member/transfer-vouchers', async (req, res) => {
+  try {
+    const { lineUserId, voucherType, quantity, recipientPhone } = req.body;
+    if (!lineUserId) return res.status(400).json({ error: '缺少 lineUserId' });
+
+    const { data: user } = await supabase
+      .from('users')
+      .select('id')
+      .eq('line_user_id', lineUserId)
+      .maybeSingle();
+    if (!user) return res.status(404).json({ error: '找不到會員' });
+
+    const result = await VoucherOps.transferVouchers({
+      fromUserId: user.id,
+      toPhone: recipientPhone,
+      voucherType,
+      quantity,
+    });
+    res.json({
+      success: true,
+      ...result,
+      message: `已將 ${result.transferred} 張${result.productName}轉贈給 ${result.to.name || result.to.phone}`,
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 

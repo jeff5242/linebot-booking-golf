@@ -380,6 +380,68 @@ async function reverseRedeem({ userId, voucherType, quantity, operatorName, reas
   return { reversed: toReverse.length };
 }
 
+/**
+ * 會員自轉：把 fromUserId 名下未使用的電子券，轉 quantity 張某券種給手機號為 toPhone 的會員。
+ * 只轉 status=active 且 source_type=digital_purchase（與會員端顯示一致，排除紙券轉入）。
+ * 不影響 voucher_packages。每次轉贈寫入 voucher_transfers 供追蹤來源。
+ */
+async function transferVouchers({ fromUserId, toPhone, voucherType, quantity }) {
+  if (!VOUCHER_TYPES[voucherType]) throw new Error('無效的券種');
+  const qty = parseInt(quantity, 10);
+  if (!qty || qty < 1) throw new Error('請輸入轉贈張數');
+  if (qty > 100) throw new Error('單次轉贈上限 100 張');
+  const cleanPhone = String(toPhone || '').replace(/[^0-9]/g, '');
+  if (!/^09\d{8}$/.test(cleanPhone)) throw new Error('請輸入正確的對方手機號碼');
+
+  const productName = VOUCHER_TYPES[voucherType].product_name;
+
+  // 來源會員
+  const { data: fromUser, error: fromErr } = await supabase
+    .from('users')
+    .select('id, display_name, phone')
+    .eq('id', fromUserId)
+    .maybeSingle();
+  if (fromErr || !fromUser) throw new Error('找不到會員資料');
+
+  if (cleanPhone === fromUser.phone) throw new Error('不能轉贈給自己');
+
+  // 收禮會員（依手機號）
+  const { data: toUser, error: toErr } = await supabase
+    .from('users')
+    .select('id, display_name, phone')
+    .eq('phone', cleanPhone)
+    .maybeSingle();
+  if (toErr) throw toErr;
+  if (!toUser) throw new Error('找不到此手機號碼的會員，請確認對方已註冊');
+  if (toUser.id === fromUser.id) throw new Error('不能轉贈給自己');
+
+  // 原子性轉贈：鎖券 → 改綁 → 寫紀錄 → 寫 log 全在同一交易（避免併發超轉/孤兒轉贈）
+  const { data, error } = await supabase.rpc('transfer_member_vouchers', {
+    p_from_user: fromUser.id,
+    p_to_user: toUser.id,
+    p_voucher_type: voucherType,
+    p_product_name: productName,
+    p_qty: qty,
+    p_from_name: fromUser.display_name,
+    p_from_phone: fromUser.phone,
+    p_to_name: toUser.display_name,
+    p_to_phone: toUser.phone,
+  });
+  if (error) {
+    if (error.message && error.message.includes('INSUFFICIENT')) {
+      const have = (error.message.split('INSUFFICIENT:')[1] || '0').trim();
+      throw new Error(`可轉贈的${productName}不足，目前僅有 ${have} 張`);
+    }
+    throw error;
+  }
+
+  return {
+    transferred: data?.transferred ?? qty,
+    productName,
+    to: { name: toUser.display_name, phone: toUser.phone },
+  };
+}
+
 async function cancelAllVouchers({ userId, reason, operatorName }) {
   // 只退線上電子票券，紙券轉入的走實體紙券流程（與 getCustomerVouchers 顯示邏輯一致）
   const { data: vouchers, error } = await supabase
@@ -536,7 +598,7 @@ async function getHistory({ userId, voucherType, page = 1, limit = 20 }) {
   }
 
   query = query
-    .in('action', ['issued', 'redeemed', 'voided', 'reversed', 'extended'])
+    .in('action', ['issued', 'redeemed', 'voided', 'reversed', 'extended', 'transferred'])
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -562,4 +624,5 @@ module.exports = {
   issuePackage,
   getLastPurchaseDate,
   getPackageStatus,
+  transferVouchers,
 };
