@@ -33,6 +33,18 @@ const OtpService = require('./services/OtpService');
 const RichMenuService = require('./services/RichMenuService');
 const { sendPushMessage, broadcastLineMessage, multicastLineMessages } = require('./services/LineNotification');
 const VoucherOps = require('./services/VoucherOps');
+const { rateLimit } = require('express-rate-limit');
+
+// 轉贈端點限流：每位會員每小時最多 10 次（以 lineUserId 為 key，避開 Render proxy 共用 IP 問題）
+const transferLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => req.body?.lineUserId || req.ip,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: false,
+  handler: (req, res) => res.status(429).json({ error: '轉贈操作過於頻繁，請稍後再試' }),
+});
 const VoucherReports = require('./services/VoucherReports');
 
 // Supabase 設定
@@ -2276,7 +2288,7 @@ app.get('/api/member/vouchers', async (req, res) => {
 });
 
 // 會員轉贈票券給另一位會員
-app.post('/api/member/transfer-vouchers', async (req, res) => {
+app.post('/api/member/transfer-vouchers', transferLimiter, async (req, res) => {
   try {
     const { lineUserId, voucherType, quantity, recipientPhone } = req.body;
     if (!lineUserId) return res.status(400).json({ error: '缺少 lineUserId' });
