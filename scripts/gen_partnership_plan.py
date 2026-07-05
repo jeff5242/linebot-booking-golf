@@ -131,7 +131,30 @@ def main():
     d.bullet('須簽訂保密條款，及特殊狀況處理原則。')
     d.bullet('硬體（平板 / 掃描設備）採購另計。')
     d.bullet('LINE 官方帳號推播費用由球場自行負擔。')
-    d.bullet('稅內含。')
+    d.bullet('本報價金額未含營業稅，開立發票時另加 5% 營業稅（稅外加）。')
+
+    # 四、雙方簽署
+    d.section('四、雙方簽署')
+    c = d.c
+    top = d.y - 2
+    LX, RX = M + 12, PW / 2 + 12
+
+    def put(dy, l_text, r_text, size=10.5, color=(0.2, 0.2, 0.2)):
+        c.setFont(FONT, size)
+        c.setFillColorRGB(*color)
+        c.drawString(LX, top - dy, l_text)
+        c.drawString(RX, top - dy, r_text)
+
+    put(0, '系統供應商', '客戶', size=11, color=(0.18, 0.35, 0.58))
+    put(24, '牛奶股份有限公司', '大衛營高爾夫球場', size=11)
+    put(54, '負責人：方乃正', '負責人：')
+    put(88, '簽章：', '簽章：')
+    c.setStrokeColorRGB(0.6, 0.6, 0.6)
+    c.setLineWidth(0.6)
+    c.line(LX + 36, top - 90, LX + 200, top - 90)
+    c.line(RX + 36, top - 90, RX + 200, top - 90)
+    put(120, '日期：　　　年　　月　　日', '日期：　　　年　　月　　日', size=10)
+    d.y = top - 140
 
     d.save()
     print(f'Saved: {OUTPUT}')
