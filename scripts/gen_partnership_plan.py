@@ -21,6 +21,11 @@ OUTPUT = os.path.join(_OUT_DIR, '合作費用方案.pdf')
 FONT = 'STSong-Light'
 pdfmetrics.registerFont(UnicodeCIDFont(FONT))
 
+# 供應商私章（公司大章 + 負責人小章）——使用者私人法定印章，不納入版控。
+# 檔案存在才蓋章；不存在則留白簽章欄。
+STAMP_COMPANY = os.environ.get('STAMP_COMPANY', '/Users/jef/文件MBP/scan/jeff/牛奶合約大章.png')
+STAMP_PERSON = os.environ.get('STAMP_PERSON', '/Users/jef/文件MBP/scan/jeff/牛奶合約小章.png')
+
 PW, PH = A4
 M = 18 * mm
 
@@ -155,6 +160,15 @@ def main():
     c.line(LX + 36, top - 90, LX + 200, top - 90)
     c.line(RX + 36, top - 90, RX + 200, top - 90)
     put(120, '日期：2026 年 7 月 5 日', '日期：2026 年 7 月 5 日', size=10)
+
+    # 供應商用印（公司大章 + 負責人小章），蓋在方乃正簽章旁
+    if os.path.exists(STAMP_COMPANY):
+        c.drawImage(STAMP_COMPANY, 150, top - 116, width=60, height=60,
+                    mask='auto', preserveAspectRatio=True)
+    if os.path.exists(STAMP_PERSON):
+        c.drawImage(STAMP_PERSON, 224, top - 108, width=46, height=46,
+                    mask='auto', preserveAspectRatio=True)
+
     d.y = top - 140
 
     d.save()
