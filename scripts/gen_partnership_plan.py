@@ -151,7 +151,7 @@ def main():
         c.drawString(RX, top - dy, r_text)
 
     put(0, '系統供應商', '客戶', size=11, color=(0.18, 0.35, 0.58))
-    put(22, '牛奶股份有限公司  MILK IDEA INC.', '大衛營高爾夫球場', size=10.5)
+    put(22, '牛奶股份有限公司  MILK IDEA INC.', '買麥留有限公司（大衛營高爾夫球場）', size=10.5)
     put(42, '統一編號：53535550', '統一編號：53762013', size=9)
     put(60, '地址：台北市中正區忠孝西路一段45號9樓之5', '地址：高雄市旗山區大林里溝坪路98-3號', size=9)
     put(78, '電話：02-23711050　Email：jeff@milkidea.com', '電話：', size=9)
