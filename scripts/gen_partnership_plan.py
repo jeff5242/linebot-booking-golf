@@ -151,24 +151,35 @@ def main():
         c.drawString(RX, top - dy, r_text)
 
     put(0, '系統供應商', '客戶', size=11, color=(0.18, 0.35, 0.58))
-    put(24, '牛奶股份有限公司', '大衛營高爾夫球場', size=11)
-    put(54, '負責人：方乃正', '負責人：劉智慧')
-    put(88, '簽章：', '簽章：')
+    put(22, '牛奶股份有限公司  MILK IDEA INC.', '大衛營高爾夫球場', size=10.5)
+    put(42, '統一編號：53535550', '統一編號：53762013', size=9)
+    put(60, '地址：台北市中正區忠孝西路一段45號9樓之5', '地址：高雄市旗山區大林里溝坪路98-3號', size=9)
+    put(78, '電話：02-23711050　Email：jeff@milkidea.com', '電話：', size=9)
+    put(102, '負責人：方乃正', '負責人：劉智慧', size=10.5)
+    put(134, '簽章：', '簽章：', size=10.5)
+
+    # 簽名底線
     c.setStrokeColorRGB(0.6, 0.6, 0.6)
     c.setLineWidth(0.6)
-    c.line(LX + 36, top - 90, LX + 200, top - 90)
-    c.line(RX + 36, top - 90, RX + 200, top - 90)
-    put(120, '日期：2026 年 7 月 5 日', '日期：2026 年 7 月 5 日', size=10)
+    c.line(LX + 36, top - 136, LX + 200, top - 136)
+    c.line(RX + 36, top - 136, RX + 200, top - 136)
+
+    # 客戶待填欄位底線（電話）
+    c.setStrokeColorRGB(0.78, 0.78, 0.78)
+    c.setLineWidth(0.4)
+    c.line(RX + 36, top - 80, RX + 190, top - 80)   # 電話
+
+    put(162, '日期：2026 年 7 月 5 日', '日期：2026 年 7 月 5 日', size=10)
 
     # 供應商用印（公司大章 + 負責人小章），蓋在方乃正簽章旁
     if os.path.exists(STAMP_COMPANY):
-        c.drawImage(STAMP_COMPANY, 150, top - 116, width=60, height=60,
+        c.drawImage(STAMP_COMPANY, 155, top - 158, width=56, height=56,
                     mask='auto', preserveAspectRatio=True)
     if os.path.exists(STAMP_PERSON):
-        c.drawImage(STAMP_PERSON, 224, top - 108, width=46, height=46,
+        c.drawImage(STAMP_PERSON, 220, top - 150, width=42, height=42,
                     mask='auto', preserveAspectRatio=True)
 
-    d.y = top - 140
+    d.y = top - 185
 
     d.save()
     print(f'Saved: {OUTPUT}')
