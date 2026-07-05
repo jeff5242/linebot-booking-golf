@@ -52,6 +52,8 @@ google-service-account.json
 !README.md
 !RENDER_DEPLOY.md
 scripts/debugSheets.js
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 .cursorrules
 stateDiagram-v2.txt
