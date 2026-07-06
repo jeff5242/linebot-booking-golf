@@ -412,7 +412,7 @@ async function transferVouchers({ fromUserId, toPhone, voucherType, quantity }) 
     .eq('phone', cleanPhone)
     .maybeSingle();
   if (toErr) throw toErr;
-  if (!toUser) throw new Error('找不到此手機號碼的會員，請確認對方已註冊');
+  if (!toUser) throw new Error('查無此手機號碼的會員，請對方先完成 LINE 登錄綁定後再轉贈');
   if (toUser.id === fromUser.id) throw new Error('不能轉贈給自己');
 
   // 原子性轉贈：鎖券 → 改綁 → 寫紀錄 → 寫 log 全在同一交易（避免併發超轉/孤兒轉贈）
