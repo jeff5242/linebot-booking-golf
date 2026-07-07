@@ -94,6 +94,12 @@ function localDateStr(offsetDays = 0) {
     return `${y}-${m}-${day}`;
 }
 
+// 本月 1 號（本地時區）
+function monthStartStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
 // ─── 逐張明細（會計對帳用，含卷號）: mode = 'sales' | 'redemption' ───
 function DetailReport({ mode }) {
     const isSales = mode === 'sales';
@@ -129,11 +135,14 @@ function DetailReport({ mode }) {
 
     useEffect(() => { fetchData(); }, [mode]);
 
+    const applyRange = (s, e) => {
+        setStartDate(s);
+        setEndDate(e);
+        fetchData(s, e, voucherType);
+    };
     const setRange = (offset) => {
         const d = localDateStr(offset);
-        setStartDate(d);
-        setEndDate(d);
-        fetchData(d, d, voucherType);
+        applyRange(d, d);
     };
 
     const rows = data?.rows || [];
@@ -151,6 +160,8 @@ function DetailReport({ mode }) {
             <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button onClick={() => setRange(0)} style={btnStyle('#0891b2')}>今日</button>
                 <button onClick={() => setRange(-1)} style={btnStyle('#0891b2')}>昨日</button>
+                <button onClick={() => applyRange(localDateStr(-6), localDateStr(0))} style={btnStyle('#0891b2')}>近 7 天</button>
+                <button onClick={() => applyRange(monthStartStr(), localDateStr(0))} style={btnStyle('#0891b2')}>本月</button>
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle} />
                 <span style={{ color: '#9ca3af' }}>～</span>
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputStyle} />
