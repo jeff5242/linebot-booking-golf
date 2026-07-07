@@ -59,6 +59,27 @@ function formatDate(iso) {
     return iso.slice(0, 10);
 }
 
+// 解析報表回應：非 2xx 時丟出可讀錯誤（adminFetch 只在 401 丟錯，其餘要自己判斷）
+async function parseReportRes(res) {
+    if (!res.ok) {
+        if (res.status === 404) throw new Error('找不到報表 API（後端可能尚未更新部署）');
+        if (res.status === 403) throw new Error('沒有檢視此報表的權限');
+        let detail = '';
+        try { detail = (await res.json())?.error || ''; } catch { /* 非 JSON 回應 */ }
+        throw new Error(detail || `報表載入失敗（HTTP ${res.status}）`);
+    }
+    return res.json();
+}
+
+function ErrorBanner({ message }) {
+    if (!message) return null;
+    return (
+        <div style={{ padding: '10px 14px', marginBottom: '12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#dc2626', fontSize: '13px', fontWeight: '500' }}>
+            ⚠️ {message}
+        </div>
+    );
+}
+
 function formatDateTime(iso) {
     if (!iso) return '';
     return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
@@ -86,18 +107,21 @@ function DetailReport({ mode }) {
     const [startDate, setStartDate] = useState(localDateStr(0));
     const [endDate, setEndDate] = useState(localDateStr(0));
     const [voucherType, setVoucherType] = useState('');
+    const [error, setError] = useState('');
 
     const fetchData = async (s = startDate, e = endDate, vt = voucherType) => {
         setLoading(true);
+        setError('');
         try {
             const params = new URLSearchParams();
             if (s) params.set('startDate', s);
             if (e) params.set('endDate', e);
             if (vt) params.set('voucherType', vt);
             const res = await adminFetch(`${endpoint}?${params}`);
-            setData(await res.json());
+            setData(await parseReportRes(res));
         } catch (err) {
             console.error('Detail report error:', err);
+            setError(err.message || '報表載入失敗，後端可能未更新');
         } finally {
             setLoading(false);
         }
@@ -138,6 +162,8 @@ function DetailReport({ mode }) {
                 <button onClick={() => fetchData()} style={btnStyle('#2563eb')}>查詢</button>
                 <button onClick={handleExport} disabled={!rows.length} style={btnStyle()}>匯出 CSV</button>
             </div>
+
+            <ErrorBanner message={error} />
 
             {s && (
                 <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -198,18 +224,21 @@ function SalesReport() {
     const [endDate, setEndDate] = useState('');
     const [voucherType, setVoucherType] = useState('');
     const [search, setSearch] = useState('');
+    const [error, setError] = useState('');
 
     const fetchData = async () => {
         setLoading(true);
+        setError('');
         try {
             const params = new URLSearchParams();
             if (startDate) params.set('startDate', startDate);
             if (endDate) params.set('endDate', endDate);
             if (voucherType) params.set('voucherType', voucherType);
             const res = await adminFetch(`/api/reports/voucher-sales?${params}`);
-            setData(await res.json());
+            setData(await parseReportRes(res));
         } catch (err) {
             console.error('Sales report error:', err);
+            setError(err.message || '報表載入失敗，後端可能未更新');
         } finally {
             setLoading(false);
         }
@@ -246,6 +275,8 @@ function SalesReport() {
                 <input type="text" placeholder="搜尋客戶..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...inputStyle, width: '140px' }} />
                 <button onClick={handleExport} disabled={!filteredRows.length} style={btnStyle()}>匯出 CSV</button>
             </div>
+
+            <ErrorBanner message={error} />
 
             {s && (
                 <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -308,17 +339,20 @@ function RedemptionReport() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [granularity, setGranularity] = useState('daily');
+    const [error, setError] = useState('');
 
     const fetchData = async () => {
         setLoading(true);
+        setError('');
         try {
             const params = new URLSearchParams({ granularity });
             if (startDate) params.set('startDate', startDate);
             if (endDate) params.set('endDate', endDate);
             const res = await adminFetch(`/api/reports/voucher-redemption?${params}`);
-            setData(await res.json());
+            setData(await parseReportRes(res));
         } catch (err) {
             console.error('Redemption report error:', err);
+            setError(err.message || '報表載入失敗，後端可能未更新');
         } finally {
             setLoading(false);
         }
@@ -350,6 +384,8 @@ function RedemptionReport() {
                 <button onClick={fetchData} style={btnStyle('#2563eb')}>查詢</button>
                 <button onClick={handleExport} disabled={!rows.length} style={btnStyle()}>匯出 CSV</button>
             </div>
+
+            <ErrorBanner message={error} />
 
             {s && (
                 <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -412,14 +448,17 @@ function BalanceReport() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState('');
+    const [error, setError] = useState('');
 
     const fetchData = async () => {
         setLoading(true);
+        setError('');
         try {
             const res = await adminFetch('/api/reports/voucher-balance');
-            setData(await res.json());
+            setData(await parseReportRes(res));
         } catch (err) {
             console.error('Balance report error:', err);
+            setError(err.message || '報表載入失敗，後端可能未更新');
         } finally {
             setLoading(false);
         }
@@ -451,6 +490,8 @@ function BalanceReport() {
                     {loading ? '載入中...' : `共 ${filteredRows.length} 位客戶`}
                 </span>
             </div>
+
+            <ErrorBanner message={error} />
 
             {s && (
                 <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -516,14 +557,17 @@ function ExpiryWarningReport() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [days, setDays] = useState('30');
+    const [error, setError] = useState('');
 
     const fetchData = async () => {
         setLoading(true);
+        setError('');
         try {
             const res = await adminFetch(`/api/reports/voucher-expiry-warning?days=${days}`);
-            setData(await res.json());
+            setData(await parseReportRes(res));
         } catch (err) {
             console.error('Expiry warning error:', err);
+            setError(err.message || '報表載入失敗，後端可能未更新');
         } finally {
             setLoading(false);
         }
@@ -559,6 +603,8 @@ function ExpiryWarningReport() {
                 <button onClick={fetchData} style={btnStyle('#2563eb')}>查詢</button>
                 <button onClick={handleExport} disabled={!rows.length} style={btnStyle()}>匯出 CSV</button>
             </div>
+
+            <ErrorBanner message={error} />
 
             {s && (
                 <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
