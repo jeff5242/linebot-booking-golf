@@ -4,6 +4,8 @@ import { adminFetch } from '../utils/adminApi';
 const SUB_TABS = [
     { key: 'sales', label: '銷售報表' },
     { key: 'redemption', label: '核銷統計' },
+    { key: 'salesDetail', label: '銷售明細（卷號）' },
+    { key: 'redemptionDetail', label: '核銷明細（卷號）' },
     { key: 'balance', label: '餘額總覽' },
     { key: 'expiry', label: '到期預警' },
 ];
@@ -55,6 +57,137 @@ function exportCsv(filename, headers, rows) {
 function formatDate(iso) {
     if (!iso) return '';
     return iso.slice(0, 10);
+}
+
+function formatDateTime(iso) {
+    if (!iso) return '';
+    return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+}
+
+function localDateStr(offsetDays = 0) {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+// ─── 逐張明細（會計對帳用，含卷號）: mode = 'sales' | 'redemption' ───
+function DetailReport({ mode }) {
+    const isSales = mode === 'sales';
+    const endpoint = isSales ? '/api/reports/voucher-sales-detail' : '/api/reports/voucher-redemption-detail';
+    const timeLabel = isSales ? '售出時間' : '核銷時間';
+    const amountLabel = isSales ? '售價' : '金額';
+    const filename = isSales ? '電子票券銷售明細_卷號.csv' : '電子票券核銷明細_卷號.csv';
+
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [startDate, setStartDate] = useState(localDateStr(0));
+    const [endDate, setEndDate] = useState(localDateStr(0));
+    const [voucherType, setVoucherType] = useState('');
+
+    const fetchData = async (s = startDate, e = endDate, vt = voucherType) => {
+        setLoading(true);
+        try {
+            const params = new URLSearchParams();
+            if (s) params.set('startDate', s);
+            if (e) params.set('endDate', e);
+            if (vt) params.set('voucherType', vt);
+            const res = await adminFetch(`${endpoint}?${params}`);
+            setData(await res.json());
+        } catch (err) {
+            console.error('Detail report error:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { fetchData(); }, [mode]);
+
+    const setRange = (offset) => {
+        const d = localDateStr(offset);
+        setStartDate(d);
+        setEndDate(d);
+        fetchData(d, d, voucherType);
+    };
+
+    const rows = data?.rows || [];
+    const s = data?.summary;
+    const timeVal = (r) => (isSales ? r.sold_at : r.redeemed_at);
+
+    const handleExport = () => {
+        const headers = [timeLabel, '卷號', '券種', amountLabel, '客戶', '電話', '會員編號', '操作人'];
+        const csvRows = rows.map(r => [formatDateTime(timeVal(r)), r.code, r.product_name, r.price, r.customer_name, r.phone, r.member_no, r.operator_name]);
+        exportCsv(filename, headers, csvRows);
+    };
+
+    return (
+        <div>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button onClick={() => setRange(0)} style={btnStyle('#0891b2')}>今日</button>
+                <button onClick={() => setRange(-1)} style={btnStyle('#0891b2')}>昨日</button>
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle} />
+                <span style={{ color: '#9ca3af' }}>～</span>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputStyle} />
+                <select value={voucherType} onChange={e => setVoucherType(e.target.value)} style={selectStyle}>
+                    <option value="">全部券種</option>
+                    <option value="green_fee">果嶺券</option>
+                    <option value="product">商品券</option>
+                </select>
+                <button onClick={() => fetchData()} style={btnStyle('#2563eb')}>查詢</button>
+                <button onClick={handleExport} disabled={!rows.length} style={btnStyle()}>匯出 CSV</button>
+            </div>
+
+            {s && (
+                <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                    <SummaryCard label={isSales ? '售出張數' : '核銷張數'} value={s.totalCount} unit="張" color={isSales ? '#7c3aed' : '#dc2626'} />
+                    <SummaryCard label="總金額" value={`$${s.totalAmount.toLocaleString()}`} color="#16a34a" />
+                    <SummaryCard label="果嶺券" value={s.greenFeeCount} unit="張" color="#2563eb" />
+                    <SummaryCard label="商品券" value={s.productCount} unit="張" color="#ea580c" />
+                </div>
+            )}
+
+            <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                        <tr style={{ background: '#f9fafb' }}>
+                            <th style={thStyle}>{timeLabel}</th>
+                            <th style={thStyle}>卷號</th>
+                            <th style={thStyle}>券種</th>
+                            <th style={{ ...thStyle, textAlign: 'right' }}>{amountLabel}</th>
+                            <th style={thStyle}>客戶</th>
+                            <th style={thStyle}>電話</th>
+                            <th style={thStyle}>會員編號</th>
+                            <th style={thStyle}>操作人</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {loading ? (
+                            <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>載入中...</td></tr>
+                        ) : rows.length === 0 ? (
+                            <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>無資料</td></tr>
+                        ) : rows.map((r, i) => (
+                            <tr key={r.code + i} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb' }}>
+                                <td style={{ ...tdStyle, fontSize: '12px', color: '#6b7280' }}>{formatDateTime(timeVal(r))}</td>
+                                <td style={{ ...tdStyle, fontFamily: 'monospace', fontWeight: '600' }}>{r.code}</td>
+                                <td style={tdStyle}>
+                                    <span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '12px', background: r.product_name === '果嶺券' ? '#dbeafe' : '#ffedd5', color: r.product_name === '果嶺券' ? '#1d4ed8' : '#c2410c' }}>
+                                        {r.product_name}
+                                    </span>
+                                </td>
+                                <td style={{ ...tdStyle, textAlign: 'right', fontWeight: '600' }}>${r.price}</td>
+                                <td style={tdStyle}>{r.customer_name}</td>
+                                <td style={tdStyle}>{r.phone}</td>
+                                <td style={tdStyle}>{r.member_no}</td>
+                                <td style={tdStyle}>{r.operator_name}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
 }
 
 // ─── 銷售報表 ───
@@ -497,6 +630,8 @@ export function VoucherReportPanel() {
             </div>
             {activeTab === 'sales' && <SalesReport />}
             {activeTab === 'redemption' && <RedemptionReport />}
+            {activeTab === 'salesDetail' && <DetailReport mode="sales" />}
+            {activeTab === 'redemptionDetail' && <DetailReport mode="redemption" />}
             {activeTab === 'balance' && <BalanceReport />}
             {activeTab === 'expiry' && <ExpiryWarningReport />}
         </div>

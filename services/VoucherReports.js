@@ -121,6 +121,94 @@ async function getRedemptionReport({ startDate, endDate, granularity = 'daily' }
   return { rows, summary, granularity };
 }
 
+// 逐張銷售明細（會計對帳用）：每張售出的電子券一列，含卷號
+async function getSalesDetailReport({ startDate, endDate, voucherType, userId }) {
+  let query = supabase
+    .from('voucher_logs')
+    .select('id, created_at, operator_name, vouchers!inner(id, code, product_name, price, user_id, source_type, valid_from, valid_until, users!inner(display_name, phone, member_no))')
+    .eq('action', 'issued')
+    .in('vouchers.product_name', PRODUCT_NAMES)
+    .eq('vouchers.source_type', 'digital_purchase')
+    .order('created_at', { ascending: true });
+
+  if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+  if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+  if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
+  if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
+  if (userId) query = query.eq('vouchers.user_id', userId);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const rows = (data || []).map(log => {
+    const v = log.vouchers;
+    return {
+      sold_at: log.created_at,
+      code: v.code,
+      product_name: v.product_name,
+      price: v.price,
+      customer_name: v.users.display_name || '',
+      phone: v.users.phone || '',
+      member_no: v.users.member_no || '',
+      valid_from: v.valid_from,
+      valid_until: v.valid_until,
+      operator_name: log.operator_name || '',
+    };
+  });
+
+  const summary = {
+    totalCount: rows.length,
+    totalAmount: rows.reduce((s, r) => s + (r.price || 0), 0),
+    greenFeeCount: rows.filter(r => r.product_name === '果嶺券').length,
+    productCount: rows.filter(r => r.product_name === '商品券').length,
+  };
+
+  return { rows, summary };
+}
+
+// 逐張核銷明細（會計對帳用）：每張核銷的電子券一列，含卷號
+async function getRedemptionDetailReport({ startDate, endDate, voucherType }) {
+  let query = supabase
+    .from('voucher_logs')
+    .select('id, created_at, operator_name, vouchers!inner(id, code, product_name, price, source_type, users(display_name, phone, member_no))')
+    .eq('action', 'redeemed')
+    .in('vouchers.product_name', PRODUCT_NAMES)
+    .eq('vouchers.source_type', 'digital_purchase')
+    .order('created_at', { ascending: true });
+
+  if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+  if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+  if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
+  if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const rows = (data || []).map(log => {
+    const v = log.vouchers;
+    const u = v.users || {};
+    return {
+      redeemed_at: log.created_at,
+      code: v.code,
+      product_name: v.product_name,
+      price: v.price,
+      customer_name: u.display_name || '',
+      phone: u.phone || '',
+      member_no: u.member_no || '',
+      operator_name: log.operator_name || '',
+    };
+  });
+
+  const summary = {
+    totalCount: rows.length,
+    totalAmount: rows.reduce((s, r) => s + (r.price || 0), 0),
+    greenFeeCount: rows.filter(r => r.product_name === '果嶺券').length,
+    productCount: rows.filter(r => r.product_name === '商品券').length,
+  };
+
+  return { rows, summary };
+}
+
 async function getBalanceReport() {
   const { data, error } = await supabase
     .from('vouchers')
@@ -249,6 +337,8 @@ async function getExpiryWarningReport({ daysThreshold = 30 }) {
 module.exports = {
   getSalesReport,
   getRedemptionReport,
+  getSalesDetailReport,
+  getRedemptionDetailReport,
   getBalanceReport,
   getExpiryWarningReport,
 };
