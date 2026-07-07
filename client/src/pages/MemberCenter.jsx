@@ -40,6 +40,7 @@ export function MemberCenter() {
     const [vouchers, setVouchers] = useState([]);
 
     // 轉贈
+    const [transferEnabled, setTransferEnabled] = useState(false);
     const [showTransfer, setShowTransfer] = useState(false);
     const [transferType, setTransferType] = useState('green_fee');
     const [transferQty, setTransferQty] = useState(1);
@@ -95,6 +96,7 @@ export function MemberCenter() {
                 const data = await res.json();
                 setProfile(data.user);
                 setStats(data.stats);
+                setTransferEnabled(!!data.transferEnabled);
             }
         } catch (err) {
             console.error('Fetch profile error:', err);
@@ -557,7 +559,7 @@ export function MemberCenter() {
             {/* 優惠券 Tab */}
             {activeTab === 'vouchers' && (
                 <div>
-                    {(availableFor('green_fee') > 0 || availableFor('product') > 0) && (
+                    {transferEnabled && (availableFor('green_fee') > 0 || availableFor('product') > 0) && (
                         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
                             <button
                                 onClick={() => { setTransferMessage(''); setShowTransfer(true); }}

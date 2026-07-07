@@ -15,6 +15,17 @@ const VOUCHER_TYPES = {
 
 const SETTINGS_KEY = 'voucher_issue_settings';
 
+// 會員轉贈功能開關設定
+const TRANSFER_CONFIG_KEY = 'voucher_transfer_config';
+const TRANSFER_MODES = ['off', 'test', 'on']; // 關閉 / 僅測試人員 / 開放全部會員
+// 預設：僅測試人員可用，公開端關閉（一上線不會直接對全體開放）
+const DEFAULT_TRANSFER_CONFIG = { mode: 'test', testPhones: ['0936923912'] };
+
+/** 手機號正規化：去非數字 */
+function normalizePhone(phone) {
+  return String(phone || '').replace(/[^0-9]/g, '');
+}
+
 // 套本可續約的最短間隔（距上次購買起算），與前端 PackageIssueSection 一致
 const MIN_RENEWAL_MONTHS = 9;
 
@@ -118,6 +129,44 @@ async function updateIssueSettings(settings) {
     .single();
   if (error) throw error;
   return data.value;
+}
+
+/** 取得轉贈功能設定（含預設合併） */
+async function getTransferConfig() {
+  const { data } = await supabase
+    .from('system_settings')
+    .select('value')
+    .eq('key', TRANSFER_CONFIG_KEY)
+    .maybeSingle();
+  const saved = data?.value || {};
+  const mode = TRANSFER_MODES.includes(saved.mode) ? saved.mode : DEFAULT_TRANSFER_CONFIG.mode;
+  const testPhones = Array.isArray(saved.testPhones) ? saved.testPhones : DEFAULT_TRANSFER_CONFIG.testPhones;
+  return { mode, testPhones };
+}
+
+/** 更新轉贈功能設定（驗證 mode、正規化並去重手機清單） */
+async function updateTransferConfig(config) {
+  const mode = TRANSFER_MODES.includes(config?.mode) ? config.mode : 'off';
+  const rawPhones = Array.isArray(config?.testPhones) ? config.testPhones : [];
+  const testPhones = [...new Set(
+    rawPhones.map(normalizePhone).filter(p => /^09\d{8}$/.test(p))
+  )];
+  const value = { mode, testPhones };
+  const { data, error } = await supabase
+    .from('system_settings')
+    .upsert({ key: TRANSFER_CONFIG_KEY, value, updated_at: new Date().toISOString() })
+    .select()
+    .single();
+  if (error) throw error;
+  return data.value;
+}
+
+/** 依設定判斷某手機是否可使用轉贈功能 */
+function isTransferAllowed(config, phone) {
+  if (!config || config.mode === 'off') return false;
+  if (config.mode === 'on') return true;
+  // test 模式：僅清單內手機
+  return (config.testPhones || []).includes(normalizePhone(phone));
 }
 
 async function issueVouchers({ userId, voucherType, quantity, operatorName, validFrom, validUntil }) {
@@ -403,6 +452,13 @@ async function transferVouchers({ fromUserId, toPhone, voucherType, quantity }) 
     .maybeSingle();
   if (fromErr || !fromUser) throw new Error('找不到會員資料');
 
+  // 轉贈功能開關（後端強制，不信任前端）
+  const transferConfig = await getTransferConfig();
+  if (!isTransferAllowed(transferConfig, fromUser.phone)) {
+    if (transferConfig.mode === 'test') throw new Error('轉贈功能目前僅開放測試人員使用');
+    throw new Error('轉贈功能尚未開放');
+  }
+
   if (cleanPhone === fromUser.phone) throw new Error('不能轉贈給自己');
 
   // 收禮會員（依手機號）
@@ -625,4 +681,7 @@ module.exports = {
   getLastPurchaseDate,
   getPackageStatus,
   transferVouchers,
+  getTransferConfig,
+  updateTransferConfig,
+  isTransferAllowed,
 };

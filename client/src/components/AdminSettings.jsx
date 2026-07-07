@@ -171,6 +171,110 @@ function Card({ title, icon: Icon, children, actions, variant = 'default' }) {
     );
 }
 
+// ============= 會員轉贈功能開關 =============
+
+function TransferToggleCard() {
+    const [mode, setMode] = useState('test');
+    const [phonesText, setPhonesText] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [msg, setMsg] = useState('');
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await adminFetch('/api/voucher-ops/transfer-config');
+                if (res.ok) {
+                    const cfg = await res.json();
+                    setMode(cfg.mode || 'test');
+                    setPhonesText((cfg.testPhones || []).join('\n'));
+                }
+            } catch (e) {
+                console.error('讀取轉贈設定失敗:', e);
+            }
+        })();
+    }, []);
+
+    const save = async () => {
+        setLoading(true);
+        setMsg('');
+        try {
+            const testPhones = phonesText.split(/[\s,，、]+/).map(s => s.trim()).filter(Boolean);
+            const res = await adminFetch('/api/voucher-ops/transfer-config', {
+                method: 'POST',
+                body: JSON.stringify({ mode, testPhones }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setMode(data.config.mode);
+                setPhonesText((data.config.testPhones || []).join('\n'));
+                setMsg('已儲存');
+            } else {
+                setMsg('儲存失敗：' + (data.error || res.status));
+            }
+        } catch (e) {
+            setMsg('儲存失敗：' + e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const modeOptions = [
+        { value: 'off', label: '關閉（所有會員都不能轉贈）' },
+        { value: 'test', label: '僅測試人員（只有下方名單的手機可轉贈）' },
+        { value: 'on', label: '開放全部會員（所有會員都可轉贈）' },
+    ];
+
+    return (
+        <Card title="會員轉贈功能" icon={Users}>
+            <p className="text-xs text-gray-500 mb-4">
+                控制 LINE 會員專區「🎁 轉贈好友」功能的開放範圍。關閉或非名單會員將看不到轉贈按鈕，後端也會擋下。
+            </p>
+            <div className="space-y-3">
+                {modeOptions.map(opt => (
+                    <label key={opt.value} className="flex items-start gap-2 cursor-pointer">
+                        <input
+                            type="radio"
+                            name="transfer-mode"
+                            className="mt-1"
+                            checked={mode === opt.value}
+                            onChange={() => setMode(opt.value)}
+                        />
+                        <span className="text-sm text-gray-700">{opt.label}</span>
+                    </label>
+                ))}
+            </div>
+
+            {mode === 'test' && (
+                <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">測試人員手機（每行一組，格式 09xxxxxxxx）</label>
+                    <textarea
+                        value={phonesText}
+                        onChange={e => setPhonesText(e.target.value)}
+                        rows={4}
+                        placeholder="0936923912"
+                        className="w-full border border-gray-300 rounded-lg p-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">會自動過濾非 09 開頭 10 碼的號碼並去重。</p>
+                </div>
+            )}
+
+            <div className="mt-4 flex items-center gap-3">
+                <button
+                    onClick={save}
+                    disabled={loading}
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg shadow-sm disabled:opacity-50 transition-colors"
+                >
+                    <Save className="w-4 h-4" />
+                    {loading ? '儲存中...' : '儲存轉贈設定'}
+                </button>
+                {msg && (
+                    <span className={`text-sm font-medium ${msg.includes('失敗') ? 'text-red-600' : 'text-green-600'}`}>{msg}</span>
+                )}
+            </div>
+        </Card>
+    );
+}
+
 // ============= 主元件 =============
 
 export function AdminSettings() {
@@ -946,6 +1050,9 @@ export function AdminSettings() {
                     </Tab.Panel>
                 </Tab.Panels>
             </Tab.Group>
+
+            {/* 會員轉贈功能開關（獨立設定，即時儲存） */}
+            <TransferToggleCard />
         </div>
     );
 }
