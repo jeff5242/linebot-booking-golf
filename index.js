@@ -2130,6 +2130,15 @@ app.get('/api/member/profile', async (req, res) => {
       .eq('status', 'active')
       .eq('source_type', 'digital_purchase');
 
+    // 轉贈功能是否對此會員開放（依設定 + 此會員手機）
+    let transferEnabled = false;
+    try {
+      const transferConfig = await VoucherOps.getTransferConfig();
+      transferEnabled = VoucherOps.isTransferAllowed(transferConfig, user.phone);
+    } catch (e) {
+      console.error('讀取轉贈設定失敗:', e.message);
+    }
+
     res.json({
       user: {
         id: user.id,
@@ -2150,6 +2159,8 @@ app.get('/api/member/profile', async (req, res) => {
         transferableGreenFeeVouchers: (digitalGreenFee || 0),
         transferableMerchandiseVouchers: (digitalMerchandise || 0),
       },
+      // 轉贈功能是否對此會員開放（前端據此顯示/隱藏轉贈按鈕；後端另有強制檢查）
+      transferEnabled,
     });
   } catch (error) {
     console.error('Member Profile Error:', error);
@@ -2355,6 +2366,25 @@ app.post('/api/voucher-ops/settings', requireAuth('settings'), async (req, res) 
   try {
     const updated = await VoucherOps.updateIssueSettings(req.body);
     res.json({ success: true, settings: updated });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 會員轉贈功能開關設定（讀：settings 權限；寫：settings 權限）
+app.get('/api/voucher-ops/transfer-config', requireAuth('settings'), async (req, res) => {
+  try {
+    const config = await VoucherOps.getTransferConfig();
+    res.json(config);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/voucher-ops/transfer-config', requireAuth('settings'), async (req, res) => {
+  try {
+    const updated = await VoucherOps.updateTransferConfig(req.body);
+    res.json({ success: true, config: updated });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
