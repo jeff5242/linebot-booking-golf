@@ -9,25 +9,42 @@ const supabase = createClient(
 
 const PRODUCT_NAMES = ['果嶺券', '商品券'];
 
+// PostgREST 單次查詢預設上限 1000 筆；對帳明細不可截斷，故分頁撈完整。
+// buildQuery: 每次呼叫回傳一個「尚未加 range」的 query builder（含 select/filter/order）。
+const PAGE_SIZE = 1000;
+async function fetchAllRows(buildQuery) {
+  const all = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return all;
+}
+
 async function getSalesReport({ startDate, endDate, voucherType, userId }) {
-  let query = supabase
-    .from('voucher_logs')
-    .select('id, action, created_at, operator_name, memo, vouchers!inner(id, code, product_name, price, user_id, source_type, valid_from, valid_until, users!inner(display_name, phone, member_no))')
-    .eq('action', 'issued')
-    .in('vouchers.product_name', PRODUCT_NAMES)
-    .eq('vouchers.source_type', 'digital_purchase')
-    .order('created_at', { ascending: false });
+  const buildQuery = () => {
+    let query = supabase
+      .from('voucher_logs')
+      .select('id, action, created_at, operator_name, memo, vouchers!inner(id, code, product_name, price, user_id, source_type, valid_from, valid_until, users!inner(display_name, phone, member_no))')
+      .eq('action', 'issued')
+      .in('vouchers.product_name', PRODUCT_NAMES)
+      .eq('vouchers.source_type', 'digital_purchase')
+      .order('created_at', { ascending: false });
 
-  if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-  if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
-  if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
-  if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
-  if (userId) query = query.eq('vouchers.user_id', userId);
+    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+    if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
+    if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
+    if (userId) query = query.eq('vouchers.user_id', userId);
+    return query;
+  };
 
-  const { data, error } = await query;
-  if (error) throw error;
-
-  const logs = data || [];
+  const logs = await fetchAllRows(buildQuery);
 
   const grouped = {};
   for (const log of logs) {
@@ -66,21 +83,21 @@ async function getSalesReport({ startDate, endDate, voucherType, userId }) {
 }
 
 async function getRedemptionReport({ startDate, endDate, granularity = 'daily' }) {
-  let query = supabase
-    .from('voucher_logs')
-    .select('id, action, created_at, operator_name, vouchers!inner(id, product_name, price, source_type)')
-    .eq('action', 'redeemed')
-    .in('vouchers.product_name', PRODUCT_NAMES)
-    .eq('vouchers.source_type', 'digital_purchase')
-    .order('created_at', { ascending: true });
+  const buildQuery = () => {
+    let query = supabase
+      .from('voucher_logs')
+      .select('id, action, created_at, operator_name, vouchers!inner(id, product_name, price, source_type)')
+      .eq('action', 'redeemed')
+      .in('vouchers.product_name', PRODUCT_NAMES)
+      .eq('vouchers.source_type', 'digital_purchase')
+      .order('created_at', { ascending: true });
 
-  if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-  if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+    return query;
+  };
 
-  const { data, error } = await query;
-  if (error) throw error;
-
-  const logs = data || [];
+  const logs = await fetchAllRows(buildQuery);
 
   const buckets = {};
   for (const log of logs) {
@@ -123,24 +140,26 @@ async function getRedemptionReport({ startDate, endDate, granularity = 'daily' }
 
 // 逐張銷售明細（會計對帳用）：每張售出的電子券一列，含卷號
 async function getSalesDetailReport({ startDate, endDate, voucherType, userId }) {
-  let query = supabase
-    .from('voucher_logs')
-    .select('id, created_at, operator_name, vouchers!inner(id, code, product_name, price, user_id, source_type, valid_from, valid_until, users!inner(display_name, phone, member_no))')
-    .eq('action', 'issued')
-    .in('vouchers.product_name', PRODUCT_NAMES)
-    .eq('vouchers.source_type', 'digital_purchase')
-    .order('created_at', { ascending: true });
+  const buildQuery = () => {
+    let query = supabase
+      .from('voucher_logs')
+      .select('id, created_at, operator_name, vouchers!inner(id, code, product_name, price, user_id, source_type, valid_from, valid_until, users!inner(display_name, phone, member_no))')
+      .eq('action', 'issued')
+      .in('vouchers.product_name', PRODUCT_NAMES)
+      .eq('vouchers.source_type', 'digital_purchase')
+      .order('created_at', { ascending: true });
 
-  if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-  if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
-  if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
-  if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
-  if (userId) query = query.eq('vouchers.user_id', userId);
+    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+    if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
+    if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
+    if (userId) query = query.eq('vouchers.user_id', userId);
+    return query;
+  };
 
-  const { data, error } = await query;
-  if (error) throw error;
+  const data = await fetchAllRows(buildQuery);
 
-  const rows = (data || []).map(log => {
+  const rows = data.map(log => {
     const v = log.vouchers;
     return {
       sold_at: log.created_at,
@@ -168,23 +187,25 @@ async function getSalesDetailReport({ startDate, endDate, voucherType, userId })
 
 // 逐張核銷明細（會計對帳用）：每張核銷的電子券一列，含卷號
 async function getRedemptionDetailReport({ startDate, endDate, voucherType }) {
-  let query = supabase
-    .from('voucher_logs')
-    .select('id, created_at, operator_name, vouchers!inner(id, code, product_name, price, source_type, users(display_name, phone, member_no))')
-    .eq('action', 'redeemed')
-    .in('vouchers.product_name', PRODUCT_NAMES)
-    .eq('vouchers.source_type', 'digital_purchase')
-    .order('created_at', { ascending: true });
+  const buildQuery = () => {
+    let query = supabase
+      .from('voucher_logs')
+      .select('id, created_at, operator_name, vouchers!inner(id, code, product_name, price, source_type, users(display_name, phone, member_no))')
+      .eq('action', 'redeemed')
+      .in('vouchers.product_name', PRODUCT_NAMES)
+      .eq('vouchers.source_type', 'digital_purchase')
+      .order('created_at', { ascending: true });
 
-  if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-  if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
-  if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
-  if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
+    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
+    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+    if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
+    if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
+    return query;
+  };
 
-  const { data, error } = await query;
-  if (error) throw error;
+  const data = await fetchAllRows(buildQuery);
 
-  const rows = (data || []).map(log => {
+  const rows = data.map(log => {
     const v = log.vouchers;
     const u = v.users || {};
     return {
@@ -210,16 +231,13 @@ async function getRedemptionDetailReport({ startDate, endDate, voucherType }) {
 }
 
 async function getBalanceReport() {
-  const { data, error } = await supabase
+  const vouchers = await fetchAllRows(() => supabase
     .from('vouchers')
     .select('user_id, product_name, price, status, valid_until, source_type, users!inner(display_name, phone, member_no)')
     .in('product_name', PRODUCT_NAMES)
     .eq('source_type', 'digital_purchase')
-    .in('status', ['active', 'redeemed']);
-
-  if (error) throw error;
-
-  const vouchers = data || [];
+    .in('status', ['active', 'redeemed'])
+    .order('user_id', { ascending: true }));
   const userMap = {};
 
   for (const v of vouchers) {
@@ -279,18 +297,16 @@ async function getExpiryWarningReport({ daysThreshold = 30 }) {
   const todayStr = today.toISOString().slice(0, 10);
   const thresholdStr = thresholdDate.toISOString().slice(0, 10);
 
-  const { data, error } = await supabase
+  const vouchers = await fetchAllRows(() => supabase
     .from('vouchers')
     .select('user_id, product_name, price, status, valid_until, source_type, users!inner(display_name, phone, member_no)')
     .in('product_name', PRODUCT_NAMES)
     .eq('source_type', 'digital_purchase')
     .eq('status', 'active')
     .gte('valid_until', todayStr)
-    .lte('valid_until', thresholdStr);
+    .lte('valid_until', thresholdStr)
+    .order('valid_until', { ascending: true }));
 
-  if (error) throw error;
-
-  const vouchers = data || [];
   const userMap = {};
 
   for (const v of vouchers) {
