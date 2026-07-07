@@ -89,6 +89,21 @@ export default function RolePermissionManager({ roles, onRolesChanged }) {
         fontSize: '14px', marginRight: '8px'
     };
 
+    // 固定欄位順序：避免勾選後重抓 roles 時欄位跳動。
+    // 系統角色 created_at 相同（同時種入）會平手、順序不保證，故用明確順序釘死；
+    // 其餘角色排在系統角色之後，以 created_at→id 穩定定序。
+    const SYSTEM_ROLE_ORDER = ['finance', 'super_admin', 'starter']; // 財會 → 球場管理 → 出發台
+    const rank = (r) => {
+        const i = SYSTEM_ROLE_ORDER.indexOf(r.name);
+        return i === -1 ? 999 : i;
+    };
+    const sortedRoles = [...roles].sort((a, b) => {
+        if (rank(a) !== rank(b)) return rank(a) - rank(b);
+        const t = String(a.created_at || '').localeCompare(String(b.created_at || ''));
+        if (t !== 0) return t;
+        return String(a.id).localeCompare(String(b.id));
+    });
+
     return (
         <div className="card" style={{ marginTop: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -145,7 +160,7 @@ export default function RolePermissionManager({ roles, onRolesChanged }) {
                             <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd', minWidth: '160px' }}>
                                 功能模組
                             </th>
-                            {roles.map(role => (
+                            {sortedRoles.map(role => (
                                 <th key={role.id} style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd', minWidth: '100px' }}>
                                     <div>{role.label}</div>
                                     {role.is_system ? (
@@ -172,7 +187,7 @@ export default function RolePermissionManager({ roles, onRolesChanged }) {
                         {ALL_TABS.map(tab => (
                             <tr key={tab.key} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '10px', fontSize: '14px' }}>{tab.label}</td>
-                                {roles.map(role => (
+                                {sortedRoles.map(role => (
                                     <td key={role.id} style={{ textAlign: 'center', padding: '10px' }}>
                                         <input
                                             type="checkbox"
