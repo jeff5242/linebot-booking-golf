@@ -39,6 +39,14 @@ export function MemberCenter() {
     // 優惠券
     const [vouchers, setVouchers] = useState([]);
 
+    // 轉贈
+    const [showTransfer, setShowTransfer] = useState(false);
+    const [transferType, setTransferType] = useState('green_fee');
+    const [transferQty, setTransferQty] = useState(1);
+    const [transferPhone, setTransferPhone] = useState('');
+    const [transferLoading, setTransferLoading] = useState(false);
+    const [transferMessage, setTransferMessage] = useState('');
+
     // QR Modal
     const [showQR, setShowQR] = useState(false);
 
@@ -130,6 +138,47 @@ export function MemberCenter() {
             }
         } catch (err) {
             console.error('Fetch vouchers error:', err);
+        }
+    };
+
+    // 可轉贈張數：只算線上電子券（digital_purchase），與轉贈後端一致，排除舊系統福利券
+    const availableFor = (type) => (
+        type === 'green_fee' ? (stats.transferableGreenFeeVouchers || 0) : (stats.transferableMerchandiseVouchers || 0)
+    );
+
+    const handleTransfer = async () => {
+        const qty = parseInt(transferQty, 10);
+        const max = availableFor(transferType);
+        if (!qty || qty < 1) { setTransferMessage('請輸入轉贈張數'); return; }
+        if (qty > max) { setTransferMessage(`可轉贈張數不足，目前僅有 ${max} 張`); return; }
+        if (!/^09\d{8}$/.test(transferPhone)) { setTransferMessage('請輸入正確的對方手機號碼'); return; }
+        const typeName = transferType === 'green_fee' ? '果嶺券' : '商品券';
+        if (!window.confirm(`確定將 ${qty} 張${typeName}轉贈給 ${transferPhone}？\n轉出後將無法復原。`)) return;
+
+        setTransferLoading(true);
+        setTransferMessage('');
+        try {
+            const res = await fetch(`${apiUrl}/api/member/transfer-vouchers`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lineUserId, voucherType: transferType, quantity: qty, recipientPhone: transferPhone }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setShowTransfer(false);
+                setTransferPhone('');
+                setTransferQty(1);
+                setTransferMessage('');
+                fetchProfile();
+                fetchVouchers();
+                alert(data.message);
+            } else {
+                setTransferMessage(data.error || '轉贈失敗');
+            }
+        } catch (err) {
+            setTransferMessage('網路錯誤');
+        } finally {
+            setTransferLoading(false);
         }
     };
 
@@ -508,6 +557,20 @@ export function MemberCenter() {
             {/* 優惠券 Tab */}
             {activeTab === 'vouchers' && (
                 <div>
+                    {(availableFor('green_fee') > 0 || availableFor('product') > 0) && (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+                            <button
+                                onClick={() => { setTransferMessage(''); setShowTransfer(true); }}
+                                style={{
+                                    padding: '8px 16px', borderRadius: '8px', border: '1px solid #8b5cf6',
+                                    background: '#faf5ff', color: '#7c3aed', fontWeight: 'bold',
+                                    fontSize: '0.85rem', cursor: 'pointer',
+                                }}
+                            >
+                                🎁 轉贈好友
+                            </button>
+                        </div>
+                    )}
                     {vouchers.length === 0 ? (
                         <p style={{ textAlign: 'center', color: '#999', padding: '30px 0' }}>尚無優惠券</p>
                     ) : (
@@ -568,6 +631,120 @@ export function MemberCenter() {
                             );
                         })
                     )}
+                </div>
+            )}
+
+            {/* 轉贈 Modal */}
+            {showTransfer && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    display: 'flex', justifyContent: 'center', alignItems: 'center',
+                    zIndex: 2000,
+                }} onClick={() => setShowTransfer(false)}>
+                    <div style={{
+                        backgroundColor: 'white', borderRadius: '16px', padding: '24px',
+                        maxWidth: '400px', width: '90%',
+                    }} onClick={e => e.stopPropagation()}>
+                        <h3 style={{ marginTop: 0, marginBottom: '16px' }}>🎁 轉贈優惠券</h3>
+
+                        {/* 券種選擇 */}
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                            選擇券種
+                        </label>
+                        <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                            {[
+                                { key: 'green_fee', label: '果嶺券' },
+                                { key: 'product', label: '商品券' },
+                            ].map(t => (
+                                <button
+                                    key={t.key}
+                                    onClick={() => setTransferType(t.key)}
+                                    style={{
+                                        flex: 1, padding: '10px', borderRadius: '8px', cursor: 'pointer',
+                                        border: transferType === t.key ? '2px solid #8b5cf6' : '1px solid #ddd',
+                                        background: transferType === t.key ? '#faf5ff' : 'white',
+                                        color: transferType === t.key ? '#7c3aed' : '#666',
+                                        fontWeight: 'bold', fontSize: '0.9rem',
+                                    }}
+                                >
+                                    {t.label}
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal', marginTop: '2px' }}>
+                                        可用 {availableFor(t.key)} 張
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* 張數 */}
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                            轉贈張數
+                        </label>
+                        <input
+                            type="number"
+                            inputMode="numeric"
+                            min="1"
+                            max={availableFor(transferType)}
+                            value={transferQty}
+                            onChange={e => setTransferQty(e.target.value.replace(/[^0-9]/g, ''))}
+                            style={{
+                                width: '100%', padding: '10px', borderRadius: '8px',
+                                border: '1px solid #ddd', fontSize: '1rem', boxSizing: 'border-box', marginBottom: '14px',
+                            }}
+                        />
+
+                        {/* 對方手機 */}
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                            對方手機號碼
+                        </label>
+                        <input
+                            type="tel"
+                            inputMode="numeric"
+                            placeholder="0912345678"
+                            maxLength="10"
+                            value={transferPhone}
+                            onChange={e => setTransferPhone(e.target.value.replace(/[^0-9]/g, ''))}
+                            style={{
+                                width: '100%', padding: '10px', borderRadius: '8px',
+                                border: '1px solid #ddd', fontSize: '1rem', boxSizing: 'border-box', marginBottom: '4px',
+                            }}
+                        />
+                        <div style={{ fontSize: '0.75rem', color: '#999', marginBottom: '14px' }}>
+                            對方需為已註冊會員；轉出後無法復原
+                        </div>
+
+                        {transferMessage && (
+                            <div style={{
+                                padding: '8px', borderRadius: '8px', marginBottom: '12px', fontSize: '0.85rem',
+                                backgroundColor: '#fee2e2', color: '#dc2626',
+                            }}>
+                                {transferMessage}
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                                onClick={() => { setShowTransfer(false); setTransferMessage(''); }}
+                                style={{
+                                    flex: 1, padding: '12px', borderRadius: '8px',
+                                    border: '1px solid #ddd', background: 'white', cursor: 'pointer',
+                                }}
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={handleTransfer}
+                                disabled={transferLoading}
+                                style={{
+                                    flex: 1, padding: '12px', borderRadius: '8px', border: 'none',
+                                    background: transferLoading ? '#d1d5db' : '#8b5cf6',
+                                    color: 'white', fontWeight: 'bold', cursor: transferLoading ? 'default' : 'pointer',
+                                }}
+                            >
+                                {transferLoading ? '處理中...' : '確認轉贈'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
