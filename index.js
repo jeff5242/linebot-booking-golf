@@ -1767,6 +1767,28 @@ app.get('/api/reports/voucher-redemption', requireAuth('voucher_report'), async 
   }
 });
 
+app.get('/api/reports/voucher-sales-detail', requireAuth('voucher_report'), async (req, res) => {
+  try {
+    const { startDate, endDate, voucherType, userId } = req.query;
+    const result = await VoucherReports.getSalesDetailReport({ startDate, endDate, voucherType, userId });
+    res.json(result);
+  } catch (error) {
+    console.error('Sales detail report error:', error);
+    res.status(500).json({ error: '報表產生失敗: ' + error.message });
+  }
+});
+
+app.get('/api/reports/voucher-redemption-detail', requireAuth('voucher_report'), async (req, res) => {
+  try {
+    const { startDate, endDate, voucherType } = req.query;
+    const result = await VoucherReports.getRedemptionDetailReport({ startDate, endDate, voucherType });
+    res.json(result);
+  } catch (error) {
+    console.error('Redemption detail report error:', error);
+    res.status(500).json({ error: '報表產生失敗: ' + error.message });
+  }
+});
+
 app.get('/api/reports/voucher-balance', requireAuth('voucher_report'), async (req, res) => {
   try {
     const result = await VoucherReports.getBalanceReport();
