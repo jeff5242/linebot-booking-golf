@@ -422,6 +422,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                         unitPrice={issueSettings?.green_fee?.unit_price ?? 200}
                         onIssue={() => openIssueModal('green_fee')}
                         onRedeem={() => openRedeemModal('green_fee')}
+                        canRedeem={hasPermission('redeem_green_fee')}
                     />
                     <VoucherCard
                         title="商品券"
@@ -564,7 +565,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
     );
 }
 
-function VoucherCard({ title, color, bg, summary, unitPrice, onIssue, onRedeem, onReverseRedeem }) {
+function VoucherCard({ title, color, bg, summary, unitPrice, onIssue, onRedeem, onReverseRedeem, canRedeem = true }) {
     return (
         <div style={{ border: `1px solid ${color}33`, borderRadius: '10px', padding: '16px', background: bg }}>
             <div style={{ fontWeight: 'bold', fontSize: '1rem', color, marginBottom: '12px' }}>{title}</div>
@@ -577,7 +578,11 @@ function VoucherCard({ title, color, bg, summary, unitPrice, onIssue, onRedeem, 
                 總計 {summary.total} 張 / 面額 ${unitPrice}
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={onRedeem} disabled={summary.active === 0} style={{ ...actionBtnStyle, background: summary.active > 0 ? '#dc2626' : '#d1d5db', color: '#fff' }}>用券</button>
+                {canRedeem ? (
+                    <button onClick={onRedeem} disabled={summary.active === 0} style={{ ...actionBtnStyle, background: summary.active > 0 ? '#dc2626' : '#d1d5db', color: '#fff' }}>用券</button>
+                ) : (
+                    <button disabled title="果嶺券僅限發球台核銷" style={{ ...actionBtnStyle, background: '#d1d5db', color: '#6b7280', cursor: 'not-allowed' }}>限發球台核銷</button>
+                )}
                 {summary.redeemed > 0 && (
                     <button onClick={onReverseRedeem} style={{ ...actionBtnStyle, background: '#fff', border: '1px solid #d97706', color: '#d97706' }}>撤銷核銷</button>
                 )}
