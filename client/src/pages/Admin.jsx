@@ -254,6 +254,8 @@ function QRScannerTab() {
     const [userVouchers, setUserVouchers] = useState([]);
     const [lastScanned, setLastScanned] = useState('');
     const [scannerPaused, setScannerPaused] = useState(false);
+    // 果嶺券核銷權限：無此權限者（如業務）只能核商品券
+    const canRedeemGreenFee = getAdminPermissions().includes('redeem_green_fee');
 
     useEffect(() => {
         const scanner = new Html5QrcodeScanner(
@@ -364,26 +366,16 @@ function QRScannerTab() {
         if (!confirm(`確定要核銷此票券嗎？\n${voucher.product_name} (${voucher.code})`)) return;
 
         try {
-            // 1. Update Voucher
-            const { error } = await supabase.from('vouchers')
-                .update({ status: 'redeemed', redeemed_at: new Date() })
-                .eq('id', voucher.id);
-
-            if (error) throw error;
-
-            // 2. Add Log
-            await supabase.from('voucher_logs').insert([{
-                voucher_id: voucher.id,
-                action: 'redeemed',
-                memo: '現場掃碼核銷',
-                operator_name: 'Admin'
-            }]);
+            // 走後端端點：記錄真正操作人 + 依券種強制控管（果嶺券需權限）
+            const res = await adminFetch('/api/voucher-ops/scan-redeem', {
+                method: 'POST',
+                body: JSON.stringify({ voucher_id: voucher.id }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '核銷失敗');
 
             alert('核銷成功！');
-
-            // 3. Remove from local list
             setUserVouchers(prev => prev.filter(v => v.id !== voucher.id));
-
         } catch (e) {
             alert('核銷失敗: ' + e.message);
         }
@@ -445,17 +437,32 @@ function QRScannerTab() {
                                                 有效期: {new Date(v.valid_until).toLocaleDateString()}
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={() => handleRedeemVoucher(v)}
-                                            className="btn"
-                                            style={{
-                                                width: 'auto', padding: '8px 16px',
-                                                background: '#2563eb', color: 'white',
-                                                fontSize: '1rem'
-                                            }}
-                                        >
-                                            立即使用
-                                        </button>
+                                        {v.product_name === '果嶺券' && !canRedeemGreenFee ? (
+                                            <button
+                                                disabled
+                                                className="btn"
+                                                title="果嶺券僅限發球台核銷"
+                                                style={{
+                                                    width: 'auto', padding: '8px 16px',
+                                                    background: '#d1d5db', color: '#6b7280',
+                                                    fontSize: '0.9rem', cursor: 'not-allowed'
+                                                }}
+                                            >
+                                                限發球台核銷
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => handleRedeemVoucher(v)}
+                                                className="btn"
+                                                style={{
+                                                    width: 'auto', padding: '8px 16px',
+                                                    background: '#2563eb', color: 'white',
+                                                    fontSize: '1rem'
+                                                }}
+                                            >
+                                                立即使用
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
                             </div>

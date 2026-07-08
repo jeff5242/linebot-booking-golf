@@ -366,6 +366,49 @@ async function redeemVouchers({ userId, voucherType, quantity, operatorName }) {
   return { redeemed: toRedeem.length };
 }
 
+/**
+ * 現場掃碼核銷單張券（依 voucher id）。
+ * 依券種控管：果嶺券需 allowGreenFee 為 true（呼叫端依操作者權限帶入）。
+ * 記錄真正的操作人，供對帳追溯。
+ */
+async function scanRedeemVoucher({ voucherId, operatorName, allowGreenFee }) {
+  if (!voucherId) throw new Error('缺少票券 id');
+
+  const { data: voucher, error: fetchErr } = await supabase
+    .from('vouchers')
+    .select('id, code, product_name, price, status, user_id')
+    .eq('id', voucherId)
+    .maybeSingle();
+  if (fetchErr) throw fetchErr;
+  if (!voucher) throw new Error('找不到此票券');
+  if (voucher.status !== 'active') throw new Error('此票券非可用狀態，無法核銷');
+
+  // 券種控管：果嶺券只有具權限者（發球台/管理）能核
+  if (voucher.product_name === '果嶺券' && !allowGreenFee) {
+    throw new Error('此帳號無果嶺券核銷權限，果嶺券僅限發球台核銷');
+  }
+
+  // 條件式更新（status 仍為 active 才更新），避免併發重複核銷
+  const { data: updated, error: updErr } = await supabase
+    .from('vouchers')
+    .update({ status: 'redeemed', redeemed_at: new Date().toISOString() })
+    .eq('id', voucherId)
+    .eq('status', 'active')
+    .select('id')
+    .maybeSingle();
+  if (updErr) throw updErr;
+  if (!updated) throw new Error('此票券已被核銷或狀態已變更');
+
+  await supabase.from('voucher_logs').insert([{
+    voucher_id: voucherId,
+    action: 'redeemed',
+    operator_name: operatorName || 'Admin',
+    memo: `現場掃碼核銷 ${voucher.product_name}`,
+  }]);
+
+  return { redeemed: 1, code: voucher.code, productName: voucher.product_name, price: voucher.price };
+}
+
 async function voidVouchers({ voucherIds, reason, operatorName }) {
   if (!voucherIds || voucherIds.length === 0) throw new Error('請選擇要作廢的券');
 
@@ -669,6 +712,7 @@ module.exports = {
   updateIssueSettings,
   issueVouchers,
   redeemVouchers,
+  scanRedeemVoucher,
   voidVouchers,
   reverseRedeem,
   cancelAllVouchers,

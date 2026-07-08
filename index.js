@@ -2428,6 +2428,10 @@ app.post('/api/voucher-ops/redeem', requireAuth('voucher_ops'), async (req, res)
   try {
     const { user_id, voucher_type, quantity } = req.body;
     const adminInfo = req.admin;
+    // 券種控管：果嶺券只有具「果嶺券核銷」權限者能核
+    if (voucher_type === 'green_fee' && !(adminInfo?.permissions || []).includes('redeem_green_fee')) {
+      return res.status(403).json({ error: '此帳號無果嶺券核銷權限，果嶺券僅限發球台核銷' });
+    }
     const result = await VoucherOps.redeemVouchers({
       userId: user_id,
       voucherType: voucher_type,
@@ -2435,6 +2439,23 @@ app.post('/api/voucher-ops/redeem', requireAuth('voucher_ops'), async (req, res)
       operatorName: adminInfo?.name || 'Admin',
     });
     res.json({ success: true, ...result, message: `成功核銷 ${result.redeemed} 張` });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 現場掃碼核銷單張券（業務外勤用；權限 scan 即可，果嶺券另需 redeem_green_fee）
+app.post('/api/voucher-ops/scan-redeem', requireAuth('scan'), async (req, res) => {
+  try {
+    const { voucher_id } = req.body;
+    const adminInfo = req.admin;
+    const allowGreenFee = (adminInfo?.permissions || []).includes('redeem_green_fee');
+    const result = await VoucherOps.scanRedeemVoucher({
+      voucherId: voucher_id,
+      operatorName: adminInfo?.name || 'Admin',
+      allowGreenFee,
+    });
+    res.json({ success: true, ...result, message: `已核銷 ${result.productName}（${result.code}）` });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
