@@ -611,22 +611,28 @@ async function getCustomerVouchers(userId) {
     product: { active: 0, redeemed: 0, voided: 0, total: 0 },
   };
   let validUntil = null;
+  let validFrom = null;
   for (const v of all) {
     const key = v.product_name === '果嶺券' ? 'green_fee' : 'product';
     summary[key].total++;
     if (v.status === 'active') summary[key].active++;
     else if (v.status === 'redeemed') summary[key].redeemed++;
     else if (v.status === 'void') summary[key].voided++;
-    if (v.valid_until && (!validUntil || v.valid_until > validUntil)) {
-      validUntil = v.valid_until;
+    if (v.status !== 'void') {
+      if (v.valid_until && (!validUntil || v.valid_until > validUntil)) validUntil = v.valid_until;
+      if (v.valid_from && (!validFrom || v.valid_from < validFrom)) validFrom = v.valid_from;
     }
   }
 
-  return { user, summary, vouchers: all, validUntil };
+  return { user, summary, vouchers: all, validUntil, validFrom };
 }
 
-async function updateVoucherExpiry({ userId, validUntil, operatorName, reason }) {
-  if (!validUntil) throw new Error('請選擇到期日');
+async function updateVoucherExpiry({ userId, validFrom, validUntil, operatorName, reason }) {
+  if (!validFrom && !validUntil) throw new Error('請至少選擇啟用日或到期日');
+  // 兩者都給時，啟用日不可晚於到期日（只比對日期部分）
+  if (validFrom && validUntil && String(validFrom).slice(0, 10) > String(validUntil).slice(0, 10)) {
+    throw new Error('啟用日不可晚於到期日');
+  }
 
   const { data: vouchers, error } = await supabase
     .from('vouchers')
@@ -639,21 +645,28 @@ async function updateVoucherExpiry({ userId, validUntil, operatorName, reason })
   if (!vouchers || vouchers.length === 0) throw new Error('該用戶沒有可修改的券');
 
   const ids = vouchers.map(v => v.id);
+  const patch = {};
+  if (validFrom) patch.valid_from = validFrom;
+  if (validUntil) patch.valid_until = validUntil;
+
   const { error: updateError } = await supabase
     .from('vouchers')
-    .update({ valid_until: validUntil })
+    .update(patch)
     .in('id', ids);
   if (updateError) throw updateError;
 
+  const changes = [];
+  if (validFrom) changes.push(`啟用日→${String(validFrom).slice(0, 10)}`);
+  if (validUntil) changes.push(`到期日→${String(validUntil).slice(0, 10)}`);
   const logEntries = ids.map(id => ({
     voucher_id: id,
     action: 'extended',
     operator_name: operatorName,
-    memo: reason || `修改到期日為 ${validUntil}`,
+    memo: reason || `修改效期（${changes.join('、')}）`,
   }));
   await supabase.from('voucher_logs').insert(logEntries);
 
-  return { updated: ids.length, validUntil };
+  return { updated: ids.length, validFrom, validUntil };
 }
 
 async function getPaperVoucherExpiry(userId) {
