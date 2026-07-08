@@ -2027,7 +2027,15 @@ app.post('/api/member/rebind', async (req, res) => {
 
     // 3. 更新手機號碼
     if (phoneOwner && phoneOwner.line_user_id !== lineUserId) {
-      // phone record 存在但沒有 LINE ID → 合併：更新 phone record 加上 LINE ID
+      // phone record 存在但沒有 LINE ID → 合併：把 LINE ID 綁到 phone record
+      // 注意順序：必須先刪除舊的 LINE record，才能把同一個 line_user_id 綁到 phone record，
+      // 否則會撞到 users_line_user_id_key 唯一約束（兩筆同 line_user_id）。
+      await supabase
+        .from('users')
+        .delete()
+        .eq('line_user_id', lineUserId)
+        .neq('id', phoneOwner.id);
+
       const { data, error } = await supabase
         .from('users')
         .update({ line_user_id: lineUserId })
@@ -2035,13 +2043,6 @@ app.post('/api/member/rebind', async (req, res) => {
         .select()
         .single();
       if (error) throw new Error(error.message);
-
-      // 刪除舊的 LINE record（如果存在且不同）
-      await supabase
-        .from('users')
-        .delete()
-        .eq('line_user_id', lineUserId)
-        .neq('id', phoneOwner.id);
 
       res.json({ success: true, user: data });
     } else {
