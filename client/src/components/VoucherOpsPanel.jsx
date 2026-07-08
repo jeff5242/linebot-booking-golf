@@ -181,7 +181,8 @@ export function VoucherOpsPanel({ preSelectedUser }) {
 
     const openExpiryModal = async () => {
         const currentExpiry = customerData?.validUntil ? customerData.validUntil.slice(0, 10) : '';
-        setModal({ type: 'update_expiry', validUntil: currentExpiry, reason: '', paperExpiry: null, loadingPaper: true });
+        const currentStart = customerData?.validFrom ? customerData.validFrom.slice(0, 10) : '';
+        setModal({ type: 'update_expiry', validFrom: currentStart, validUntil: currentExpiry, reason: '', paperExpiry: null, loadingPaper: true });
         try {
             const res = await adminFetch(`/api/voucher-ops/paper-expiry/${selectedUser.id}`);
             const data = await res.json();
@@ -192,14 +193,16 @@ export function VoucherOpsPanel({ preSelectedUser }) {
     };
 
     const handleUpdateExpiry = async () => {
-        if (!modal.validUntil) return alert('請選擇到期日');
-        if (!confirm(`確定要將此客人所有電子票券的到期日修改為 ${modal.validUntil} 嗎？`)) return;
+        if (!modal.validFrom && !modal.validUntil) return alert('請至少選擇啟用日或到期日');
+        if (modal.validFrom && modal.validUntil && modal.validFrom > modal.validUntil) return alert('啟用日不可晚於到期日');
+        if (!confirm(`確定要將此客人所有電子票券的效期修改為\n啟用日：${modal.validFrom || '（不變）'}\n到期日：${modal.validUntil || '（不變）'} 嗎？`)) return;
         try {
             const res = await adminFetch('/api/voucher-ops/update-expiry', {
                 method: 'POST',
                 body: JSON.stringify({
                     user_id: selectedUser.id,
-                    valid_until: modal.validUntil,
+                    valid_from: modal.validFrom || undefined,
+                    valid_until: modal.validUntil || undefined,
                     reason: modal.reason || undefined,
                 }),
             });
@@ -388,13 +391,13 @@ export function VoucherOpsPanel({ preSelectedUser }) {
             {customerData && !loading && (summary?.green_fee?.active > 0 || summary?.product?.active > 0 || summary?.green_fee?.redeemed > 0 || summary?.product?.redeemed > 0) && (
                 <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                        <span style={{ fontSize: '14px', color: '#374151' }}>票券到期日：</span>
+                        <span style={{ fontSize: '14px', color: '#374151' }}>票券效期：</span>
                         <span style={{ fontWeight: 'bold', fontSize: '14px', color: customerData.validUntil ? '#059669' : '#9ca3af' }}>
-                            {customerData.validUntil ? customerData.validUntil.slice(0, 10) : '未設定'}
+                            {customerData.validFrom ? customerData.validFrom.slice(0, 10) : '未設定'} ～ {customerData.validUntil ? customerData.validUntil.slice(0, 10) : '未設定'}
                         </span>
                     </div>
                     <button onClick={openExpiryModal} style={{ padding: '6px 14px', border: '1px solid #059669', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', background: '#fff', color: '#059669', fontWeight: '500' }}>
-                        修改到期日
+                        修改效期
                     </button>
                 </div>
             )}
@@ -542,10 +545,12 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                 {modal.type === 'update_expiry' && (
                     <ExpiryModal
                         userName={selectedUser?.display_name}
+                        validFrom={modal.validFrom}
                         validUntil={modal.validUntil}
                         reason={modal.reason}
                         paperExpiry={modal.paperExpiry}
                         loadingPaper={modal.loadingPaper}
+                        onFromChange={d => setModal(prev => ({ ...prev, validFrom: d }))}
                         onDateChange={d => setModal(prev => ({ ...prev, validUntil: d }))}
                         onReasonChange={r => setModal(prev => ({ ...prev, reason: r }))}
                         onConfirm={handleUpdateExpiry}
@@ -1050,7 +1055,7 @@ function SettingsModal({ settings, onSave, onClose }) {
     );
 }
 
-function ExpiryModal({ userName, validUntil, reason, paperExpiry, loadingPaper, onDateChange, onReasonChange, onConfirm, onCancel }) {
+function ExpiryModal({ userName, validFrom, validUntil, reason, paperExpiry, loadingPaper, onFromChange, onDateChange, onReasonChange, onConfirm, onCancel }) {
     const paperPlusYear = paperExpiry ? (() => {
         const d = new Date(paperExpiry);
         d.setFullYear(d.getFullYear() + 1);
@@ -1059,7 +1064,7 @@ function ExpiryModal({ userName, validUntil, reason, paperExpiry, loadingPaper, 
 
     return (
         <div>
-            <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: '#059669' }}>修改票券到期日</h3>
+            <h3 style={{ margin: '0 0 16px', fontSize: '1.1rem', color: '#059669' }}>修改票券效期</h3>
             <div style={{ marginBottom: '12px', color: '#6b7280' }}>客人：<b>{userName}</b></div>
 
             {loadingPaper ? (
@@ -1080,12 +1085,20 @@ function ExpiryModal({ userName, validUntil, reason, paperExpiry, loadingPaper, 
             )}
 
             <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>新到期日</label>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>啟用日</label>
                 <input
                     type="date"
-                    value={validUntil}
+                    value={validFrom || ''}
+                    onChange={e => onFromChange(e.target.value)}
+                    style={{ ...inputStyle, width: '100%' }}
+                />
+            </div>
+            <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>到期日</label>
+                <input
+                    type="date"
+                    value={validUntil || ''}
                     onChange={e => onDateChange(e.target.value)}
-                    autoFocus
                     style={{ ...inputStyle, width: '100%' }}
                 />
             </div>
@@ -1100,7 +1113,7 @@ function ExpiryModal({ userName, validUntil, reason, paperExpiry, loadingPaper, 
                 />
             </div>
             <div style={{ padding: '10px', background: '#f0f9ff', borderRadius: '6px', marginBottom: '16px', fontSize: '13px', color: '#1e40af' }}>
-                此操作會修改該客人所有電子票券（可用＋已核銷）的到期日
+                此操作會修改該客人所有電子票券（可用＋已核銷）的效期。啟用日、到期日可只改其中一個（留空則不變）。
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                 <button onClick={onCancel} style={cancelBtnStyle}>取消</button>

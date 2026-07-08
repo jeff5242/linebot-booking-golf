@@ -2559,15 +2559,19 @@ app.get('/api/voucher-ops/package-status/:userId', requireAuth('voucher_ops'), a
 
 app.post('/api/voucher-ops/update-expiry', requireAuth('voucher_ops'), async (req, res) => {
   try {
-    const { user_id, valid_until, reason } = req.body;
+    const { user_id, valid_from, valid_until, reason } = req.body;
     const adminInfo = req.admin;
     const result = await VoucherOps.updateVoucherExpiry({
       userId: user_id,
+      validFrom: valid_from,
       validUntil: valid_until,
       operatorName: adminInfo?.name || 'Admin',
       reason,
     });
-    res.json({ success: true, ...result, message: `已更新 ${result.updated} 張券的到期日為 ${result.validUntil}` });
+    const parts = [];
+    if (result.validFrom) parts.push(`啟用日 ${String(result.validFrom).slice(0, 10)}`);
+    if (result.validUntil) parts.push(`到期日 ${String(result.validUntil).slice(0, 10)}`);
+    res.json({ success: true, ...result, message: `已更新 ${result.updated} 張券的${parts.join('、')}` });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
