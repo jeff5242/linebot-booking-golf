@@ -2544,13 +2544,14 @@ app.get('/api/voucher-ops/history', requireAuth('voucher_ops'), async (req, res)
 
 app.post('/api/voucher-ops/issue-package', requireAuth('voucher_ops'), async (req, res) => {
   try {
-    const { user_id, package_index, valid_from } = req.body;
+    const { user_id, package_index, valid_from, invoice_number } = req.body;
     const adminInfo = req.admin;
     const result = await VoucherOps.issuePackage({
       userId: user_id,
       packageIndex: package_index,
       operatorName: adminInfo?.name || 'Admin',
       validFrom: valid_from,
+      invoiceNumber: invoice_number,
     });
     res.json({ success: true, ...result, message: `成功發出「${result.package.name}」：果嶺券 ${result.green_fee.count} 張 + 商品券 ${result.product.count} 張` });
   } catch (error) {

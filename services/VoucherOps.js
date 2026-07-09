@@ -169,7 +169,7 @@ function isTransferAllowed(config, phone) {
   return (config.testPhones || []).includes(normalizePhone(phone));
 }
 
-async function issueVouchers({ userId, voucherType, quantity, operatorName, validFrom, validUntil }) {
+async function issueVouchers({ userId, voucherType, quantity, operatorName, validFrom, validUntil, invoiceNumber }) {
   if (!VOUCHER_TYPES[voucherType]) {
     throw new Error('無效的券種');
   }
@@ -203,6 +203,7 @@ async function issueVouchers({ userId, voucherType, quantity, operatorName, vali
     };
     if (validFrom) row.valid_from = validFrom;
     if (validUntil) row.valid_until = validUntil;
+    if (invoiceNumber) row.invoice_number = invoiceNumber;
     vouchers.push(row);
   }
 
@@ -223,11 +224,15 @@ async function issueVouchers({ userId, voucherType, quantity, operatorName, vali
   return { vouchers: inserted, user };
 }
 
-async function issuePackage({ userId, packageIndex, operatorName, validFrom }) {
+async function issuePackage({ userId, packageIndex, operatorName, validFrom, invoiceNumber }) {
   const settings = await getIssueSettings();
   const packages = settings.packages || DEFAULT_ISSUE_SETTINGS.packages;
   const pkg = packages[packageIndex];
   if (!pkg) throw new Error('無效的套本');
+
+  // 電子發票號碼必填（賣套本時輸入，蓋到本次每張券上供對帳）
+  const invoice = String(invoiceNumber || '').trim();
+  if (!invoice) throw new Error('請輸入電子發票號碼');
 
   const validityYears = settings.validity_years || 1;
   const today = new Date().toISOString().slice(0, 10);
@@ -290,11 +295,11 @@ async function issuePackage({ userId, packageIndex, operatorName, validFrom }) {
   try {
     const greenResult = await issueVouchers({
       userId, voucherType: 'green_fee', quantity: pkg.green_fee,
-      operatorName, validFrom: startDate, validUntil: endDate,
+      operatorName, validFrom: startDate, validUntil: endDate, invoiceNumber: invoice,
     });
     const productResult = await issueVouchers({
       userId, voucherType: 'product', quantity: pkg.product,
-      operatorName, validFrom: startDate, validUntil: endDate,
+      operatorName, validFrom: startDate, validUntil: endDate, invoiceNumber: invoice,
     });
 
     return {
@@ -700,7 +705,7 @@ async function getHistory({ userId, voucherType, page = 1, limit = 20 }) {
 
   let query = supabase
     .from('voucher_logs')
-    .select('*, vouchers!inner(code, product_name, price, user_id, users(display_name, phone))', { count: 'exact' });
+    .select('*, vouchers!inner(code, product_name, price, user_id, invoice_number, users(display_name, phone))', { count: 'exact' });
 
   if (userId) {
     query = query.eq('vouchers.user_id', userId);
