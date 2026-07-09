@@ -2131,6 +2131,21 @@ app.get('/api/member/profile', async (req, res) => {
       .eq('status', 'active')
       .eq('source_type', 'digital_purchase');
 
+    // 優惠券使用期限（可用電子券的啟用日～到期日；與會員有效期限分開顯示）
+    const { data: voucherPeriodRows } = await supabase
+      .from('vouchers')
+      .select('valid_from, valid_until')
+      .eq('user_id', user.id)
+      .in('product_name', ['果嶺券', '商品券'])
+      .eq('source_type', 'digital_purchase')
+      .eq('status', 'active');
+    let voucherValidFrom = null;
+    let voucherValidUntil = null;
+    for (const v of (voucherPeriodRows || [])) {
+      if (v.valid_from && (!voucherValidFrom || v.valid_from < voucherValidFrom)) voucherValidFrom = v.valid_from;
+      if (v.valid_until && (!voucherValidUntil || v.valid_until > voucherValidUntil)) voucherValidUntil = v.valid_until;
+    }
+
     // 轉贈功能是否對此會員開放（依設定 + 此會員手機）
     let transferEnabled = false;
     try {
@@ -2162,6 +2177,9 @@ app.get('/api/member/profile', async (req, res) => {
       },
       // 轉贈功能是否對此會員開放（前端據此顯示/隱藏轉贈按鈕；後端另有強制檢查）
       transferEnabled,
+      // 優惠券使用期限（西元 ISO；前端轉民國顯示）
+      voucherValidFrom,
+      voucherValidUntil,
     });
   } catch (error) {
     console.error('Member Profile Error:', error);

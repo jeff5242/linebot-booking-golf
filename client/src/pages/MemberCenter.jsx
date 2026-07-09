@@ -5,6 +5,16 @@ import Barcode from 'react-barcode';
 
 const apiUrl = import.meta.env.VITE_API_URL || '';
 
+// 轉民國日期顯示（0YYY/MM/DD）。可吃民國字串（0115-08-30）或西元 ISO（2027-08-01...）。
+function toRocDate(value) {
+    if (!value) return '';
+    const m = String(value).match(/^(\d{3,4})-(\d{2})-(\d{2})/);
+    if (!m) return String(value);
+    let y = parseInt(m[1], 10);
+    if (y >= 1911) y -= 1911; // 西元轉民國；已是民國（<1911）則不動
+    return `${String(y).padStart(4, '0')}/${m[2]}/${m[3]}`;
+}
+
 // 會員身分配色
 const TIER_STYLES = {
     '白金會員': { bg: '#f5f5f5', color: '#333', border: '#999', label: 'PLATINUM' },
@@ -41,6 +51,7 @@ export function MemberCenter() {
 
     // 轉贈
     const [transferEnabled, setTransferEnabled] = useState(false);
+    const [voucherPeriod, setVoucherPeriod] = useState({ from: null, until: null });
     const [showTransfer, setShowTransfer] = useState(false);
     const [transferType, setTransferType] = useState('green_fee');
     const [transferQty, setTransferQty] = useState(1);
@@ -97,6 +108,7 @@ export function MemberCenter() {
                 setProfile(data.user);
                 setStats(data.stats);
                 setTransferEnabled(!!data.transferEnabled);
+                setVoucherPeriod({ from: data.voucherValidFrom || null, until: data.voucherValidUntil || null });
             }
         } catch (err) {
             console.error('Fetch profile error:', err);
@@ -318,7 +330,10 @@ export function MemberCenter() {
                     )}
                     <div>手機號碼：{profile?.phone || '--'}</div>
                     {profile?.member_valid_until && (
-                        <div>有效期限：{profile.member_valid_until}</div>
+                        <div>會員有效期限：{toRocDate(profile.member_valid_until)}</div>
+                    )}
+                    {voucherPeriod.from && voucherPeriod.until && (
+                        <div>優惠券使用期限：{toRocDate(voucherPeriod.from)} ~ {toRocDate(voucherPeriod.until)}</div>
                     )}
                 </div>
 
