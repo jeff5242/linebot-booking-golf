@@ -459,13 +459,14 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                                 <th style={thStyle}>時間</th>
                                 <th style={thStyle}>動作</th>
                                 <th style={thStyle}>券種</th>
+                                <th style={thStyle}>電子發票</th>
                                 <th style={thStyle}>操作人</th>
                                 <th style={thStyle}>備註</th>
                             </tr>
                         </thead>
                         <tbody>
                             {history.length === 0 ? (
-                                <tr><td colSpan={5} style={{ textAlign: 'center', padding: '16px', color: '#9ca3af' }}>無紀錄</td></tr>
+                                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '16px', color: '#9ca3af' }}>無紀錄</td></tr>
                             ) : history.map((log, i) => {
                                 const action = ACTION_LABELS[log.action] || { text: log.action, color: '#374151', bg: '#f9fafb' };
                                 return (
@@ -477,6 +478,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                                             </span>
                                         </td>
                                         <td style={tdStyle}>{log.vouchers?.product_name || '-'}</td>
+                                        <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: '12px' }}>{log.vouchers?.invoice_number || '-'}</td>
                                         <td style={tdStyle}>{log.operator_name || '-'}</td>
                                         <td style={{ ...tdStyle, maxWidth: '200px', fontSize: '12px', color: '#6b7280' }}>{log.memo || '-'}</td>
                                     </tr>
@@ -625,12 +627,14 @@ function PackageIssueSection({ userId, onIssued, settings }) {
     const [loadingDate, setLoadingDate] = useState(false);
     const [renewalStatus, setRenewalStatus] = useState(null);
     const [packageStatus, setPackageStatus] = useState(null);
+    const [invoiceNumber, setInvoiceNumber] = useState('');
 
     const openPackageModal = async (pkgIndex) => {
         setShowPackageModal(pkgIndex);
         setLoadingDate(true);
         setRenewalStatus(null);
         setPackageStatus(null);
+        setInvoiceNumber('');
         let ps = null;
         try {
             // 套本購買狀態（是否已有 active 套本 / 可否續約 / 建議起始日）
@@ -680,7 +684,9 @@ function PackageIssueSection({ userId, onIssued, settings }) {
 
     const handleIssuePackage = async () => {
         const pkg = PACKAGES[showPackageModal];
-        if (!confirm(`確定要發出「${pkg.name}」嗎？\n果嶺券 ${pkg.green_fee} 張 + 商品券 ${pkg.product} 張\n起始日：${customStartDate}`)) return;
+        const invoice = invoiceNumber.trim();
+        if (!invoice) { alert('請輸入電子發票號碼'); return; }
+        if (!confirm(`確定要發出「${pkg.name}」嗎？\n果嶺券 ${pkg.green_fee} 張 + 商品券 ${pkg.product} 張\n起始日：${customStartDate}\n電子發票：${invoice}`)) return;
         setIssuing(true);
         try {
             const res = await adminFetch('/api/voucher-ops/issue-package', {
@@ -689,6 +695,7 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                     user_id: userId,
                     package_index: showPackageModal,
                     valid_from: customStartDate,
+                    invoice_number: invoice,
                 }),
             });
             const data = await res.json();
@@ -787,13 +794,25 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                                         ? `續約起始日由系統鎖定為舊套本到期日（${customStartDate}），效期 ${validityYears} 年`
                                         : `效期 ${validityYears} 年（可調整起始日）`}
                                 </div>
+
+                                <label style={{ display: 'block', margin: '14px 0 6px', fontWeight: '500' }}>
+                                    電子發票號碼 <span style={{ color: '#dc2626' }}>*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    value={invoiceNumber}
+                                    onChange={e => setInvoiceNumber(e.target.value)}
+                                    placeholder="例：AB-12345678"
+                                    style={{ ...inputStyle, width: '100%' }}
+                                />
+                                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>必填，會記錄在本次售出的每張券上供對帳</div>
                             </div>
                         )}
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                             <button onClick={() => setShowPackageModal(null)} style={cancelBtnStyle}>取消</button>
                             {(() => {
-                                const blocked = renewalStatus?.type === 'suspended' || (packageStatus?.hasActive && !packageStatus?.canIssue);
+                                const blocked = renewalStatus?.type === 'suspended' || (packageStatus?.hasActive && !packageStatus?.canIssue) || !invoiceNumber.trim();
                                 return (
                                     <button
                                         onClick={handleIssuePackage}

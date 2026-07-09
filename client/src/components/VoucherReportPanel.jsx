@@ -150,8 +150,8 @@ function DetailReport({ mode }) {
     const timeVal = (r) => (isSales ? r.sold_at : r.redeemed_at);
 
     const handleExport = () => {
-        const headers = [timeLabel, '卷號', '券種', amountLabel, '客戶', '電話', '會員編號', '操作人'];
-        const csvRows = rows.map(r => [formatDateTime(timeVal(r)), r.code, r.product_name, r.price, r.customer_name, r.phone, r.member_no, r.operator_name]);
+        const headers = [timeLabel, '卷號', '券種', amountLabel, '客戶', '電話', '會員編號', '操作人', ...(isSales ? ['電子發票'] : [])];
+        const csvRows = rows.map(r => [formatDateTime(timeVal(r)), r.code, r.product_name, r.price, r.customer_name, r.phone, r.member_no, r.operator_name, ...(isSales ? [r.invoice_number || ''] : [])]);
         exportCsv(filename, headers, csvRows);
     };
 
@@ -197,13 +197,14 @@ function DetailReport({ mode }) {
                             <th style={thStyle}>電話</th>
                             <th style={thStyle}>會員編號</th>
                             <th style={thStyle}>操作人</th>
+                            {isSales && <th style={thStyle}>電子發票</th>}
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>載入中...</td></tr>
+                            <tr><td colSpan={isSales ? 9 : 8} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>載入中...</td></tr>
                         ) : rows.length === 0 ? (
-                            <tr><td colSpan={8} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>無資料</td></tr>
+                            <tr><td colSpan={isSales ? 9 : 8} style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>無資料</td></tr>
                         ) : rows.map((r, i) => (
                             <tr key={r.code + i} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb' }}>
                                 <td style={{ ...tdStyle, fontSize: '12px', color: '#6b7280' }}>{formatDateTime(timeVal(r))}</td>
@@ -218,6 +219,7 @@ function DetailReport({ mode }) {
                                 <td style={tdStyle}>{r.phone}</td>
                                 <td style={tdStyle}>{r.member_no}</td>
                                 <td style={tdStyle}>{r.operator_name}</td>
+                                {isSales && <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{r.invoice_number || '—'}</td>}
                             </tr>
                         ))}
                     </tbody>

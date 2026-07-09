@@ -143,7 +143,7 @@ async function getSalesDetailReport({ startDate, endDate, voucherType, userId })
   const buildQuery = () => {
     let query = supabase
       .from('voucher_logs')
-      .select('id, created_at, operator_name, vouchers!inner(id, code, product_name, price, user_id, source_type, valid_from, valid_until, users!inner(display_name, phone, member_no))')
+      .select('id, created_at, operator_name, vouchers!inner(id, code, product_name, price, user_id, source_type, valid_from, valid_until, invoice_number, users!inner(display_name, phone, member_no))')
       .eq('action', 'issued')
       .in('vouchers.product_name', PRODUCT_NAMES)
       .eq('vouchers.source_type', 'digital_purchase')
@@ -166,6 +166,7 @@ async function getSalesDetailReport({ startDate, endDate, voucherType, userId })
       code: v.code,
       product_name: v.product_name,
       price: v.price,
+      invoice_number: v.invoice_number || '',
       customer_name: v.users.display_name || '',
       phone: v.users.phone || '',
       member_no: v.users.member_no || '',
