@@ -2409,6 +2409,35 @@ app.post('/api/voucher-ops/transfer-config', requireAuth('settings'), async (req
   }
 });
 
+// 用券記錄（發券/用券頁：沿用核銷明細邏輯，改用 voucher_ops 權限）
+app.get('/api/voucher-ops/redemptions', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const { startDate, endDate, voucherType } = req.query;
+    const result = await VoucherReports.getRedemptionDetailReport({ startDate, endDate, voucherType });
+    res.json(result);
+  } catch (error) {
+    console.error('Voucher-ops redemptions error:', error);
+    res.status(500).json({ error: '用券記錄產生失敗: ' + error.message });
+  }
+});
+
+// 銷售交易列表（發券/用券頁：以交易為單位 + 核銷進度）
+app.get('/api/voucher-ops/sales-transactions', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const { startDate, endDate, page, limit } = req.query;
+    const result = await VoucherReports.getSalesTransactions({
+      startDate,
+      endDate,
+      page: parseInt(page) || 1,
+      limit: parseInt(limit) || 15,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Sales transactions error:', error);
+    res.status(500).json({ error: '交易列表產生失敗: ' + error.message });
+  }
+});
+
 app.get('/api/voucher-ops/search-users', requireAuth('voucher_ops'), async (req, res) => {
   try {
     const users = await VoucherOps.searchUsers(req.query.q);

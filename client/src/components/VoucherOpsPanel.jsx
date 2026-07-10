@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { adminFetch, hasPermission } from '../utils/adminApi';
+import { VoucherActivityPanel } from './VoucherActivityPanel';
 
 const VOUCHER_TYPE_LABELS = {
     green_fee: '果嶺券',
@@ -364,6 +365,11 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                     </div>
                 )}
             </div>
+
+            {/* 未選客人：顯示最近銷售交易 / 用券記錄 */}
+            {!selectedUser && !customerData && (
+                <VoucherActivityPanel />
+            )}
 
             {/* Selected User Info */}
             {selectedUser && (

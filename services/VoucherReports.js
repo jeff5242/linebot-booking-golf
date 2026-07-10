@@ -186,6 +186,69 @@ async function getSalesDetailReport({ startDate, endDate, voucherType, userId })
   return { rows, summary };
 }
 
+// 銷售交易列表：以「一筆套票交易」為單位（一張電子發票=一筆；舊資料無發票號則以「客戶+效期起訖」歸類）。
+// 每筆含核銷進度（發券↔用券關聯）與逐張明細供展開。
+async function getSalesTransactions({ startDate, endDate, page = 1, limit = 15 }) {
+  const buildQuery = () => supabase
+    .from('vouchers')
+    .select('id, code, product_name, price, status, valid_from, valid_until, invoice_number, user_id, created_at, redeemed_at, users(display_name, phone, member_no)')
+    .in('product_name', PRODUCT_NAMES)
+    .eq('source_type', 'digital_purchase')
+    .in('status', ['active', 'redeemed'])
+    .order('created_at', { ascending: false });
+
+  const vouchers = await fetchAllRows(buildQuery);
+
+  const groups = {};
+  for (const v of vouchers) {
+    const vf = (v.valid_from || '').slice(0, 10);
+    const vu = (v.valid_until || '').slice(0, 10);
+    const key = v.invoice_number ? `inv:${v.invoice_number}` : `pkg:${v.user_id}:${vf}:${vu}`;
+    if (!groups[key]) {
+      groups[key] = {
+        key,
+        invoice_number: v.invoice_number || '',
+        user_id: v.user_id,
+        customer_name: v.users?.display_name || '',
+        phone: v.users?.phone || '',
+        member_no: v.users?.member_no || '',
+        sale_time: v.created_at,
+        valid_from: vf,
+        valid_until: vu,
+        green_fee_total: 0, green_fee_redeemed: 0,
+        product_total: 0, product_redeemed: 0,
+        amount: 0,
+        vouchers: [],
+      };
+    }
+    const t = groups[key];
+    if (v.created_at < t.sale_time) t.sale_time = v.created_at;
+    const isGreen = v.product_name === '果嶺券';
+    if (isGreen) { t.green_fee_total += 1; if (v.status === 'redeemed') t.green_fee_redeemed += 1; }
+    else { t.product_total += 1; if (v.status === 'redeemed') t.product_redeemed += 1; }
+    t.amount += v.price || 0;
+    t.vouchers.push({ code: v.code, product_name: v.product_name, status: v.status, redeemed_at: v.redeemed_at || null });
+  }
+
+  let all = Object.values(groups);
+  // 依售出時間過濾（可選）
+  if (startDate) all = all.filter(t => t.sale_time.slice(0, 10) >= startDate);
+  if (endDate) all = all.filter(t => t.sale_time.slice(0, 10) <= endDate);
+  all.sort((a, b) => b.sale_time.localeCompare(a.sale_time));
+
+  const total = all.length;
+  const offset = (page - 1) * limit;
+  const rows = all.slice(offset, offset + limit);
+
+  const summary = {
+    totalTransactions: total,
+    withInvoice: all.filter(t => t.invoice_number).length,
+    withoutInvoice: all.filter(t => !t.invoice_number).length,
+  };
+
+  return { rows, total, summary };
+}
+
 // 逐張核銷明細（會計對帳用）：每張核銷的電子券一列，含卷號
 async function getRedemptionDetailReport({ startDate, endDate, voucherType }) {
   const buildQuery = () => {
@@ -356,6 +419,7 @@ module.exports = {
   getRedemptionReport,
   getSalesDetailReport,
   getRedemptionDetailReport,
+  getSalesTransactions,
   getBalanceReport,
   getExpiryWarningReport,
 };
