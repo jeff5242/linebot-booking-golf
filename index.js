@@ -25,7 +25,7 @@ const { generateTimeSlots, processWaitlist } = require('./services/BookingLogic'
 const OperationalCalendar = require('./services/OperationalCalendar');
 const CaddyManagement = require('./services/CaddyManagement');
 const ChargeCard = require('./services/ChargeCard');
-const { login: adminLogin, loginByOtp: adminLoginByOtp } = require('./services/AuthService');
+const { login: adminLogin, loginByOtp: adminLoginByOtp, issueTokenForUsername } = require('./services/AuthService');
 const { requireAuth, optionalAuth } = require('./middleware/auth');
 const RoleMgmt = require('./services/RoleManagement');
 const bcrypt = require('bcryptjs');
@@ -126,11 +126,12 @@ app.post('/api/admin/login', async (req, res) => {
 // OTP 驗證後登入（跳過密碼驗證）
 app.post('/api/admin/login-otp', async (req, res) => {
   try {
-    const { username } = req.body;
+    const { username, accessToken } = req.body;
     if (!username) {
       return res.status(400).json({ error: '帳號為必填' });
     }
-    const result = await adminLoginByOtp(username);
+    // accessToken：前端完成 Supabase Email OTP 驗證後取得的憑證，後端據此驗證身分
+    const result = await adminLoginByOtp(username, accessToken);
     res.json(result);
   } catch (error) {
     res.status(401).json({ error: error.message });
@@ -2503,8 +2504,9 @@ app.post('/api/redeem-station/login', async (req, res) => {
     const { phone, pin } = req.body;
     if (!phone || !pin) return res.status(400).json({ error: '請輸入手機號碼與核銷 PIN' });
     if (String(pin) !== await getRedeemPin()) return res.status(401).json({ error: '核銷 PIN 錯誤' });
+    // 核銷站以「PIN + 帳號存在」為驗證（非 Email OTP），故直接發 token
     let result;
-    try { result = await adminLoginByOtp(String(phone).trim()); }
+    try { result = await issueTokenForUsername(String(phone).trim()); }
     catch { return res.status(401).json({ error: '此手機號碼不是核銷帳號，請確認' }); }
     if (!(result.permissions || []).includes('scan')) {
       return res.status(403).json({ error: '此帳號沒有核銷權限' });
