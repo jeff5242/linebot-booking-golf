@@ -2493,11 +2493,69 @@ app.post('/api/voucher-ops/redeem', requireAuth('voucher_ops'), async (req, res)
   }
 });
 
-// ── 手機核銷站（南區員工用；手機 + 核銷 PIN 登入，之後接 LINE 官方帳號）──
+// ── 手機核銷站（南區員工用；手機 + 核銷 PIN 登入，或 LINE 免登入）──
 async function getRedeemPin() {
   const { data } = await supabase.from('system_settings').select('value').eq('key', 'redeem_pin').maybeSingle();
   return String(data?.value?.pin || '1688');
 }
+
+// 驗證 LIFF ID token（向 LINE 驗證，防偽造），回傳 line_user_id
+async function verifyLineIdToken(idToken) {
+  const clientId = process.env.STAFF_LINE_CHANNEL_ID;
+  if (!clientId) throw new Error('伺服器未設定 STAFF_LINE_CHANNEL_ID');
+  if (!idToken) throw new Error('缺少 LINE 驗證憑證');
+  const resp = await axios.post(
+    'https://api.line.me/oauth2/v2.1/verify',
+    new URLSearchParams({ id_token: idToken, client_id: clientId }).toString(),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, validateStatus: () => true }
+  );
+  if (resp.status !== 200 || !resp.data?.sub) {
+    throw new Error('LINE 身分驗證失敗');
+  }
+  if (String(resp.data.aud) !== String(clientId)) {
+    throw new Error('LINE 驗證憑證來源不符');
+  }
+  return resp.data.sub; // line_user_id
+}
+
+// LINE 免登入：以 LIFF ID token 換後台 JWT（該 LINE 帳號須已綁定核銷帳號）
+app.post('/api/redeem-station/line-login', async (req, res) => {
+  try {
+    const lineUserId = await verifyLineIdToken(req.body?.idToken);
+    const { data: admin } = await supabase
+      .from('admins').select('username, name, role').eq('line_user_id', lineUserId).maybeSingle();
+    if (!admin) return res.json({ needsBinding: true });
+    const result = await issueTokenForUsername(admin.username);
+    if (!(result.permissions || []).includes('scan')) return res.status(403).json({ error: '此帳號沒有核銷權限' });
+    res.json({ ...result, bound: true });
+  } catch (error) {
+    res.status(401).json({ error: error.message });
+  }
+});
+
+// 首次綁定：LINE 帳號 + 手機 + 核銷 PIN → 綁定並登入
+app.post('/api/redeem-station/bind', async (req, res) => {
+  try {
+    const { idToken, phone, pin } = req.body || {};
+    if (String(pin) !== await getRedeemPin()) return res.status(401).json({ error: '核銷 PIN 錯誤' });
+    const lineUserId = await verifyLineIdToken(idToken);
+    const uname = String(phone || '').trim();
+    const { data: admin } = await supabase
+      .from('admins').select('id, username, role, line_user_id').eq('username', uname).maybeSingle();
+    if (!admin) return res.status(401).json({ error: '此手機號碼不是核銷帳號' });
+    // 這個 LINE 帳號是否已綁到別人
+    const { data: other } = await supabase
+      .from('admins').select('username').eq('line_user_id', lineUserId).neq('id', admin.id).maybeSingle();
+    if (other) return res.status(409).json({ error: '此 LINE 帳號已綁定其他核銷帳號' });
+    const { error: upErr } = await supabase.from('admins').update({ line_user_id: lineUserId }).eq('id', admin.id);
+    if (upErr) throw upErr;
+    const result = await issueTokenForUsername(uname);
+    if (!(result.permissions || []).includes('scan')) return res.status(403).json({ error: '此帳號沒有核銷權限' });
+    res.json({ ...result, bound: true });
+  } catch (error) {
+    res.status(401).json({ error: error.message });
+  }
+});
 
 app.post('/api/redeem-station/login', async (req, res) => {
   try {

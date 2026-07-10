@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import liff from '@line/liff';
 
 const apiUrl = import.meta.env.VITE_API_URL || '';
+const LIFF_ID = import.meta.env.VITE_STAFF_LIFF_ID || '';
 const TOKEN_KEY = 'redeem_jwt';
 const INFO_KEY = 'redeem_info';
 const READER_ID = 'redeem-qr-reader';
@@ -24,10 +26,42 @@ const inp = { width: '100%', padding: '14px', border: '1px solid #cdd8cf', borde
 export function RedeemStation() {
     const [loggedIn, setLoggedIn] = useState(!!getToken());
     const [info, setInfo] = useState(() => { try { return JSON.parse(localStorage.getItem(INFO_KEY) || 'null'); } catch { return null; } });
+    const [phase, setPhase] = useState('init'); // init | login | bind
+    const [lineIdToken, setLineIdToken] = useState(null);
+    const [note, setNote] = useState('');
+
+    const finishLogin = (r) => {
+        localStorage.setItem(TOKEN_KEY, r.token); localStorage.setItem(INFO_KEY, JSON.stringify(r.admin));
+        setInfo(r.admin); setLoggedIn(true);
+    };
+
+    // 進站時：若有設 LIFF、在 LINE 內 → 嘗試 LINE 免登入；否則退回手機+PIN
+    useEffect(() => {
+        if (loggedIn) return;
+        if (!LIFF_ID) { setPhase('login'); return; }
+        let cancelled = false;
+        (async () => {
+            try {
+                await liff.init({ liffId: LIFF_ID });
+                if (!liff.isLoggedIn()) { liff.login(); return; }
+                const idToken = liff.getIDToken();
+                if (!idToken) { setPhase('login'); return; }
+                const res = await api('/api/redeem-station/line-login', { method: 'POST', body: JSON.stringify({ idToken }) });
+                const data = await res.json();
+                if (cancelled) return;
+                if (res.ok && data.bound) { finishLogin(data); return; }
+                if (data.needsBinding) { setLineIdToken(idToken); setPhase('bind'); return; }
+                setNote(data.error || ''); setPhase('login');
+            } catch (e) {
+                if (!cancelled) setPhase('login'); // 不在 LINE 內 / LIFF 失敗 → 手機+PIN
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
 
     const logout = () => {
         localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(INFO_KEY);
-        setInfo(null); setLoggedIn(false);
+        setInfo(null); setLoggedIn(false); setPhase(LIFF_ID ? 'init' : 'login');
     };
 
     return (
@@ -37,18 +71,49 @@ export function RedeemStation() {
                     <div style={{ fontWeight: 800, fontSize: '1.15rem', color: GREEN }}>🎟️ 商品券核銷站</div>
                     {loggedIn && <button onClick={logout} style={{ border: '1px solid #cdd8cf', background: '#fff', borderRadius: '8px', padding: '6px 12px', fontSize: '.85rem', cursor: 'pointer' }}>登出</button>}
                 </div>
-                {loggedIn
-                    ? <RedeemView info={info} onExpired={logout} />
-                    : <LoginView onLoggedIn={(r) => { localStorage.setItem(TOKEN_KEY, r.token); localStorage.setItem(INFO_KEY, JSON.stringify(r.admin)); setInfo(r.admin); setLoggedIn(true); }} />}
+                {loggedIn ? <RedeemView info={info} onExpired={logout} />
+                    : phase === 'init' ? <div style={{ ...card, textAlign: 'center', color: '#5d6d63' }}>啟動中…</div>
+                    : phase === 'bind' ? <BindView idToken={lineIdToken} onLoggedIn={finishLogin} />
+                    : <LoginView onLoggedIn={finishLogin} note={note} />}
             </div>
         </div>
     );
 }
 
-function LoginView({ onLoggedIn }) {
+function BindView({ idToken, onLoggedIn }) {
     const [phone, setPhone] = useState('');
     const [pin, setPin] = useState('');
     const [err, setErr] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const submit = async () => {
+        setErr(''); setLoading(true);
+        try {
+            const res = await api('/api/redeem-station/bind', { method: 'POST', body: JSON.stringify({ idToken, phone: phone.trim(), pin: pin.trim() }) });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '綁定失敗');
+            onLoggedIn(data);
+        } catch (e) { setErr(e.message); } finally { setLoading(false); }
+    };
+
+    return (
+        <div style={card}>
+            <h2 style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>首次綁定</h2>
+            <p style={{ margin: '0 0 18px', color: '#5d6d63', fontSize: '.9rem' }}>用手機號碼 + 核銷 PIN 綁定一次，之後開這個頁面就自動登入、免再輸入。</p>
+            <label style={{ fontSize: '.85rem', fontWeight: 600 }}>手機號碼</label>
+            <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" placeholder="09xxxxxxxx" style={{ ...inp, margin: '6px 0 14px' }} />
+            <label style={{ fontSize: '.85rem', fontWeight: 600 }}>核銷 PIN</label>
+            <input value={pin} onChange={e => setPin(e.target.value)} inputMode="numeric" type="password" placeholder="請輸入 PIN" style={{ ...inp, margin: '6px 0 18px' }} />
+            {err && <div style={{ color: '#dc2626', fontSize: '.88rem', marginBottom: '12px' }}>{err}</div>}
+            <button onClick={submit} disabled={loading || !phone || !pin} style={bigBtn(loading || !phone || !pin ? '#9ca3af' : GREEN)}>{loading ? '綁定中…' : '綁定並開始核銷'}</button>
+        </div>
+    );
+}
+
+function LoginView({ onLoggedIn, note }) {
+    const [phone, setPhone] = useState('');
+    const [pin, setPin] = useState('');
+    const [err, setErr] = useState(note || '');
     const [loading, setLoading] = useState(false);
 
     const submit = async () => {
