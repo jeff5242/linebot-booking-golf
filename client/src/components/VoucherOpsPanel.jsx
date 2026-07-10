@@ -794,11 +794,14 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                                 <input
                                     type="text"
                                     value={invoiceNumber}
-                                    onChange={e => setInvoiceNumber(e.target.value.toUpperCase())}
+                                    onChange={e => setInvoiceNumber(e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())}
                                     placeholder="例：AB12345678"
                                     style={{ ...inputStyle, width: '100%' }}
                                 />
                                 <InvoiceScanner onScanned={(code) => setInvoiceNumber(code)} />
+                                {invoiceNumber && !/^[A-Z]{2}\d{8}$/.test(invoiceNumber) && (
+                                    <div style={{ fontSize: '12px', color: '#c2410c', marginTop: '4px' }}>⚠️ 發票號碼通常是 2 個英文字母 + 8 位數字（例 AB12345678），請確認</div>
+                                )}
                                 <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>必填。可掃收銀機發票的左邊 QR 自動帶入；載具無紙本則手動輸入。</div>
                             </div>
                         )}
