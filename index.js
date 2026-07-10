@@ -2492,6 +2492,49 @@ app.post('/api/voucher-ops/redeem', requireAuth('voucher_ops'), async (req, res)
   }
 });
 
+// ── 手機核銷站（南區員工用；手機 + 核銷 PIN 登入，之後接 LINE 官方帳號）──
+async function getRedeemPin() {
+  const { data } = await supabase.from('system_settings').select('value').eq('key', 'redeem_pin').maybeSingle();
+  return String(data?.value?.pin || '1688');
+}
+
+app.post('/api/redeem-station/login', async (req, res) => {
+  try {
+    const { phone, pin } = req.body;
+    if (!phone || !pin) return res.status(400).json({ error: '請輸入手機號碼與核銷 PIN' });
+    if (String(pin) !== await getRedeemPin()) return res.status(401).json({ error: '核銷 PIN 錯誤' });
+    let result;
+    try { result = await adminLoginByOtp(String(phone).trim()); }
+    catch { return res.status(401).json({ error: '此手機號碼不是核銷帳號，請確認' }); }
+    if (!(result.permissions || []).includes('scan')) {
+      return res.status(403).json({ error: '此帳號沒有核銷權限' });
+    }
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 依手機（掃會員 QR 取得）查會員 + 其可核銷「商品券」
+app.get('/api/redeem-station/lookup', requireAuth('scan'), async (req, res) => {
+  try {
+    const phone = String(req.query.phone || '').trim();
+    if (!phone) return res.status(400).json({ error: '缺少手機號碼' });
+    const { data: user } = await supabase
+      .from('users').select('id, display_name, phone, member_no')
+      .eq('phone', phone).maybeSingle();
+    if (!user) return res.status(404).json({ error: `找不到會員（${phone}）` });
+    const { data: vouchers } = await supabase
+      .from('vouchers')
+      .select('id, code, product_name, price, valid_until, invoice_number')
+      .eq('user_id', user.id).eq('product_name', '商品券').eq('status', 'active')
+      .order('valid_until', { ascending: true });
+    res.json({ member: user, vouchers: vouchers || [] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 現場掃碼核銷單張券（業務外勤用；權限 scan 即可，果嶺券另需 redeem_green_fee）
 app.post('/api/voucher-ops/scan-redeem', requireAuth('scan'), async (req, res) => {
   try {
