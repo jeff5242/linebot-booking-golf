@@ -14,8 +14,10 @@ import {
     Power,
     Bell,
     TrendingUp,
-    KeyRound
+    KeyRound,
+    Ticket
 } from 'lucide-react';
+import { VoucherIssueSettings } from './VoucherIssueSettings';
 import { adminFetch } from '../utils/adminApi';
 
 // ============= 輔助元件 =============
@@ -453,7 +455,8 @@ export function AdminSettings() {
         { name: '時間規則', icon: Clock },
         { name: '收費與設備', icon: DollarSign },
         { name: '候補邏輯', icon: Users },
-        { name: '營運管理', icon: Calendar }
+        { name: '營運管理', icon: Calendar },
+        { name: '電子票券', icon: Ticket }
     ];
 
     return (
@@ -1047,6 +1050,10 @@ export function AdminSettings() {
                                 </div>
                             </Card>
                         </div>
+                    </Tab.Panel>
+                    {/* ============= 分頁 5: 電子票券 ============= */}
+                    <Tab.Panel>
+                        <VoucherIssueSettings />
                     </Tab.Panel>
                 </Tab.Panels>
             </Tab.Group>
