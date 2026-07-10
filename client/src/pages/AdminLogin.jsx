@@ -87,7 +87,7 @@ export function AdminLogin() {
                 }
 
                 // 透過 Supabase Auth 驗證 OTP
-                const { error: verifyError } = await supabase.auth.verifyOtp({
+                const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
                     email: username,
                     token: otp,
                     type: 'email'
@@ -99,12 +99,13 @@ export function AdminLogin() {
                     return;
                 }
 
-                // Supabase 驗證成功，取得後台 JWT
+                // Supabase 驗證成功，帶上 session access_token 讓後端驗證身分後才發後台 JWT
+                const accessToken = verifyData?.session?.access_token;
                 const apiUrl = import.meta.env.VITE_API_URL || '';
                 const res = await fetch(`${apiUrl}/api/admin/login-otp`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username }),
+                    body: JSON.stringify({ username, accessToken }),
                 });
                 const result = await res.json();
                 if (!res.ok) {
