@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { adminFetch, hasPermission } from '../utils/adminApi';
 import { VoucherActivityPanel } from './VoucherActivityPanel';
+import { InvoiceScanner } from './InvoiceScanner';
 
 const VOUCHER_TYPE_LABELS = {
     green_fee: '果嶺券',
@@ -793,11 +794,12 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                                 <input
                                     type="text"
                                     value={invoiceNumber}
-                                    onChange={e => setInvoiceNumber(e.target.value)}
-                                    placeholder="例：AB-12345678"
+                                    onChange={e => setInvoiceNumber(e.target.value.toUpperCase())}
+                                    placeholder="例：AB12345678"
                                     style={{ ...inputStyle, width: '100%' }}
                                 />
-                                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>必填，會記錄在本次售出的每張券上供對帳</div>
+                                <InvoiceScanner onScanned={(code) => setInvoiceNumber(code)} />
+                                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>必填。可掃收銀機發票的左邊 QR 自動帶入；載具無紙本則手動輸入。</div>
                             </div>
                         )}
 
