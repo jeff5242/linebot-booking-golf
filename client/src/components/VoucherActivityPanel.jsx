@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { adminFetch } from '../utils/adminApi';
+import { InvoiceScanner } from './InvoiceScanner';
 
 function fmtTime(iso) {
     if (!iso) return '-';
@@ -46,12 +47,17 @@ function SalesTransactions() {
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
     const [expanded, setExpanded] = useState(null);
+    const [onlyMissing, setOnlyMissing] = useState(false);
+    const [fillKey, setFillKey] = useState(null);   // 正在補發票的交易
+    const [fillValue, setFillValue] = useState('');
+    const [fillBusy, setFillBusy] = useState(false);
+    const [fillErr, setFillErr] = useState('');
     const limit = 15;
 
-    const fetchData = async (p = page) => {
+    const fetchData = async (p = page, miss = onlyMissing) => {
         setLoading(true);
         try {
-            const res = await adminFetch(`/api/voucher-ops/sales-transactions?page=${p}&limit=${limit}`);
+            const res = await adminFetch(`/api/voucher-ops/sales-transactions?page=${p}&limit=${limit}${miss ? '&missingInvoice=1' : ''}`);
             if (res.ok) setData(await res.json());
         } catch (e) {
             console.error('Sales transactions error:', e);
@@ -61,6 +67,24 @@ function SalesTransactions() {
     };
     useEffect(() => { fetchData(1); }, []);
 
+    const toggleMissing = () => { const v = !onlyMissing; setOnlyMissing(v); setPage(1); setExpanded(null); setFillKey(null); fetchData(1, v); };
+    const openFill = (t) => { setFillKey(t.key); setFillValue(''); setFillErr(''); };
+    const submitFill = async (t) => {
+        const inv = fillValue.trim();
+        if (!inv) { setFillErr('請輸入或掃描發票號碼'); return; }
+        setFillBusy(true); setFillErr('');
+        try {
+            const res = await adminFetch('/api/voucher-ops/backfill-invoice', {
+                method: 'POST',
+                body: JSON.stringify({ user_id: t.user_id, valid_from: t.valid_from, valid_until: t.valid_until, invoice_number: inv }),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d.error || '補填失敗');
+            setFillKey(null);
+            fetchData(page);
+        } catch (e) { setFillErr(e.message); } finally { setFillBusy(false); }
+    };
+
     const rows = data?.rows || [];
     const total = data?.total || 0;
     const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -68,8 +92,13 @@ function SalesTransactions() {
 
     return (
         <div>
-            <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '10px' }}>
-                {loading ? '載入中...' : `共 ${total} 筆交易（含發票 ${data?.summary?.withInvoice || 0}、舊資料 ${data?.summary?.withoutInvoice || 0}）　點一列可展開逐張券號`}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                    {loading ? '載入中...' : `共 ${total} 筆交易（含發票 ${data?.summary?.withInvoice || 0}、缺發票 ${data?.summary?.withoutInvoice || 0}）　點一列展開逐張券號`}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#c2410c', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    <input type="checkbox" checked={onlyMissing} onChange={toggleMissing} />只看缺發票號
+                </label>
             </div>
             <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -99,7 +128,11 @@ function SalesTransactions() {
                                     <tr onClick={() => setExpanded(isOpen ? null : t.key)} style={{ cursor: 'pointer', background: isOpen ? '#faf5ff' : '#fff' }}>
                                         <td style={{ ...td, whiteSpace: 'nowrap', color: '#6b7280' }}>{isOpen ? '▾ ' : '▸ '}{fmtTime(t.sale_time)}</td>
                                         <td style={{ ...td, fontWeight: '500' }}>{t.customer_name}{t.member_no ? <span style={{ color: '#9ca3af', fontSize: '11px' }}> #{t.member_no}</span> : ''}</td>
-                                        <td style={{ ...td, fontFamily: 'monospace' }}>{t.invoice_number || '—'}</td>
+                                        <td style={{ ...td, fontFamily: 'monospace' }} onClick={e => e.stopPropagation()}>
+                                            {t.invoice_number
+                                                ? t.invoice_number
+                                                : <button onClick={() => openFill(t)} style={{ padding: '3px 10px', border: '1px solid #c2410c', borderRadius: '6px', background: '#fff7ed', color: '#c2410c', fontSize: '12px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>補發票</button>}
+                                        </td>
                                         <td style={td}>果嶺 {gTot} + 商品 {pTot}</td>
                                         <td style={{ ...td, textAlign: 'right', fontWeight: '600' }}>${t.amount.toLocaleString()}</td>
                                         <td style={td}>
@@ -129,6 +162,28 @@ function SalesTransactions() {
                                                         </span>
                                                     ))}
                                                 </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                    {fillKey === t.key && (
+                                        <tr>
+                                            <td colSpan={6} style={{ padding: '12px 16px', background: '#fff7ed', borderBottom: '1px solid #eee' }}>
+                                                <div style={{ fontSize: '12px', color: '#9a3412', marginBottom: '8px', fontWeight: '600' }}>
+                                                    補填發票號碼 — {t.customer_name}　果嶺{t.green_fee_total}+商品{t.product_total}（{t.valid_from} ~ {t.valid_until}）
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                    <input
+                                                        type="text"
+                                                        value={fillValue}
+                                                        onChange={e => setFillValue(e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())}
+                                                        placeholder="例：AB12345678"
+                                                        style={{ padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '14px', width: '180px' }}
+                                                    />
+                                                    <button onClick={() => submitFill(t)} disabled={fillBusy} style={{ padding: '8px 16px', border: 'none', borderRadius: '6px', background: fillBusy ? '#d1d5db' : '#c2410c', color: '#fff', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>{fillBusy ? '儲存中…' : '確認補填'}</button>
+                                                    <button onClick={() => setFillKey(null)} style={{ padding: '8px 14px', border: '1px solid #d1d5db', borderRadius: '6px', background: '#fff', color: '#374151', fontSize: '13px', cursor: 'pointer' }}>取消</button>
+                                                </div>
+                                                <InvoiceScanner onScanned={(code) => setFillValue(code)} />
+                                                {fillErr && <div style={{ color: '#dc2626', fontSize: '12px', marginTop: '6px' }}>{fillErr}</div>}
                                             </td>
                                         </tr>
                                     )}

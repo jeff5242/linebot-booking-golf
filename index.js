@@ -2410,6 +2410,32 @@ app.post('/api/voucher-ops/transfer-config', requireAuth('settings'), async (req
   }
 });
 
+// 補填交易的電子發票號碼（出發台用；針對尚未填發票號的整筆套票交易）
+app.post('/api/voucher-ops/backfill-invoice', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const { user_id, valid_from, valid_until, invoice_number } = req.body || {};
+    const inv = String(invoice_number || '').trim();
+    if (!user_id || !valid_from || !valid_until) return res.status(400).json({ error: '缺少交易識別資訊' });
+    if (!inv) return res.status(400).json({ error: '請輸入電子發票號碼' });
+    const nextDay = (d) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); };
+    const { data, error } = await supabase
+      .from('vouchers')
+      .update({ invoice_number: inv })
+      .eq('user_id', user_id)
+      .eq('source_type', 'digital_purchase')
+      .in('product_name', ['果嶺券', '商品券'])
+      .is('invoice_number', null) // 只補「尚未填」的，不覆蓋已有發票
+      .gte('valid_from', valid_from + 'T00:00:00').lt('valid_from', nextDay(valid_from) + 'T00:00:00')
+      .gte('valid_until', valid_until + 'T00:00:00').lt('valid_until', nextDay(valid_until) + 'T00:00:00')
+      .select('id');
+    if (error) throw error;
+    if (!data || data.length === 0) return res.status(404).json({ error: '找不到可補填的券（可能已填過或交易不符）' });
+    res.json({ success: true, updated: data.length, invoice_number: inv });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 用券記錄（發券/用券頁：沿用核銷明細邏輯，改用 voucher_ops 權限）
 app.get('/api/voucher-ops/redemptions', requireAuth('voucher_ops'), async (req, res) => {
   try {
@@ -2425,12 +2451,13 @@ app.get('/api/voucher-ops/redemptions', requireAuth('voucher_ops'), async (req, 
 // 銷售交易列表（發券/用券頁：以交易為單位 + 核銷進度）
 app.get('/api/voucher-ops/sales-transactions', requireAuth('voucher_ops'), async (req, res) => {
   try {
-    const { startDate, endDate, page, limit } = req.query;
+    const { startDate, endDate, page, limit, missingInvoice } = req.query;
     const result = await VoucherReports.getSalesTransactions({
       startDate,
       endDate,
       page: parseInt(page) || 1,
       limit: parseInt(limit) || 15,
+      missingInvoice: missingInvoice === '1' || missingInvoice === 'true',
     });
     res.json(result);
   } catch (error) {

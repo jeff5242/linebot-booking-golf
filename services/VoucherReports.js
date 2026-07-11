@@ -188,7 +188,7 @@ async function getSalesDetailReport({ startDate, endDate, voucherType, userId })
 
 // 銷售交易列表：以「一筆套票交易」為單位（一張電子發票=一筆；舊資料無發票號則以「客戶+效期起訖」歸類）。
 // 每筆含核銷進度（發券↔用券關聯）與逐張明細供展開。
-async function getSalesTransactions({ startDate, endDate, page = 1, limit = 15 }) {
+async function getSalesTransactions({ startDate, endDate, page = 1, limit = 15, missingInvoice = false }) {
   const buildQuery = () => supabase
     .from('vouchers')
     .select('id, code, product_name, price, status, valid_from, valid_until, invoice_number, user_id, created_at, redeemed_at, users(display_name, phone, member_no)')
@@ -234,6 +234,7 @@ async function getSalesTransactions({ startDate, endDate, page = 1, limit = 15 }
   // 依售出時間過濾（可選）
   if (startDate) all = all.filter(t => t.sale_time.slice(0, 10) >= startDate);
   if (endDate) all = all.filter(t => t.sale_time.slice(0, 10) <= endDate);
+  if (missingInvoice) all = all.filter(t => !t.invoice_number); // 只看尚未填發票號
   all.sort((a, b) => b.sale_time.localeCompare(a.sale_time));
 
   const total = all.length;
