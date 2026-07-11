@@ -278,6 +278,35 @@ function TransferToggleCard() {
     );
 }
 
+// ============= 電子票券設定：底下再分子頁 =============
+
+function VoucherSettingsSubTabs() {
+    const [sub, setSub] = useState('issue');
+    const subs = [
+        { k: 'issue', t: '發券設定' },
+        { k: 'functions', t: 'LINE OA 功能權限' },
+        { k: 'transfer', t: '會員轉贈' },
+    ];
+    return (
+        <div>
+            <div className="flex gap-1 mb-6 border-b border-gray-200 flex-wrap">
+                {subs.map(s => (
+                    <button
+                        key={s.k}
+                        onClick={() => setSub(s.k)}
+                        className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${sub === s.k ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+                    >
+                        {s.t}
+                    </button>
+                ))}
+            </div>
+            {sub === 'issue' && <VoucherIssueSettings />}
+            {sub === 'functions' && <OaFunctionMatrix />}
+            {sub === 'transfer' && <TransferToggleCard />}
+        </div>
+    );
+}
+
 // ============= 主元件 =============
 
 export function AdminSettings() {
@@ -1052,16 +1081,12 @@ export function AdminSettings() {
                             </Card>
                         </div>
                     </Tab.Panel>
-                    {/* ============= 分頁 5: 電子票券 ============= */}
+                    {/* ============= 分頁 5: 電子票券（底下再分子頁） ============= */}
                     <Tab.Panel>
-                        <VoucherIssueSettings />
-                        <OaFunctionMatrix />
+                        <VoucherSettingsSubTabs />
                     </Tab.Panel>
                 </Tab.Panels>
             </Tab.Group>
-
-            {/* 會員轉贈功能開關（獨立設定，即時儲存） */}
-            <TransferToggleCard />
         </div>
     );
 }
