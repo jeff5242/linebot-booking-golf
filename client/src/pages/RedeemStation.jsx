@@ -81,15 +81,15 @@ export function RedeemStation() {
 }
 
 function BindView({ idToken, onLoggedIn }) {
+    const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
-    const [pin, setPin] = useState('');
     const [err, setErr] = useState('');
     const [loading, setLoading] = useState(false);
 
     const submit = async () => {
         setErr(''); setLoading(true);
         try {
-            const res = await api('/api/redeem-station/bind', { method: 'POST', body: JSON.stringify({ idToken, phone: phone.trim(), pin: pin.trim() }) });
+            const res = await api('/api/redeem-station/bind', { method: 'POST', body: JSON.stringify({ idToken, name: name.trim(), phone: phone.trim() }) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || '綁定失敗');
             onLoggedIn(data);
@@ -98,28 +98,28 @@ function BindView({ idToken, onLoggedIn }) {
 
     return (
         <div style={card}>
-            <h2 style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>首次綁定</h2>
-            <p style={{ margin: '0 0 18px', color: '#5d6d63', fontSize: '.9rem' }}>用手機號碼 + 核銷 PIN 綁定一次，之後開這個頁面就自動登入、免再輸入。</p>
+            <h2 style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>首次驗證身分</h2>
+            <p style={{ margin: '0 0 18px', color: '#5d6d63', fontSize: '.9rem' }}>輸入你的姓名與手機號碼核對一次，之後開這個頁面就自動登入、免再輸入。</p>
+            <label style={{ fontSize: '.85rem', fontWeight: 600 }}>姓名</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="你的姓名" style={{ ...inp, margin: '6px 0 14px' }} />
             <label style={{ fontSize: '.85rem', fontWeight: 600 }}>手機號碼</label>
-            <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" placeholder="09xxxxxxxx" style={{ ...inp, margin: '6px 0 14px' }} />
-            <label style={{ fontSize: '.85rem', fontWeight: 600 }}>核銷 PIN</label>
-            <input value={pin} onChange={e => setPin(e.target.value)} inputMode="numeric" type="password" placeholder="請輸入 PIN" style={{ ...inp, margin: '6px 0 18px' }} />
+            <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" placeholder="09xxxxxxxx" style={{ ...inp, margin: '6px 0 18px' }} />
             {err && <div style={{ color: '#dc2626', fontSize: '.88rem', marginBottom: '12px' }}>{err}</div>}
-            <button onClick={submit} disabled={loading || !phone || !pin} style={bigBtn(loading || !phone || !pin ? '#9ca3af' : GREEN)}>{loading ? '綁定中…' : '綁定並開始核銷'}</button>
+            <button onClick={submit} disabled={loading || !name || !phone} style={bigBtn(loading || !name || !phone ? '#9ca3af' : GREEN)}>{loading ? '驗證中…' : '確認並開始核銷'}</button>
         </div>
     );
 }
 
 function LoginView({ onLoggedIn, note }) {
+    const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
-    const [pin, setPin] = useState('');
     const [err, setErr] = useState(note || '');
     const [loading, setLoading] = useState(false);
 
     const submit = async () => {
         setErr(''); setLoading(true);
         try {
-            const res = await api('/api/redeem-station/login', { method: 'POST', body: JSON.stringify({ phone: phone.trim(), pin: pin.trim() }) });
+            const res = await api('/api/redeem-station/login', { method: 'POST', body: JSON.stringify({ name: name.trim(), phone: phone.trim() }) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || '登入失敗');
             onLoggedIn(data);
@@ -129,13 +129,13 @@ function LoginView({ onLoggedIn, note }) {
     return (
         <div style={card}>
             <h2 style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>員工登入</h2>
-            <p style={{ margin: '0 0 18px', color: '#5d6d63', fontSize: '.9rem' }}>用你的手機號碼與核銷 PIN 登入。</p>
+            <p style={{ margin: '0 0 18px', color: '#5d6d63', fontSize: '.9rem' }}>輸入你的姓名與手機號碼登入。</p>
+            <label style={{ fontSize: '.85rem', fontWeight: 600 }}>姓名</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="你的姓名" style={{ ...inp, margin: '6px 0 14px' }} />
             <label style={{ fontSize: '.85rem', fontWeight: 600 }}>手機號碼</label>
-            <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" placeholder="09xxxxxxxx" style={{ ...inp, margin: '6px 0 14px' }} />
-            <label style={{ fontSize: '.85rem', fontWeight: 600 }}>核銷 PIN</label>
-            <input value={pin} onChange={e => setPin(e.target.value)} inputMode="numeric" type="password" placeholder="請輸入 PIN" style={{ ...inp, margin: '6px 0 18px' }} />
+            <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" placeholder="09xxxxxxxx" style={{ ...inp, margin: '6px 0 18px' }} />
             {err && <div style={{ color: '#dc2626', fontSize: '.88rem', marginBottom: '12px' }}>{err}</div>}
-            <button onClick={submit} disabled={loading || !phone || !pin} style={{ ...bigBtn(loading || !phone || !pin ? '#9ca3af' : GREEN) }}>{loading ? '登入中…' : '登入'}</button>
+            <button onClick={submit} disabled={loading || !name || !phone} style={{ ...bigBtn(loading || !name || !phone ? '#9ca3af' : GREEN) }}>{loading ? '登入中…' : '登入'}</button>
         </div>
     );
 }
