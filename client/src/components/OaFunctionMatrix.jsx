@@ -54,7 +54,7 @@ export function OaFunctionMatrix() {
     if (loading) return null;
 
     return (
-        <div style={{ maxWidth: '640px' }}>
+        <div style={{ width: '100%' }}>
             <div style={cardStyle}>
                 <h4 style={{ fontSize: '15px', fontWeight: 700, margin: '0 0 6px', color: '#111827' }}>LINE OA 功能權限（角色）</h4>
                 <p style={{ fontSize: '13px', color: '#6b7280', margin: '0 0 16px' }}>勾選哪個角色可用哪些 LINE OA / 核銷站功能。未勾的角色在選單就看不到該功能（底層仍有系統權限把關）。</p>
