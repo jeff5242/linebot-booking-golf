@@ -2575,6 +2575,64 @@ app.post('/api/redeem-station/login', async (req, res) => {
   }
 });
 
+// 台灣當日起點（+08:00），供「今日」統計/紀錄用
+function twTodayStart() {
+  const tw = new Date(Date.now() + 8 * 3600 * 1000);
+  return `${tw.toISOString().slice(0, 10)}T00:00:00+08:00`;
+}
+
+// 我的核銷紀錄（今日，依操作人）
+app.get('/api/redeem-station/my-redemptions', requireAuth('scan'), async (req, res) => {
+  try {
+    const operatorName = req.admin?.name || '';
+    const { data, error } = await supabase
+      .from('voucher_logs')
+      .select('created_at, vouchers!inner(code, price, product_name, source_type, users(display_name))')
+      .eq('action', 'redeemed')
+      .eq('operator_name', operatorName)
+      .eq('vouchers.product_name', '商品券')
+      .eq('vouchers.source_type', 'digital_purchase')
+      .gte('created_at', twTodayStart())
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    const rows = (data || []).map(l => ({
+      code: l.vouchers.code, price: l.vouchers.price, redeemed_at: l.created_at,
+      customer_name: l.vouchers.users?.display_name || '',
+    }));
+    res.json({ operator: operatorName, count: rows.length, amount: rows.reduce((s, r) => s + (r.price || 0), 0), rows });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 今日核銷統計（全隊商品券，含各操作人）
+app.get('/api/redeem-station/today-stats', requireAuth('scan'), async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('voucher_logs')
+      .select('operator_name, vouchers!inner(price, product_name, source_type)')
+      .eq('action', 'redeemed')
+      .eq('vouchers.product_name', '商品券')
+      .eq('vouchers.source_type', 'digital_purchase')
+      .gte('created_at', twTodayStart());
+    if (error) throw error;
+    const rows = data || [];
+    const byOp = {};
+    for (const l of rows) {
+      const n = l.operator_name || '（未記名）';
+      if (!byOp[n]) byOp[n] = { name: n, count: 0, amount: 0 };
+      byOp[n].count += 1; byOp[n].amount += l.vouchers.price || 0;
+    }
+    res.json({
+      total: rows.length,
+      amount: rows.reduce((s, l) => s + (l.vouchers.price || 0), 0),
+      byOperator: Object.values(byOp).sort((a, b) => b.count - a.count),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 依手機（掃會員 QR 取得）查會員 + 其可核銷「商品券」
 app.get('/api/redeem-station/lookup', requireAuth('scan'), async (req, res) => {
   try {

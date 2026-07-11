@@ -71,7 +71,7 @@ export function RedeemStation() {
                     <div style={{ fontWeight: 800, fontSize: '1.15rem', color: GREEN }}>🎟️ 商品券核銷站</div>
                     {loggedIn && <button onClick={logout} style={{ border: '1px solid #cdd8cf', background: '#fff', borderRadius: '8px', padding: '6px 12px', fontSize: '.85rem', cursor: 'pointer' }}>登出</button>}
                 </div>
-                {loggedIn ? <RedeemView info={info} onExpired={logout} />
+                {loggedIn ? <StationApp info={info} onExpired={logout} />
                     : phase === 'init' ? <div style={{ ...card, textAlign: 'center', color: '#5d6d63' }}>啟動中…</div>
                     : phase === 'bind' ? <BindView idToken={lineIdToken} onLoggedIn={finishLogin} />
                     : <LoginView onLoggedIn={finishLogin} note={note} />}
@@ -136,6 +136,124 @@ function LoginView({ onLoggedIn, note }) {
             <input value={pin} onChange={e => setPin(e.target.value)} inputMode="numeric" type="password" placeholder="請輸入 PIN" style={{ ...inp, margin: '6px 0 18px' }} />
             {err && <div style={{ color: '#dc2626', fontSize: '.88rem', marginBottom: '12px' }}>{err}</div>}
             <button onClick={submit} disabled={loading || !phone || !pin} style={{ ...bigBtn(loading || !phone || !pin ? '#9ca3af' : GREEN) }}>{loading ? '登入中…' : '登入'}</button>
+        </div>
+    );
+}
+
+const VIEWS = [
+    { key: 'redeem', label: '核銷', icon: '🎟️' },
+    { key: 'lookup', label: '查詢', icon: '🔍' },
+    { key: 'my', label: '我的', icon: '📋' },
+    { key: 'stats', label: '統計', icon: '📊' },
+];
+
+function StationApp({ info, onExpired }) {
+    const init = new URLSearchParams(window.location.search).get('view');
+    const [view, setView] = useState(VIEWS.some(v => v.key === init) ? init : 'redeem');
+    return (
+        <div>
+            <div style={{ paddingBottom: '78px' }}>
+                {view === 'redeem' && <RedeemView info={info} onExpired={onExpired} />}
+                {view === 'lookup' && <LookupView onExpired={onExpired} />}
+                {view === 'my' && <MyRedemptionsView info={info} onExpired={onExpired} />}
+                {view === 'stats' && <TodayStatsView onExpired={onExpired} />}
+            </div>
+            <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, maxWidth: '440px', margin: '0 auto', background: '#fff', borderTop: '1px solid #e2e8e2', display: 'flex', boxShadow: '0 -1px 6px rgba(0,0,0,.04)' }}>
+                {VIEWS.map(v => (
+                    <button key={v.key} onClick={() => setView(v.key)} style={{ flex: 1, border: 'none', background: 'none', padding: '9px 0 12px', cursor: 'pointer', color: view === v.key ? GREEN : '#9ca3af', fontWeight: view === v.key ? 700 : 400, fontSize: '.72rem' }}>
+                        <div style={{ fontSize: '1.35rem', lineHeight: 1.2 }}>{v.icon}</div>{v.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function LookupView({ onExpired }) {
+    const [phone, setPhone] = useState('');
+    const [data, setData] = useState(null);
+    const [err, setErr] = useState('');
+    const [busy, setBusy] = useState(false);
+    const search = async () => {
+        const p = phone.trim();
+        if (!/^09\d{8}$/.test(p)) { setErr('請輸入正確手機號碼'); return; }
+        setErr(''); setBusy(true);
+        try {
+            const res = await api('/api/redeem-station/lookup?phone=' + encodeURIComponent(p));
+            if (res.status === 401) { onExpired(); return; }
+            const d = await res.json();
+            if (!res.ok) throw new Error(d.error || '查詢失敗');
+            setData(d);
+        } catch (e) { setErr(e.message); setData(null); } finally { setBusy(false); }
+    };
+    return (
+        <div>
+            <div style={{ fontSize: '.82rem', color: '#5d6d63', marginBottom: '12px' }}>查會員剩幾張商品券（只查、不核銷）</div>
+            <div style={card}>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                    <input value={phone} onChange={e => setPhone(e.target.value.replace(/[^0-9]/g, ''))} inputMode="numeric" placeholder="會員手機 09xxxxxxxx" style={{ ...inp, flex: 1 }} />
+                    <button onClick={search} disabled={busy} style={{ padding: '14px 18px', border: 'none', borderRadius: '10px', background: busy ? '#9ca3af' : GREEN, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>查詢</button>
+                </div>
+                {err && <div style={{ color: '#dc2626', fontSize: '.85rem', marginTop: '10px' }}>{err}</div>}
+            </div>
+            {data && (
+                <div style={{ ...card, marginTop: '14px' }}>
+                    <div style={{ marginBottom: '8px' }}><b style={{ fontSize: '1.05rem' }}>{data.member.display_name || '-'}</b> <span style={{ color: '#9ca3af', fontSize: '.8rem' }}>{data.member.phone}{data.member.member_no ? ' #' + data.member.member_no : ''}</span></div>
+                    <div style={{ fontSize: '2rem', fontWeight: 800, color: GREEN }}>{data.vouchers.length} <span style={{ fontSize: '.9rem', color: '#5d6d63', fontWeight: 400 }}>張可用商品券</span></div>
+                    {data.vouchers.length > 0 && (
+                        <div style={{ marginTop: '10px', display: 'grid', gap: '6px' }}>
+                            {data.vouchers.map(v => <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem', color: '#5d6d63', fontFamily: 'monospace' }}><span>{v.code}</span><span>${v.price} · 到期 {String(v.valid_until).slice(0, 10)}</span></div>)}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function MyRedemptionsView({ info, onExpired }) {
+    const [d, setD] = useState(null);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => { (async () => { try { const res = await api('/api/redeem-station/my-redemptions'); if (res.status === 401) { onExpired(); return; } setD(await res.json()); } catch { /* noop */ } finally { setLoading(false); } })(); }, []);
+    return (
+        <div>
+            <div style={{ fontSize: '.82rem', color: '#5d6d63', marginBottom: '12px' }}>我（{info?.name}）今天核銷的商品券</div>
+            {loading ? <div style={{ ...card, textAlign: 'center', color: '#9ca3af' }}>載入中…</div> : (
+                <>
+                    <div style={{ ...card, display: 'flex', gap: '24px', marginBottom: '14px' }}>
+                        <div><div style={{ fontSize: '1.9rem', fontWeight: 800, color: GREEN }}>{d.count}</div><div style={{ fontSize: '.78rem', color: '#5d6d63' }}>今日核銷張數</div></div>
+                        <div><div style={{ fontSize: '1.9rem', fontWeight: 800, color: '#166534' }}>${d.amount.toLocaleString()}</div><div style={{ fontSize: '.78rem', color: '#5d6d63' }}>折抵金額</div></div>
+                    </div>
+                    <div style={card}>
+                        {d.rows.length === 0 ? <div style={{ textAlign: 'center', color: '#9ca3af', padding: '16px' }}>今天還沒核銷</div>
+                            : d.rows.map((r, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6', fontSize: '.85rem' }}><span style={{ fontFamily: 'monospace' }}>{r.code}</span><span style={{ color: '#5d6d63' }}>{String(r.redeemed_at).slice(11, 16)} · ${r.price}</span></div>)}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
+function TodayStatsView({ onExpired }) {
+    const [d, setD] = useState(null);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => { (async () => { try { const res = await api('/api/redeem-station/today-stats'); if (res.status === 401) { onExpired(); return; } setD(await res.json()); } catch { /* noop */ } finally { setLoading(false); } })(); }, []);
+    return (
+        <div>
+            <div style={{ fontSize: '.82rem', color: '#5d6d63', marginBottom: '12px' }}>全隊今天商品券核銷</div>
+            {loading ? <div style={{ ...card, textAlign: 'center', color: '#9ca3af' }}>載入中…</div> : (
+                <>
+                    <div style={{ ...card, display: 'flex', gap: '24px', marginBottom: '14px' }}>
+                        <div><div style={{ fontSize: '1.9rem', fontWeight: 800, color: GREEN }}>{d.total}</div><div style={{ fontSize: '.78rem', color: '#5d6d63' }}>總張數</div></div>
+                        <div><div style={{ fontSize: '1.9rem', fontWeight: 800, color: '#166534' }}>${d.amount.toLocaleString()}</div><div style={{ fontSize: '.78rem', color: '#5d6d63' }}>總金額</div></div>
+                    </div>
+                    <div style={card}>
+                        <div style={{ fontSize: '.8rem', fontWeight: 700, color: '#5d6d63', marginBottom: '8px' }}>各員工</div>
+                        {d.byOperator.length === 0 ? <div style={{ textAlign: 'center', color: '#9ca3af', padding: '12px' }}>今天還沒核銷</div>
+                            : d.byOperator.map((o, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6', fontSize: '.9rem' }}><span>{o.name}</span><span style={{ fontWeight: 600 }}>{o.count} 張 · ${o.amount.toLocaleString()}</span></div>)}
+                    </div>
+                </>
+            )}
         </div>
     );
 }
