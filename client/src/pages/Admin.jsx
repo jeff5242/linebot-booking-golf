@@ -2747,6 +2747,15 @@ function AdminManagement() {
         }
     };
 
+    const handleUnbind = async (adminId) => {
+        if (!confirm('確定解除此帳號的 LINE 綁定？解除後對方需重新用姓名+手機驗證。')) return;
+        try {
+            const res = await adminFetch(`/api/admin/${adminId}/unbind`, { method: 'POST' });
+            if (res.ok) fetchAdmins();
+            else alert('解除失敗');
+        } catch (err) { alert('解除失敗'); }
+    };
+
     const getRoleLabel = (roleName) => {
         const role = roles.find(r => r.name === roleName);
         return role ? role.label : roleName;
@@ -2795,6 +2804,7 @@ function AdminManagement() {
                             <th style={{ padding: '10px' }}>名稱</th>
                             <th style={{ padding: '10px' }}>帳號</th>
                             <th style={{ padding: '10px' }}>角色</th>
+                            <th style={{ padding: '10px' }}>LINE 綁定</th>
                             <th style={{ padding: '10px' }}>建立時間</th>
                             <th style={{ padding: '10px' }}>操作</th>
                         </tr>
@@ -2815,8 +2825,19 @@ function AdminManagement() {
                                         ))}
                                     </select>
                                 </td>
+                                <td style={{ padding: '10px', fontSize: '0.78rem' }}>
+                                    {a.line_user_id
+                                        ? <span title={a.line_user_id} style={{ color: '#166534', fontFamily: 'monospace' }}>✅ {a.line_user_id.slice(0, 8)}…{a.line_user_id.slice(-4)}</span>
+                                        : <span style={{ color: '#9ca3af' }}>⚪ 尚未進來</span>}
+                                </td>
                                 <td style={{ padding: '10px', fontSize: '0.8rem' }}>{new Date(a.created_at).toLocaleDateString()}</td>
-                                <td style={{ padding: '10px' }}>
+                                <td style={{ padding: '10px', whiteSpace: 'nowrap' }}>
+                                    {a.line_user_id && (
+                                        <button onClick={() => handleUnbind(a.id)} style={{
+                                            padding: '4px 10px', borderRadius: '4px', border: '1px solid #d97706',
+                                            background: '#fffbeb', color: '#d97706', cursor: 'pointer', fontSize: '12px', marginRight: '6px'
+                                        }}>解除綁定</button>
+                                    )}
                                     {a.username !== 'admin' && (
                                         <button onClick={() => handleDelete(a.id)} style={{
                                             padding: '4px 12px', borderRadius: '4px', border: '1px solid #c62828',
