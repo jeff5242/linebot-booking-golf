@@ -26,6 +26,7 @@ const OperationalCalendar = require('./services/OperationalCalendar');
 const CaddyManagement = require('./services/CaddyManagement');
 const ChargeCard = require('./services/ChargeCard');
 const { login: adminLogin, loginByOtp: adminLoginByOtp, issueTokenForUsername } = require('./services/AuthService');
+const StaffRichMenu = require('./services/StaffRichMenu');
 const { requireAuth, optionalAuth } = require('./middleware/auth');
 const RoleMgmt = require('./services/RoleManagement');
 const bcrypt = require('bcryptjs');
@@ -160,8 +161,11 @@ app.get('/api/admin/list', requireAuth('admins'), async (req, res) => {
 // 解除 LINE 綁定（綁錯人時重置，員工可重新綁）
 app.post('/api/admin/:id/unbind', requireAuth('admins'), async (req, res) => {
   try {
+    // 先取得原本綁定的 line_user_id，清除後把該用戶選單切回預設（未綁定）
+    const { data: before } = await supabase.from('admins').select('line_user_id').eq('id', req.params.id).maybeSingle();
     const { error } = await supabase.from('admins').update({ line_user_id: null }).eq('id', req.params.id);
     if (error) throw error;
+    if (before?.line_user_id) await StaffRichMenu.unlinkMenu(before.line_user_id);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -2652,6 +2656,8 @@ app.post('/api/redeem-station/bind', async (req, res) => {
     if (upErr) throw upErr;
     const result = await issueTokenForUsername(admin.username);
     if (!(result.permissions || []).includes('scan')) return res.status(403).json({ error: '此帳號沒有核銷權限' });
+    // 綁定成功 → 切換到「已綁定」功能選單（盡力而為，失敗不影響綁定）
+    await StaffRichMenu.linkBoundMenu(lineUserId);
     res.json({ ...result, bound: true });
   } catch (error) {
     res.status(401).json({ error: error.message });
