@@ -18,6 +18,7 @@ import {
     Ticket
 } from 'lucide-react';
 import { VoucherIssueSettings } from './VoucherIssueSettings';
+import { OaFunctionMatrix } from './OaFunctionMatrix';
 import { adminFetch } from '../utils/adminApi';
 
 // ============= 輔助元件 =============
@@ -1054,6 +1055,7 @@ export function AdminSettings() {
                     {/* ============= 分頁 5: 電子票券 ============= */}
                     <Tab.Panel>
                         <VoucherIssueSettings />
+                        <OaFunctionMatrix />
                     </Tab.Panel>
                 </Tab.Panels>
             </Tab.Group>

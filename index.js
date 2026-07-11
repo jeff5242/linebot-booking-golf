@@ -2520,6 +2520,65 @@ app.post('/api/voucher-ops/redeem', requireAuth('voucher_ops'), async (req, res)
   }
 });
 
+// ── LINE OA 功能角色權限（哪個角色看得到哪些核銷站/OA 功能）──
+const LINE_OA_FUNCTIONS = [
+  { key: 'redeem', label: '🎟️ 商品券核銷' },
+  { key: 'lookup', label: '🔍 會員券數查詢' },
+  { key: 'my', label: '📋 我的核銷紀錄' },
+  { key: 'stats', label: '📊 今日核銷統計' },
+  { key: 'backfill', label: '🧾 補發票號' },
+];
+const ALL_FN_KEYS = LINE_OA_FUNCTIONS.map(f => f.key);
+const DEFAULT_OA_FUNCTIONS = {
+  front_desk: ['redeem', 'lookup', 'my'],
+  starter: ['redeem', 'lookup', 'my', 'stats', 'backfill'],
+};
+async function getOaFunctionsConfig() {
+  const { data } = await supabase.from('system_settings').select('value').eq('key', 'line_oa_functions').maybeSingle();
+  return data?.value || DEFAULT_OA_FUNCTIONS;
+}
+// 角色可用功能；未設定的角色 → 全部（向下相容，如管理）
+function functionsForRole(config, role) {
+  const v = config[role];
+  return Array.isArray(v) ? v.filter(k => ALL_FN_KEYS.includes(k)) : ALL_FN_KEYS.slice();
+}
+
+// 設定頁：讀（含功能目錄 + 角色清單）
+app.get('/api/line-oa-functions', requireAuth('settings'), async (req, res) => {
+  try {
+    const config = await getOaFunctionsConfig();
+    const { data: roles } = await supabase.from('roles').select('name, label').order('created_at');
+    res.json({ catalog: LINE_OA_FUNCTIONS, config, roles: roles || [] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 設定頁：寫
+app.post('/api/line-oa-functions', requireAuth('settings'), async (req, res) => {
+  try {
+    const incoming = req.body?.config || {};
+    const clean = {};
+    for (const [role, keys] of Object.entries(incoming)) {
+      if (Array.isArray(keys)) clean[role] = keys.filter(k => ALL_FN_KEYS.includes(k));
+    }
+    await supabase.from('system_settings').upsert({ key: 'line_oa_functions', value: clean, updated_at: new Date().toISOString() });
+    res.json({ success: true, config: clean });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 登入者（依角色）可用哪些功能 → 前端據此顯示分頁/按鈕
+app.get('/api/line-oa/my-functions', requireAuth(), async (req, res) => {
+  try {
+    const config = await getOaFunctionsConfig();
+    res.json({ functions: functionsForRole(config, req.admin?.role) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ── 手機核銷站（南區員工用；手機 + 核銷 PIN 登入，或 LINE 免登入）──
 async function getRedeemPin() {
   const { data } = await supabase.from('system_settings').select('value').eq('key', 'redeem_pin').maybeSingle();

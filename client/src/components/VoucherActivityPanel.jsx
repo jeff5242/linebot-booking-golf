@@ -52,7 +52,17 @@ function SalesTransactions() {
     const [fillValue, setFillValue] = useState('');
     const [fillBusy, setFillBusy] = useState(false);
     const [fillErr, setFillErr] = useState('');
+    const [canBackfill, setCanBackfill] = useState(false);
     const limit = 15;
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await adminFetch('/api/line-oa/my-functions');
+                if (res.ok) { const d = await res.json(); setCanBackfill((d.functions || []).includes('backfill')); }
+            } catch { /* 讀失敗 → 不顯示補發票 */ }
+        })();
+    }, []);
 
     const fetchData = async (p = page, miss = onlyMissing) => {
         setLoading(true);
@@ -96,9 +106,11 @@ function SalesTransactions() {
                 <div style={{ fontSize: '13px', color: '#6b7280' }}>
                     {loading ? '載入中...' : `共 ${total} 筆交易（含發票 ${data?.summary?.withInvoice || 0}、缺發票 ${data?.summary?.withoutInvoice || 0}）　點一列展開逐張券號`}
                 </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#c2410c', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    <input type="checkbox" checked={onlyMissing} onChange={toggleMissing} />只看缺發票號
-                </label>
+                {canBackfill && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#c2410c', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        <input type="checkbox" checked={onlyMissing} onChange={toggleMissing} />只看缺發票號
+                    </label>
+                )}
             </div>
             <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -131,7 +143,9 @@ function SalesTransactions() {
                                         <td style={{ ...td, fontFamily: 'monospace' }} onClick={e => e.stopPropagation()}>
                                             {t.invoice_number
                                                 ? t.invoice_number
-                                                : <button onClick={() => openFill(t)} style={{ padding: '3px 10px', border: '1px solid #c2410c', borderRadius: '6px', background: '#fff7ed', color: '#c2410c', fontSize: '12px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>補發票</button>}
+                                                : (canBackfill
+                                                    ? <button onClick={() => openFill(t)} style={{ padding: '3px 10px', border: '1px solid #c2410c', borderRadius: '6px', background: '#fff7ed', color: '#c2410c', fontSize: '12px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>補發票</button>
+                                                    : '—')}
                                         </td>
                                         <td style={td}>果嶺 {gTot} + 商品 {pTot}</td>
                                         <td style={{ ...td, textAlign: 'right', fontWeight: '600' }}>${t.amount.toLocaleString()}</td>

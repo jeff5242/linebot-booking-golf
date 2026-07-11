@@ -148,8 +148,31 @@ const VIEWS = [
 ];
 
 function StationApp({ info, onExpired }) {
-    const init = new URLSearchParams(window.location.search).get('view');
-    const [view, setView] = useState(VIEWS.some(v => v.key === init) ? init : 'redeem');
+    const [allowed, setAllowed] = useState(null); // null=載入中
+    const [view, setView] = useState(null);
+
+    useEffect(() => {
+        (async () => {
+            let keys = VIEWS.map(v => v.key);
+            try {
+                const res = await api('/api/line-oa/my-functions');
+                if (res.ok) { const d = await res.json(); keys = d.functions || []; }
+            } catch { /* 讀失敗 → 全部（相容） */ }
+            setAllowed(keys);
+        })();
+    }, []);
+
+    const tabs = allowed ? VIEWS.filter(v => allowed.includes(v.key)) : VIEWS;
+
+    useEffect(() => {
+        if (!allowed) return;
+        const init = new URLSearchParams(window.location.search).get('view');
+        setView(tabs.some(t => t.key === init) ? init : (tabs[0]?.key || null));
+    }, [allowed]);
+
+    if (!allowed || (tabs.length && !view)) return <div style={{ ...card, textAlign: 'center', color: '#9ca3af' }}>載入中…</div>;
+    if (tabs.length === 0) return <div style={{ ...card, textAlign: 'center', color: '#5d6d63' }}>此帳號未開放核銷站功能，請聯絡管理員。</div>;
+
     return (
         <div>
             <div style={{ paddingBottom: '78px' }}>
@@ -159,7 +182,7 @@ function StationApp({ info, onExpired }) {
                 {view === 'stats' && <TodayStatsView onExpired={onExpired} />}
             </div>
             <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, maxWidth: '440px', margin: '0 auto', background: '#fff', borderTop: '1px solid #e2e8e2', display: 'flex', boxShadow: '0 -1px 6px rgba(0,0,0,.04)' }}>
-                {VIEWS.map(v => (
+                {tabs.map(v => (
                     <button key={v.key} onClick={() => setView(v.key)} style={{ flex: 1, border: 'none', background: 'none', padding: '9px 0 12px', cursor: 'pointer', color: view === v.key ? GREEN : '#9ca3af', fontWeight: view === v.key ? 700 : 400, fontSize: '.72rem' }}>
                         <div style={{ fontSize: '1.35rem', lineHeight: 1.2 }}>{v.icon}</div>{v.label}
                     </button>
