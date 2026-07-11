@@ -148,10 +148,21 @@ app.get('/api/admin/list', requireAuth('admins'), async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('admins')
-      .select('id, username, name, role, created_at')
+      .select('id, username, name, role, created_at, line_user_id')
       .order('created_at', { ascending: false });
     if (error) throw error;
     res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 解除 LINE 綁定（綁錯人時重置，員工可重新綁）
+app.post('/api/admin/:id/unbind', requireAuth('admins'), async (req, res) => {
+  try {
+    const { error } = await supabase.from('admins').update({ line_user_id: null }).eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
