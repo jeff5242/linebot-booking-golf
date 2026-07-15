@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import liff from '@line/liff';
+import { formatTWTime } from '../utils/timezone';
 
 const apiUrl = import.meta.env.VITE_API_URL || '';
 const LIFF_ID = import.meta.env.VITE_STAFF_LIFF_ID || '';
@@ -8,12 +9,7 @@ const TOKEN_KEY = 'redeem_jwt';
 const INFO_KEY = 'redeem_info';
 const READER_ID = 'redeem-qr-reader';
 
-// 台灣時間 HH:MM（DB 存 UTC，加 8 小時），避免顯示差 8 小時
-function twHM(iso) {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return String(iso || '').slice(11, 16);
-    return new Date(d.getTime() + 8 * 3600 * 1000).toISOString().slice(11, 16);
-}
+const twHM = (iso) => formatTWTime(iso);
 
 const getToken = () => localStorage.getItem(TOKEN_KEY);
 async function api(path, opts = {}) {

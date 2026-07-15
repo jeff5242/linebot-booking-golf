@@ -1,14 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { adminFetch } from '../utils/adminApi';
 import { InvoiceScanner } from './InvoiceScanner';
+import { formatTWDateTime } from '../utils/timezone';
 
 function fmtTime(iso) {
-    if (!iso) return '-';
-    // 台灣時間（+08:00）：DB 存 UTC，加 8 小時再取字串，避免顯示差 8 小時
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
-    const tw = new Date(d.getTime() + 8 * 3600 * 1000).toISOString();
-    return `${tw.slice(0, 10)} ${tw.slice(11, 16)}`;
+    return iso ? formatTWDateTime(iso) : '-';
 }
 
 function localDateStr(offsetDays = 0) {

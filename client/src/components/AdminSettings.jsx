@@ -20,6 +20,7 @@ import {
 import { VoucherIssueSettings } from './VoucherIssueSettings';
 import { OaFunctionMatrix } from './OaFunctionMatrix';
 import { adminFetch } from '../utils/adminApi';
+import { setTzOffsetMinutes } from '../utils/timezone';
 
 // ============= 輔助元件 =============
 
@@ -280,12 +281,104 @@ function TransferToggleCard() {
 
 // ============= 電子票券設定：底下再分子頁 =============
 
+// 常見時區選項（offsetMinutes：距 UTC 的分鐘數）
+const TZ_PRESETS = [
+    { offsetMinutes: 480, label: '台灣（UTC+8）' },
+    { offsetMinutes: 540, label: '日本／韓國（UTC+9）' },
+    { offsetMinutes: 420, label: '泰國／越南（UTC+7）' },
+    { offsetMinutes: 0, label: '世界標準時間（UTC+0）' },
+    { offsetMinutes: -300, label: '美東（UTC-5）' },
+    { offsetMinutes: -480, label: '美西（UTC-8）' },
+];
+
+function TimezoneCard() {
+    const [current, setCurrent] = useState(null); // 後端目前設定 { offsetMinutes, label }
+    const [selected, setSelected] = useState(480);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [msg, setMsg] = useState('');
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await adminFetch('/api/config/timezone');
+                if (res.ok) {
+                    const d = await res.json();
+                    setCurrent(d);
+                    setSelected(d.offsetMinutes);
+                }
+            } catch { /* 讀取失敗維持預設 */ } finally { setLoading(false); }
+        })();
+    }, []);
+
+    const save = async () => {
+        setSaving(true); setMsg('');
+        try {
+            const preset = TZ_PRESETS.find(p => p.offsetMinutes === selected) || { offsetMinutes: selected, label: `UTC${selected >= 0 ? '+' : ''}${selected / 60}` };
+            const res = await adminFetch('/api/settings/timezone', { method: 'POST', body: JSON.stringify(preset) });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d.error || '儲存失敗');
+            setCurrent({ offsetMinutes: d.offsetMinutes, label: d.label });
+            setTzOffsetMinutes(d.offsetMinutes); // 立即套用於本次工作階段
+            setMsg('已儲存，全站報表與時間顯示已切換');
+        } catch (e) { setMsg('儲存失敗：' + e.message); } finally { setSaving(false); }
+    };
+
+    if (loading) return null;
+    const changed = current && selected !== current.offsetMinutes;
+
+    return (
+        <Card title="時區設定" icon={Clock}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '560px' }}>
+                <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px', padding: '12px 14px', fontSize: '14px' }}>
+                    <span style={{ color: '#0369a1', fontWeight: 600 }}>目前時區：</span>
+                    <span style={{ fontWeight: 700 }}>{current?.label || '台灣（UTC+8）'}</span>
+                </div>
+
+                <div>
+                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>切換時區</label>
+                    <select
+                        value={selected}
+                        onChange={e => setSelected(Number(e.target.value))}
+                        style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', background: '#fff' }}
+                    >
+                        {TZ_PRESETS.map(p => <option key={p.offsetMinutes} value={p.offsetMinutes}>{p.label}</option>)}
+                    </select>
+                </div>
+
+                <div style={{ background: '#fafafa', border: '1px solid #eee', borderRadius: '8px', padding: '12px 14px', fontSize: '13px', color: '#4b5563', lineHeight: 1.7 }}>
+                    <div style={{ fontWeight: 700, color: '#374151', marginBottom: '4px' }}>這個設定影響什麼？</div>
+                    系統時間都以 UTC 儲存，顯示時依此時區換算。切換後會影響：
+                    <ul style={{ margin: '6px 0 0', paddingLeft: '18px' }}>
+                        <li>核銷明細／銷售明細／各報表的<b>時間顯示</b></li>
+                        <li>報表的<b>日期分界</b>（哪一筆算哪一天）</li>
+                        <li>員工核銷站「我的紀錄／今日統計」的時間</li>
+                    </ul>
+                    <div style={{ marginTop: '6px', color: '#6b7280' }}>預設為台灣（UTC+8）。台灣營運維持此設定即可，跨區營運再切換。</div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button
+                        onClick={save}
+                        disabled={saving || !changed}
+                        style={{ padding: '10px 20px', borderRadius: '8px', border: 'none', background: (saving || !changed) ? '#d1d5db' : '#2563eb', color: '#fff', fontWeight: 600, cursor: (saving || !changed) ? 'default' : 'pointer' }}
+                    >
+                        {saving ? '儲存中...' : changed ? '儲存並套用' : '目前已是此設定'}
+                    </button>
+                    {msg && <span style={{ fontSize: '14px', fontWeight: 500, color: msg.includes('失敗') ? '#dc2626' : '#16a34a' }}>{msg}</span>}
+                </div>
+            </div>
+        </Card>
+    );
+}
+
 function VoucherSettingsSubTabs() {
     const [sub, setSub] = useState('issue');
     const subs = [
         { k: 'issue', t: '發券設定' },
         { k: 'functions', t: 'LINE OA 功能權限' },
         { k: 'transfer', t: '會員轉贈' },
+        { k: 'timezone', t: '時區設定' },
     ];
     return (
         <div>
@@ -303,6 +396,7 @@ function VoucherSettingsSubTabs() {
             {sub === 'issue' && <VoucherIssueSettings />}
             {sub === 'functions' && <OaFunctionMatrix />}
             {sub === 'transfer' && <TransferToggleCard />}
+            {sub === 'timezone' && <TimezoneCard />}
         </div>
     );
 }

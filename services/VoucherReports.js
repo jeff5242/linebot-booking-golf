@@ -1,6 +1,7 @@
 'use strict';
 
 const { createClient } = require('@supabase/supabase-js');
+const { getTimezone, offsetSuffix, zonedDate } = require('./AppConfig');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -27,6 +28,8 @@ async function fetchAllRows(buildQuery) {
 }
 
 async function getSalesReport({ startDate, endDate, voucherType, userId }) {
+  const { offsetMinutes } = await getTimezone();
+  const suf = offsetSuffix(offsetMinutes);
   const buildQuery = () => {
     let query = supabase
       .from('voucher_logs')
@@ -36,8 +39,8 @@ async function getSalesReport({ startDate, endDate, voucherType, userId }) {
       .eq('vouchers.source_type', 'digital_purchase')
       .order('created_at', { ascending: false });
 
-    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00${suf}`);
+    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59${suf}`);
     if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
     if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
     if (userId) query = query.eq('vouchers.user_id', userId);
@@ -49,10 +52,11 @@ async function getSalesReport({ startDate, endDate, voucherType, userId }) {
   const grouped = {};
   for (const log of logs) {
     const v = log.vouchers;
-    const key = `${v.user_id}_${v.product_name}_${log.created_at.slice(0, 10)}`;
+    const saleDate = zonedDate(log.created_at, offsetMinutes);
+    const key = `${v.user_id}_${v.product_name}_${saleDate}`;
     if (!grouped[key]) {
       grouped[key] = {
-        date: log.created_at.slice(0, 10),
+        date: saleDate,
         customer_name: v.users.display_name || '',
         phone: v.users.phone || '',
         member_no: v.users.member_no || '',
@@ -83,6 +87,8 @@ async function getSalesReport({ startDate, endDate, voucherType, userId }) {
 }
 
 async function getRedemptionReport({ startDate, endDate, granularity = 'daily' }) {
+  const { offsetMinutes } = await getTimezone();
+  const suf = offsetSuffix(offsetMinutes);
   const buildQuery = () => {
     let query = supabase
       .from('voucher_logs')
@@ -92,8 +98,8 @@ async function getRedemptionReport({ startDate, endDate, granularity = 'daily' }
       .eq('vouchers.source_type', 'digital_purchase')
       .order('created_at', { ascending: true });
 
-    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00${suf}`);
+    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59${suf}`);
     return query;
   };
 
@@ -101,7 +107,7 @@ async function getRedemptionReport({ startDate, endDate, granularity = 'daily' }
 
   const buckets = {};
   for (const log of logs) {
-    const dt = log.created_at.slice(0, 10);
+    const dt = zonedDate(log.created_at, offsetMinutes);
     let key;
     if (granularity === 'yearly') key = dt.slice(0, 4);
     else if (granularity === 'monthly') key = dt.slice(0, 7);
@@ -140,6 +146,8 @@ async function getRedemptionReport({ startDate, endDate, granularity = 'daily' }
 
 // 逐張銷售明細（會計對帳用）：每張售出的電子券一列，含卷號
 async function getSalesDetailReport({ startDate, endDate, voucherType, userId }) {
+  const { offsetMinutes } = await getTimezone();
+  const suf = offsetSuffix(offsetMinutes);
   const buildQuery = () => {
     let query = supabase
       .from('voucher_logs')
@@ -149,8 +157,8 @@ async function getSalesDetailReport({ startDate, endDate, voucherType, userId })
       .eq('vouchers.source_type', 'digital_purchase')
       .order('created_at', { ascending: true });
 
-    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00${suf}`);
+    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59${suf}`);
     if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
     if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
     if (userId) query = query.eq('vouchers.user_id', userId);
@@ -189,6 +197,7 @@ async function getSalesDetailReport({ startDate, endDate, voucherType, userId })
 // 銷售交易列表：以「一筆套票交易」為單位（一張電子發票=一筆；舊資料無發票號則以「客戶+效期起訖」歸類）。
 // 每筆含核銷進度（發券↔用券關聯）與逐張明細供展開。
 async function getSalesTransactions({ startDate, endDate, page = 1, limit = 15, missingInvoice = false }) {
+  const { offsetMinutes } = await getTimezone();
   const buildQuery = () => supabase
     .from('vouchers')
     .select('id, code, product_name, price, status, valid_from, valid_until, invoice_number, user_id, created_at, redeemed_at, users(display_name, phone, member_no)')
@@ -231,9 +240,9 @@ async function getSalesTransactions({ startDate, endDate, page = 1, limit = 15, 
   }
 
   let all = Object.values(groups);
-  // 依售出時間過濾（可選）
-  if (startDate) all = all.filter(t => t.sale_time.slice(0, 10) >= startDate);
-  if (endDate) all = all.filter(t => t.sale_time.slice(0, 10) <= endDate);
+  // 依售出時間過濾（可選）；以設定時區的日期為準
+  if (startDate) all = all.filter(t => zonedDate(t.sale_time, offsetMinutes) >= startDate);
+  if (endDate) all = all.filter(t => zonedDate(t.sale_time, offsetMinutes) <= endDate);
   if (missingInvoice) all = all.filter(t => !t.invoice_number); // 只看尚未填發票號
   all.sort((a, b) => b.sale_time.localeCompare(a.sale_time));
 
@@ -252,6 +261,8 @@ async function getSalesTransactions({ startDate, endDate, page = 1, limit = 15, 
 
 // 逐張核銷明細（會計對帳用）：每張核銷的電子券一列，含卷號
 async function getRedemptionDetailReport({ startDate, endDate, voucherType }) {
+  const { offsetMinutes } = await getTimezone();
+  const suf = offsetSuffix(offsetMinutes);
   const buildQuery = () => {
     let query = supabase
       .from('voucher_logs')
@@ -262,9 +273,9 @@ async function getRedemptionDetailReport({ startDate, endDate, voucherType }) {
       .eq('vouchers.status', 'redeemed') // 只算「現在仍為已核銷」的券：撤銷核銷會把券改回 active，就不再列入
       .order('created_at', { ascending: true });
 
-    // 日界以台灣時間（+08:00）為準，避免清晨核銷被歸到前一天
-    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00+08:00`);
-    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59+08:00`);
+    // 日界以設定時區為準（預設台灣 +08:00），避免清晨核銷被歸到前一天
+    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00${suf}`);
+    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59${suf}`);
     if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
     if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
     return query;
