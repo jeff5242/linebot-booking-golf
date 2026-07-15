@@ -255,14 +255,16 @@ async function getRedemptionDetailReport({ startDate, endDate, voucherType }) {
   const buildQuery = () => {
     let query = supabase
       .from('voucher_logs')
-      .select('id, created_at, operator_name, vouchers!inner(id, code, product_name, price, source_type, users(display_name, phone, member_no))')
+      .select('id, created_at, operator_name, vouchers!inner(id, code, product_name, price, source_type, status, users(display_name, phone, member_no))')
       .eq('action', 'redeemed')
       .in('vouchers.product_name', PRODUCT_NAMES)
       .eq('vouchers.source_type', 'digital_purchase')
+      .eq('vouchers.status', 'redeemed') // 只算「現在仍為已核銷」的券：撤銷核銷會把券改回 active，就不再列入
       .order('created_at', { ascending: true });
 
-    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59`);
+    // 日界以台灣時間（+08:00）為準，避免清晨核銷被歸到前一天
+    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00+08:00`);
+    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59+08:00`);
     if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
     if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
     return query;
@@ -270,10 +272,12 @@ async function getRedemptionDetailReport({ startDate, endDate, voucherType }) {
 
   const data = await fetchAllRows(buildQuery);
 
-  const rows = data.map(log => {
+  // 同一張券可能有多筆 redeemed log（核銷→撤銷→再核銷），以券為單位去重、保留最後一次核銷
+  const byVoucher = new Map();
+  for (const log of data) {
     const v = log.vouchers;
     const u = v.users || {};
-    return {
+    byVoucher.set(v.id, {
       redeemed_at: log.created_at,
       code: v.code,
       product_name: v.product_name,
@@ -282,8 +286,9 @@ async function getRedemptionDetailReport({ startDate, endDate, voucherType }) {
       phone: u.phone || '',
       member_no: u.member_no || '',
       operator_name: log.operator_name || '',
-    };
-  });
+    });
+  }
+  const rows = Array.from(byVoucher.values());
 
   const summary = {
     totalCount: rows.length,
