@@ -8,6 +8,13 @@ const TOKEN_KEY = 'redeem_jwt';
 const INFO_KEY = 'redeem_info';
 const READER_ID = 'redeem-qr-reader';
 
+// 台灣時間 HH:MM（DB 存 UTC，加 8 小時），避免顯示差 8 小時
+function twHM(iso) {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso || '').slice(11, 16);
+    return new Date(d.getTime() + 8 * 3600 * 1000).toISOString().slice(11, 16);
+}
+
 const getToken = () => localStorage.getItem(TOKEN_KEY);
 async function api(path, opts = {}) {
     const token = getToken();
@@ -249,7 +256,7 @@ function MyRedemptionsView({ info, onExpired }) {
                     </div>
                     <div style={card}>
                         {d.rows.length === 0 ? <div style={{ textAlign: 'center', color: '#9ca3af', padding: '16px' }}>今天還沒核銷</div>
-                            : d.rows.map((r, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6', fontSize: '.85rem' }}><span style={{ fontFamily: 'monospace' }}>{r.code}</span><span style={{ color: '#5d6d63' }}>{String(r.redeemed_at).slice(11, 16)} · ${r.price}</span></div>)}
+                            : d.rows.map((r, i) => <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f3f4f6', fontSize: '.85rem' }}><span style={{ fontFamily: 'monospace' }}>{r.code}</span><span style={{ color: '#5d6d63' }}>{twHM(r.redeemed_at)} · ${r.price}</span></div>)}
                     </div>
                 </>
             )}

@@ -173,7 +173,7 @@ function SalesTransactions() {
                                                             background: v.status === 'redeemed' ? '#dcfce7' : '#fff',
                                                             border: `1px solid ${v.status === 'redeemed' ? '#86efac' : '#e5e7eb'}`,
                                                             color: v.status === 'redeemed' ? '#15803d' : '#374151',
-                                                        }} title={v.status === 'redeemed' ? `已核銷 ${v.redeemed_at ? v.redeemed_at.slice(0, 16) : ''}` : '未使用'}>
+                                                        }} title={v.status === 'redeemed' ? `已核銷 ${v.redeemed_at ? fmtTime(v.redeemed_at) : ''}` : '未使用'}>
                                                             <span style={typeBadge(v.product_name)}>{v.product_name === '果嶺券' ? '果' : '商'}</span>
                                                             {v.code}
                                                             {v.status === 'redeemed' && ' ✓'}
