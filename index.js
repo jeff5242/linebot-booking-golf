@@ -27,6 +27,7 @@ const CaddyManagement = require('./services/CaddyManagement');
 const ChargeCard = require('./services/ChargeCard');
 const { login: adminLogin, loginByOtp: adminLoginByOtp, issueTokenForUsername } = require('./services/AuthService');
 const StaffRichMenu = require('./services/StaffRichMenu');
+const AppConfig = require('./services/AppConfig');
 const { requireAuth, optionalAuth } = require('./middleware/auth');
 const RoleMgmt = require('./services/RoleManagement');
 const bcrypt = require('bcryptjs');
@@ -530,6 +531,24 @@ app.get('/api/settings', optionalAuth, async (req, res) => {
     res.json(publicSettings);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// 時區設定：讀取公開（前端/核銷站顯示時間都要用），寫入需 settings 權限
+app.get('/api/config/timezone', async (req, res) => {
+  try {
+    res.json(await AppConfig.getTimezone());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/settings/timezone', requireAuth('settings'), async (req, res) => {
+  try {
+    const value = await AppConfig.updateTimezone(req.body || {});
+    res.json({ success: true, ...value });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 

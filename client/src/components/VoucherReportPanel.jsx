@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { adminFetch } from '../utils/adminApi';
+import { formatTWDate, formatTWDateTime } from '../utils/timezone';
 
 const SUB_TABS = [
     { key: 'sales', label: '銷售報表' },
@@ -54,17 +55,8 @@ function exportCsv(filename, headers, rows) {
     URL.revokeObjectURL(url);
 }
 
-// 台灣時間（+08:00）：DB 存 UTC，顯示前一律加 8 小時再取字串，避免整報表時間差 8 小時
-function toTaipei(iso) {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return null;
-    return new Date(d.getTime() + 8 * 3600 * 1000).toISOString();
-}
-
 function formatDate(iso) {
-    if (!iso) return '';
-    const tw = toTaipei(iso);
-    return tw ? tw.slice(0, 10) : iso.slice(0, 10);
+    return formatTWDate(iso);
 }
 
 // 解析報表回應：非 2xx 時丟出可讀錯誤（adminFetch 只在 401 丟錯，其餘要自己判斷）
@@ -89,10 +81,7 @@ function ErrorBanner({ message }) {
 }
 
 function formatDateTime(iso) {
-    if (!iso) return '';
-    const tw = toTaipei(iso);
-    if (!tw) return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
-    return `${tw.slice(0, 10)} ${tw.slice(11, 16)}`;
+    return formatTWDateTime(iso);
 }
 
 function localDateStr(offsetDays = 0) {
