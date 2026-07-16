@@ -937,6 +937,7 @@ function VoucherManagement() {
                         {vouchers.map(v => {
                             let statusColor = '#6b7280';
                             let statusBg = '#f3f4f6';
+                            let textDecoration = 'none';
                             if (v.status === 'active') { statusColor = '#059669'; statusBg = '#d1fae5'; }
                             if (v.status === 'redeemed') { statusColor = '#2563eb'; statusBg = '#dbeafe'; }
                             if (v.status === 'void') { statusColor = '#9ca3af'; statusBg = '#e5e7eb'; textDecoration = 'line-through'; }
@@ -944,7 +945,7 @@ function VoucherManagement() {
 
                             return (
                                 <tr key={v.id} style={{ borderBottom: '1px solid #eee' }}>
-                                    <td style={{ padding: '12px', fontWeight: 'bold', fontFamily: 'monospace' }}>{v.code}</td>
+                                    <td style={{ padding: '12px', fontWeight: 'bold', fontFamily: 'monospace', textDecoration }}>{v.code}</td>
                                     <td style={{ padding: '12px' }}>{v.product_name}</td>
                                     <td style={{ padding: '12px' }}>
                                         {v.users?.display_name}<br />
