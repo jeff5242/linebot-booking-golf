@@ -2912,6 +2912,21 @@ app.post('/api/voucher-ops/update-expiry', requireAuth('voucher_ops'), async (re
   }
 });
 
+// 手動修改會員有效期限（後台櫃檯）
+app.post('/api/voucher-ops/update-member-expiry', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const { user_id, valid_until } = req.body;
+    const result = await VoucherOps.updateMemberExpiry({
+      userId: user_id,
+      validUntil: valid_until,
+      operatorName: req.admin?.name || 'Admin',
+    });
+    res.json({ success: true, ...result, message: `會員有效期限已更新為民國 ${result.member_valid_until}` });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 app.get('/api/voucher-ops/paper-expiry/:userId', requireAuth('voucher_ops'), async (req, res) => {
   try {
     const expiry = await VoucherOps.getPaperVoucherExpiry(req.params.userId);

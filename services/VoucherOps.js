@@ -596,7 +596,7 @@ async function cancelAllVouchers({ userId, reason, operatorName }) {
 async function getCustomerVouchers(userId) {
   const { data: user, error: userError } = await supabase
     .from('users')
-    .select('id, display_name, phone, member_no')
+    .select('id, display_name, phone, member_no, member_valid_until')
     .eq('id', userId)
     .single();
   if (userError || !user) throw new Error('找不到該用戶');
@@ -674,6 +674,31 @@ async function updateVoucherExpiry({ userId, validFrom, validUntil, operatorName
   return { updated: ids.length, validFrom, validUntil };
 }
 
+// 手動修改會員有效期限（後台櫃檯用）。輸入西元 YYYY-MM-DD，存成民國字串 0YYY-MM-DD（與現有資料一致）。
+async function updateMemberExpiry({ userId, validUntil, operatorName }) {
+  const iso = String(validUntil || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) throw new Error('請選擇正確的到期日');
+  const [y, m, d] = iso.split('-');
+  const rocYear = Number(y) - 1911;
+  if (rocYear < 1 || rocYear > 999) throw new Error('年份超出範圍');
+  const rocStr = `${String(rocYear).padStart(4, '0')}-${m}-${d}`;
+
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('id, display_name, member_valid_until')
+    .eq('id', userId)
+    .single();
+  if (error || !user) throw new Error('找不到該用戶');
+
+  const { error: upErr } = await supabase
+    .from('users')
+    .update({ member_valid_until: rocStr })
+    .eq('id', userId);
+  if (upErr) throw upErr;
+
+  return { member_valid_until: rocStr, previous: user.member_valid_until || null, operatorName: operatorName || 'Admin' };
+}
+
 async function getPaperVoucherExpiry(userId) {
   const { data } = await supabase
     .from('vouchers')
@@ -736,6 +761,7 @@ module.exports = {
   cancelAllVouchers,
   getCustomerVouchers,
   updateVoucherExpiry,
+  updateMemberExpiry,
   getPaperVoucherExpiry,
   searchUsers,
   getHistory,
