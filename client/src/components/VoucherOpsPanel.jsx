@@ -220,6 +220,47 @@ export function VoucherOpsPanel({ preSelectedUser }) {
         }
     };
 
+    // 會員有效期限（存民國字串 0YYY-MM-DD）→ 轉西元供 date picker 用
+    const rocToWestern = (roc) => {
+        if (!roc) return '';
+        const m = String(roc).match(/^0?(\d{1,3})-(\d{2})-(\d{2})/);
+        if (!m) return '';
+        return `${Number(m[1]) + 1911}-${m[2]}-${m[3]}`;
+    };
+    const rocDisplay = (roc) => {
+        if (!roc) return '未設定';
+        const m = String(roc).match(/^0?(\d{1,3})-(\d{2})-(\d{2})/);
+        return m ? `民國 ${Number(m[1])}/${m[2]}/${m[3]}` : roc;
+    };
+    const westernToRocLabel = (iso) => {
+        const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+        return m ? `民國 ${Number(m[1]) - 1911}/${m[2]}/${m[3]}` : '';
+    };
+
+    const openMemberExpiryModal = () => {
+        setModal({ type: 'update_member_expiry', memberValidUntil: rocToWestern(customerData?.user?.member_valid_until) });
+    };
+
+    const handleUpdateMemberExpiry = async () => {
+        if (!modal.memberValidUntil) return alert('請選擇會員有效期限');
+        try {
+            const res = await adminFetch('/api/voucher-ops/update-member-expiry', {
+                method: 'POST',
+                body: JSON.stringify({ user_id: selectedUser.id, valid_until: modal.memberValidUntil }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(data.message);
+                setModal(null);
+                refreshCustomerData();
+            } else {
+                alert('修改失敗: ' + data.error);
+            }
+        } catch (err) {
+            alert('修改失敗: ' + err.message);
+        }
+    };
+
     const handleReverseRedeem = async () => {
         const qty = parseInt(modal.quantity);
         if (!qty || qty < 1) return alert('請輸入張數');
@@ -403,6 +444,21 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                 </div>
             )}
 
+            {/* 會員有效期限（可手動修改，與票券效期分開） */}
+            {customerData && !loading && (
+                <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                        <span style={{ fontSize: '14px', color: '#374151' }}>會員有效期限：</span>
+                        <span style={{ fontWeight: 'bold', fontSize: '14px', color: customerData.user?.member_valid_until ? '#2563eb' : '#9ca3af' }}>
+                            {rocDisplay(customerData.user?.member_valid_until)}
+                        </span>
+                    </div>
+                    <button onClick={openMemberExpiryModal} style={{ padding: '6px 14px', border: '1px solid #2563eb', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', background: '#fff', color: '#2563eb', fontWeight: '500' }}>
+                        修改會員效期
+                    </button>
+                </div>
+            )}
+
             {loading && <div style={{ textAlign: 'center', padding: '24px', color: '#9ca3af' }}>載入中...</div>}
 
             {/* Package Issue */}
@@ -559,6 +615,28 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                         onConfirm={handleUpdateExpiry}
                         onCancel={() => setModal(null)}
                     />
+                )}
+                {modal.type === 'update_member_expiry' && (
+                    <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', maxWidth: '420px', width: '100%' }}>
+                        <h3 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: '#2563eb' }}>修改會員有效期限</h3>
+                        <p style={{ fontSize: '13px', color: '#6b7280', margin: '0 0 16px', lineHeight: 1.6 }}>
+                            客人：<b>{selectedUser?.display_name}</b>。此為「<b>會員有效期限</b>」，與票券效期分開；直接設定即可覆蓋原本的日期。
+                        </p>
+                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#374151' }}>會員有效期限（到期日）</label>
+                        <input
+                            type="date"
+                            value={modal.memberValidUntil || ''}
+                            onChange={e => setModal(prev => ({ ...prev, memberValidUntil: e.target.value }))}
+                            style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' }}
+                        />
+                        <div style={{ marginTop: '8px', fontSize: '13px', fontWeight: 600, color: modal.memberValidUntil ? '#2563eb' : '#9ca3af' }}>
+                            {modal.memberValidUntil ? `= ${westernToRocLabel(modal.memberValidUntil)}` : '請選擇日期'}
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                            <button onClick={() => setModal(null)} style={{ flex: 1, padding: '10px', border: '1px solid #d1d5db', borderRadius: '8px', background: '#fff', cursor: 'pointer', fontWeight: 500 }}>取消</button>
+                            <button onClick={handleUpdateMemberExpiry} disabled={!modal.memberValidUntil} style={{ flex: 1, padding: '10px', border: 'none', borderRadius: '8px', background: modal.memberValidUntil ? '#2563eb' : '#d1d5db', color: '#fff', fontWeight: 600, cursor: modal.memberValidUntil ? 'pointer' : 'default' }}>儲存</button>
+                        </div>
+                    </div>
                 )}
             </ModalOverlay>}
         </div>
