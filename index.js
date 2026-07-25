@@ -48,6 +48,7 @@ const transferLimiter = rateLimit({
   handler: (req, res) => res.status(429).json({ error: '轉贈操作過於頻繁，請稍後再試' }),
 });
 const VoucherReports = require('./services/VoucherReports');
+const MemberMerge = require('./services/MemberMerge');
 
 // Supabase 設定
 const supabase = createClient(
@@ -2518,6 +2519,16 @@ app.get('/api/voucher-ops/customer/:userId', requireAuth('voucher_ops'), async (
   }
 });
 
+// 發券頁提示：查某客人有無疑似重複帳號（voucher_ops 權限即可看，合併另需 member_dedup）
+app.get('/api/voucher-ops/possible-duplicates/:userId', requireAuth('voucher_ops'), async (req, res) => {
+  try {
+    const duplicates = await MemberMerge.findDuplicatesForUser(req.params.userId);
+    res.json({ duplicates });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/voucher-ops/issue', requireAuth('voucher_ops'), async (req, res) => {
   try {
     const { user_id, voucher_type, quantity } = req.body;
@@ -2551,6 +2562,37 @@ app.post('/api/voucher-ops/redeem', requireAuth('voucher_ops'), async (req, res)
     res.json({ success: true, ...result, message: `成功核銷 ${result.redeemed} 張` });
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+// ============================================
+// 會員去重 / 合併（member_dedup 權限）
+// ============================================
+
+// 疑似重複會員配對清單
+app.get('/api/members/duplicate-candidates', requireAuth('member_dedup'), async (req, res) => {
+  try {
+    const result = await MemberMerge.findDuplicateCandidates();
+    res.json(result);
+  } catch (error) {
+    console.error('Duplicate Candidates Error:', error);
+    res.status(500).json({ error: error.message || '偵測失敗' });
+  }
+});
+
+// 合併兩個帳號：保留 keepId、把 removeId 的資料搬過去後刪除 removeId
+app.post('/api/members/merge', requireAuth('member_dedup'), async (req, res) => {
+  try {
+    const { keepId, removeId } = req.body;
+    const result = await MemberMerge.mergeUsers({
+      keepId,
+      removeId,
+      operatorName: req.admin?.name || 'Admin',
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Member Merge Error:', error);
+    res.status(400).json({ error: error.message || '合併失敗' });
   }
 });
 
