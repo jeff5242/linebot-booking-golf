@@ -22,6 +22,7 @@ export function VoucherOpsPanel({ preSelectedUser }) {
     const [searching, setSearching] = useState(false);
     const [selectedUser, setSelectedUser] = useState(preSelectedUser || null);
     const [customerData, setCustomerData] = useState(null);
+    const [possibleDuplicates, setPossibleDuplicates] = useState([]);
     const [loading, setLoading] = useState(false);
 
     const [modal, setModal] = useState(null);
@@ -135,12 +136,18 @@ export function VoucherOpsPanel({ preSelectedUser }) {
         setSelectedUser(user);
         setSearchQuery('');
         setSearchResults([]);
+        setPossibleDuplicates([]);
         setLoading(true);
         try {
             const res = await adminFetch(`/api/voucher-ops/customer/${user.id}`);
             const data = await safeJson(res, '載入客人資料');
             setCustomerData(data);
             fetchHistory(user.id, 1);
+            // 疑似重複帳號提示（best-effort，失敗不影響發券）
+            adminFetch(`/api/voucher-ops/possible-duplicates/${user.id}`)
+                .then(r => r.ok ? r.json() : { duplicates: [] })
+                .then(d => setPossibleDuplicates(d.duplicates || []))
+                .catch(() => setPossibleDuplicates([]));
         } catch (err) {
             alert('載入客人資料失敗: ' + err.message);
         } finally {
@@ -422,9 +429,36 @@ export function VoucherOpsPanel({ preSelectedUser }) {
                             <span style={{ marginLeft: '12px', color: '#6b7280' }}>{selectedUser.phone}</span>
                             {selectedUser.member_no && <span style={{ marginLeft: '12px', color: '#9ca3af', fontSize: '13px' }}>#{selectedUser.member_no}</span>}
                         </div>
-                        <button onClick={() => { setSelectedUser(null); setCustomerData(null); setHistory([]); }} style={linkBtnStyle}>
+                        <button onClick={() => { setSelectedUser(null); setCustomerData(null); setHistory([]); setPossibleDuplicates([]); }} style={linkBtnStyle}>
                             切換客人
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* 疑似重複帳號提示 */}
+            {selectedUser && possibleDuplicates.length > 0 && (
+                <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                    <div style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '6px' }}>
+                        ⚠️ 疑似重複帳號（{possibleDuplicates.length}）
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#78350f' }}>
+                        這位客人可能與以下帳號是同一人（電話/姓名相近）：
+                        <ul style={{ margin: '6px 0 0', paddingLeft: '20px' }}>
+                            {possibleDuplicates.map(d => (
+                                <li key={d.id}>
+                                    {d.display_name || '(無名)'} / {d.phone}
+                                    {d.member_no && <span style={{ color: '#9ca3af' }}> #{d.member_no}</span>}
+                                    {d.line_bound && <span style={{ marginLeft: '6px', fontSize: '11px', background: '#06c755', color: '#fff', padding: '0 5px', borderRadius: '6px' }}>LINE</span>}
+                                    <span style={{ color: '#6b7280' }}>（{d.stats.voucher_active}/{d.stats.voucher_total} 張券）</span>
+                                </li>
+                            ))}
+                        </ul>
+                        <div style={{ marginTop: '6px' }}>
+                            {hasPermission('member_dedup')
+                                ? '如確認是同一人，請到「🔗 會員去重」分頁合併帳號。'
+                                : '如確認是同一人，請通知管理員到「會員去重」合併帳號，避免發券發到錯誤帳號。'}
+                        </div>
                     </div>
                 </div>
             )}
