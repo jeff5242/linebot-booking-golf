@@ -690,7 +690,7 @@ function PackageIssueSection({ userId, onIssued, settings }) {
     const pdPrice = settings?.product?.unit_price ?? 100;
     const MIN_RENEWAL_MONTHS = 9;
     const EXPIRY_MONTHS = 13;
-    const GRACE_MONTHS = 1;
+    const GRACE_MONTHS = 2; // 續約寬限期：過期後 2 個月內仍可續約（原為 1 個月，2026-09 延長一個月）
     const [issuing, setIssuing] = useState(false);
     const [showPackageModal, setShowPackageModal] = useState(null);
     const [lastPurchaseDate, setLastPurchaseDate] = useState(null);
