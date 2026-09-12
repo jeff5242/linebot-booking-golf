@@ -260,46 +260,60 @@ async function getSalesTransactions({ startDate, endDate, page = 1, limit = 15, 
 }
 
 // 逐張核銷明細（會計對帳用）：每張核銷的電子券一列，含卷號
+// 歸日一律以「券當前的 redeemed_at」為準：撤銷核銷會清空 redeemed_at、重新核銷會重設，
+// 故 redeemed_at 永遠代表「現在這次有效核銷」的時間。改以此為基準（不再看歷史 redeemed log 的日期），
+// 可避免「核銷→撤銷→改天再核銷」時，作廢的舊 log 讓同一張券在原核銷日重複列入（跨天重複計算）。
 async function getRedemptionDetailReport({ startDate, endDate, voucherType }) {
   const { offsetMinutes } = await getTimezone();
   const suf = offsetSuffix(offsetMinutes);
   const buildQuery = () => {
     let query = supabase
-      .from('voucher_logs')
-      .select('id, created_at, operator_name, vouchers!inner(id, code, product_name, price, source_type, status, users(display_name, phone, member_no))')
-      .eq('action', 'redeemed')
-      .in('vouchers.product_name', PRODUCT_NAMES)
-      .eq('vouchers.source_type', 'digital_purchase')
-      .eq('vouchers.status', 'redeemed') // 只算「現在仍為已核銷」的券：撤銷核銷會把券改回 active，就不再列入
-      .order('created_at', { ascending: true });
+      .from('vouchers')
+      .select('id, code, product_name, price, redeemed_at, redeemed_by, users(display_name, phone, member_no)')
+      .eq('status', 'redeemed')
+      .eq('source_type', 'digital_purchase')
+      .in('product_name', PRODUCT_NAMES)
+      .not('redeemed_at', 'is', null)
+      .order('redeemed_at', { ascending: true });
 
     // 日界以設定時區為準（預設台灣 +08:00），避免清晨核銷被歸到前一天
-    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00${suf}`);
-    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59${suf}`);
-    if (voucherType === 'green_fee') query = query.eq('vouchers.product_name', '果嶺券');
-    if (voucherType === 'product') query = query.eq('vouchers.product_name', '商品券');
+    if (startDate) query = query.gte('redeemed_at', `${startDate}T00:00:00${suf}`);
+    if (endDate) query = query.lte('redeemed_at', `${endDate}T23:59:59${suf}`);
+    if (voucherType === 'green_fee') query = query.eq('product_name', '果嶺券');
+    if (voucherType === 'product') query = query.eq('product_name', '商品券');
     return query;
   };
 
-  const data = await fetchAllRows(buildQuery);
+  const vouchers = await fetchAllRows(buildQuery);
 
-  // 同一張券可能有多筆 redeemed log（核銷→撤銷→再核銷），以券為單位去重、保留最後一次核銷
-  const byVoucher = new Map();
-  for (const log of data) {
-    const v = log.vouchers;
+  // 操作人：優先用券上的 redeemed_by；現場掃碼核銷的舊資料可能未寫入，
+  // 缺的再從該券最後一筆 redeemed log 補上，確保操作人不漏。
+  const needOperator = vouchers.filter(v => !v.redeemed_by).map(v => v.id);
+  const opMap = new Map();
+  for (let i = 0; i < needOperator.length; i += 100) {
+    const chunk = needOperator.slice(i, i + 100);
+    const { data: logs } = await supabase
+      .from('voucher_logs')
+      .select('voucher_id, operator_name, created_at')
+      .in('voucher_id', chunk)
+      .eq('action', 'redeemed')
+      .order('created_at', { ascending: true });
+    for (const l of (logs || [])) opMap.set(l.voucher_id, l.operator_name || ''); // 升冪→最後覆蓋=最新一次核銷
+  }
+
+  const rows = vouchers.map(v => {
     const u = v.users || {};
-    byVoucher.set(v.id, {
-      redeemed_at: log.created_at,
+    return {
+      redeemed_at: v.redeemed_at,
       code: v.code,
       product_name: v.product_name,
       price: v.price,
       customer_name: u.display_name || '',
       phone: u.phone || '',
       member_no: u.member_no || '',
-      operator_name: log.operator_name || '',
-    });
-  }
-  const rows = Array.from(byVoucher.values());
+      operator_name: v.redeemed_by || opMap.get(v.id) || '',
+    };
+  });
 
   const summary = {
     totalCount: rows.length,
