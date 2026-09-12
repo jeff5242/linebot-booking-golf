@@ -86,28 +86,31 @@ async function getSalesReport({ startDate, endDate, voucherType, userId }) {
   return { rows, summary };
 }
 
+// 核銷彙總（日／月／年）。與逐張明細一致：以「券當前 redeemed_at + status=redeemed」為準，
+// 不再直接數 redeemed log，避免把「撤銷後」的券仍計入、以及「撤銷→改天再核銷」跨天重複計算。
 async function getRedemptionReport({ startDate, endDate, granularity = 'daily' }) {
   const { offsetMinutes } = await getTimezone();
   const suf = offsetSuffix(offsetMinutes);
   const buildQuery = () => {
     let query = supabase
-      .from('voucher_logs')
-      .select('id, action, created_at, operator_name, vouchers!inner(id, product_name, price, source_type)')
-      .eq('action', 'redeemed')
-      .in('vouchers.product_name', PRODUCT_NAMES)
-      .eq('vouchers.source_type', 'digital_purchase')
-      .order('created_at', { ascending: true });
+      .from('vouchers')
+      .select('id, product_name, price, redeemed_at')
+      .eq('status', 'redeemed')
+      .eq('source_type', 'digital_purchase')
+      .in('product_name', PRODUCT_NAMES)
+      .not('redeemed_at', 'is', null)
+      .order('redeemed_at', { ascending: true });
 
-    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00${suf}`);
-    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59${suf}`);
+    if (startDate) query = query.gte('redeemed_at', `${startDate}T00:00:00${suf}`);
+    if (endDate) query = query.lte('redeemed_at', `${endDate}T23:59:59${suf}`);
     return query;
   };
 
-  const logs = await fetchAllRows(buildQuery);
+  const vouchers = await fetchAllRows(buildQuery);
 
   const buckets = {};
-  for (const log of logs) {
-    const dt = zonedDate(log.created_at, offsetMinutes);
+  for (const v of vouchers) {
+    const dt = zonedDate(v.redeemed_at, offsetMinutes);
     let key;
     if (granularity === 'yearly') key = dt.slice(0, 4);
     else if (granularity === 'monthly') key = dt.slice(0, 7);
@@ -118,7 +121,6 @@ async function getRedemptionReport({ startDate, endDate, granularity = 'daily' }
     }
 
     const b = buckets[key];
-    const v = log.vouchers;
     if (v.product_name === '果嶺券') {
       b.green_fee_qty += 1;
       b.green_fee_amount += v.price;
@@ -135,10 +137,10 @@ async function getRedemptionReport({ startDate, endDate, granularity = 'daily' }
   );
 
   const summary = {
-    totalQuantity: logs.length,
-    totalAmount: logs.reduce((s, l) => s + (l.vouchers?.price || 0), 0),
-    greenFeeQty: logs.filter(l => l.vouchers?.product_name === '果嶺券').length,
-    productQty: logs.filter(l => l.vouchers?.product_name === '商品券').length,
+    totalQuantity: vouchers.length,
+    totalAmount: vouchers.reduce((s, v) => s + (v.price || 0), 0),
+    greenFeeQty: vouchers.filter(v => v.product_name === '果嶺券').length,
+    productQty: vouchers.filter(v => v.product_name === '商品券').length,
   };
 
   return { rows, summary, granularity };
