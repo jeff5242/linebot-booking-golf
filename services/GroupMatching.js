@@ -170,6 +170,54 @@ async function findMergeableGroups({ date, time, excludeUserId, config, bookingS
   return { active: true, groups };
 }
 
+/**
+ * 把散客併入既有組（併進目標那筆預約的 players_info）。
+ * 護欄：目標非取消、併組後 ≤ maxPerGroup；樂觀鎖（players_count 仍為讀到的值才更新）
+ * 防兩位散客同時搶同一組最後一位。並在目標組寫入 allow_matching=true。
+ * @param {{targetBookingId, joiners:Array<{name,phone}>, config}} args
+ * @returns {Promise<{booking_id, players_count, joined}>}
+ */
+async function joinGroup({ targetBookingId, joiners, config }) {
+  const cfg = config || DEFAULT_CONFIG;
+  const max = cfg.maxPerGroup || 4;
+  const add = (Array.isArray(joiners) ? joiners : []).filter(j => j && j.name && String(j.name).trim());
+  if (add.length === 0) throw new Error('缺少要加入的球友資料');
+  if (!targetBookingId) throw new Error('缺少目標組');
+
+  const sb = getSupabase();
+  const { data: target, error } = await sb
+    .from('bookings')
+    .select('id, status, players_count, players_info')
+    .eq('id', targetBookingId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!target) throw new Error('找不到目標組');
+  if (target.status === 'cancelled') throw new Error('目標組已取消，無法併入');
+
+  const oldCount = Number(target.players_count) || 0;
+  const newCount = oldCount + add.length;
+  if (newCount > max) throw new Error(`併組後 ${newCount} 人，超過一組上限 ${max} 人`);
+
+  const newInfo = [
+    ...(Array.isArray(target.players_info) ? target.players_info : []),
+    ...add.map(j => ({ name: String(j.name).trim(), phone: j.phone || null })),
+  ];
+
+  // 樂觀鎖：只有 players_count 仍等於剛讀到的 oldCount 且未取消時才更新
+  const { data: updated, error: uErr } = await sb
+    .from('bookings')
+    .update({ players_info: newInfo, players_count: newCount, allow_matching: true })
+    .eq('id', targetBookingId)
+    .eq('players_count', oldCount)
+    .neq('status', 'cancelled')
+    .select('id, players_count');
+  if (uErr) throw uErr;
+  if (!updated || updated.length === 0) {
+    throw new Error('該組人數剛剛有變動（可能已被他人併入），請重新查詢可併組別');
+  }
+  return { booking_id: targetBookingId, players_count: newCount, joined: add.length };
+}
+
 module.exports = {
   SETTINGS_KEY,
   DEFAULT_CONFIG,
@@ -179,4 +227,5 @@ module.exports = {
   peakType,
   rankMergeable,
   findMergeableGroups,
+  joinGroup,
 };
