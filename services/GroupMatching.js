@@ -94,6 +94,82 @@ function peakType(time, peakA, peakB) {
   return null;
 }
 
+/**
+ * 把候選預約排序＋去識別（純函式，好測試）。
+ * 規則：同一開球時間優先 → 同 Peak → 當天其他；同群組內時間近者優先。
+ * 只回未滿 maxPerGroup 人的組，且排除自己（excludeBookingIds）。
+ * @param {Array} bookings 當天非取消預約（含 id,time,players_count,players_info,holes）
+ * @param {string} reqTime 散客想要的開球時間 'HH:mm'
+ * @param {{start,end}} peakA
+ * @param {{start,end}} peakB
+ * @param {number} maxPerGroup
+ * @param {Set<string>} excludeBookingIds 要排除的 booking id（自己的組）
+ * @returns {Array<{booking_id,time,current_count,remaining,holes,peak,same_slot}>}
+ */
+function rankMergeable(bookings, reqTime, peakA, peakB, maxPerGroup, excludeBookingIds) {
+  const max = maxPerGroup || 4;
+  const reqShort = String(reqTime || '').slice(0, 5);
+  const reqPeak = peakType(reqShort, peakA, peakB);
+  const exclude = excludeBookingIds instanceof Set ? excludeBookingIds : new Set();
+
+  const candidates = (bookings || [])
+    .filter(b => b && b.status !== 'cancelled')
+    .filter(b => !exclude.has(String(b.id)))
+    .filter(b => Number(b.players_count) > 0 && Number(b.players_count) < max)
+    .map(b => {
+      const tShort = String(b.time || '').slice(0, 5);
+      const p = peakType(tShort, peakA, peakB);
+      return {
+        booking_id: b.id,
+        time: tShort,
+        current_count: Number(b.players_count),
+        remaining: max - Number(b.players_count),
+        holes: b.holes != null ? Number(b.holes) : null,
+        peak: p,
+        same_slot: tShort === reqShort,
+      };
+    });
+
+  // 排序：同時間 → 同 Peak → 其他；再按與想要時間的接近程度、時間先後
+  const rank = (c) => (c.same_slot ? 0 : (reqPeak && c.peak === reqPeak ? 1 : 2));
+  candidates.sort((a, b) => {
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    return a.time.localeCompare(b.time);
+  });
+  return candidates;
+}
+
+/**
+ * 查當天可併組候選（DB）。功能未啟用時一律回空陣列（零影響）。
+ * @param {{date,time,excludeUserId,config,bookingSettings}} args
+ *   config: normalizeConfig 後設定；bookingSettings: 含 peak_a/peak_b 的預約設定
+ * @returns {Promise<{active:boolean, groups:Array}>}
+ */
+async function findMergeableGroups({ date, time, excludeUserId, config, bookingSettings }) {
+  const cfg = config || DEFAULT_CONFIG;
+  if (!isActiveOn(date, cfg)) return { active: false, groups: [] };
+
+  const sb = getSupabase();
+  // 當天非取消預約
+  const { data: bookings, error } = await sb
+    .from('bookings')
+    .select('id, time, players_count, players_info, holes, status, user_id')
+    .eq('date', date)
+    .neq('status', 'cancelled');
+  if (error) throw error;
+
+  // 排除散客自己已有的組（同 user_id）
+  const exclude = new Set(
+    (bookings || []).filter(b => excludeUserId && b.user_id === excludeUserId).map(b => String(b.id))
+  );
+
+  const peakA = bookingSettings?.peak_a;
+  const peakB = bookingSettings?.peak_b;
+  const groups = rankMergeable(bookings, time, peakA, peakB, cfg.maxPerGroup, exclude);
+  return { active: true, groups };
+}
+
 module.exports = {
   SETTINGS_KEY,
   DEFAULT_CONFIG,
@@ -101,4 +177,6 @@ module.exports = {
   normalizeConfig,
   isActiveOn,
   peakType,
+  rankMergeable,
+  findMergeableGroups,
 };
