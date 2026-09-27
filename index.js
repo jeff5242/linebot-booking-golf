@@ -22,6 +22,7 @@ const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { getSettings, updateSettings } = require('./services/SystemSettings');
 const { generateTimeSlots, processWaitlist } = require('./services/BookingLogic');
+const GroupMatching = require('./services/GroupMatching');
 const OperationalCalendar = require('./services/OperationalCalendar');
 const CaddyManagement = require('./services/CaddyManagement');
 const ChargeCard = require('./services/ChargeCard');
@@ -705,6 +706,27 @@ app.post('/api/bookings', async (req, res) => {
       return res.status(404).json({ error: '找不到使用者資料，請先完成註冊' });
     }
 
+    // 散客自動併組（啟用日 + 強制）：1~2 人散客、未同意併組、當天尚有未滿組 → 擋下，請先併組。
+    // 功能未啟用 / 非啟用日 / 非強制 → isActiveOn 或 force 為 false，整段跳過，建立流程完全照舊（零影響）。
+    try {
+      const gmConfig = await GroupMatching.getConfig();
+      const accepted = req.body.allow_matching === true;
+      if (gmConfig.force && Number(players_count) <= 2 && !accepted && GroupMatching.isActiveOn(date, gmConfig)) {
+        const { groups } = await GroupMatching.findMergeableGroups({
+          date, time, excludeUserId: userId, config: gmConfig, bookingSettings: settings,
+        });
+        if (groups.length > 0) {
+          return res.status(409).json({
+            error: '本日採自動併組，請選擇併入現有組別（或勾選同意併組）',
+            code: 'MERGE_REQUIRED',
+            groups,
+          });
+        }
+      }
+    } catch (gmErr) {
+      console.warn('Group matching check skipped:', gmErr.message);
+    }
+
     // Calculate amount via RateManagement (best-effort, fallback to 0)
     let amount = 0;
     try {
@@ -847,6 +869,92 @@ app.post('/api/waitlist', async (req, res) => {
     res.json({ success: true, message: '已成功加入候補清單' });
   } catch (error) {
     console.error('Waitlist Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 散客自動併組（GroupMatching）──
+// 功能總開關 group_matching.enabled 預設 false；未啟用或非啟用日 → active:false、groups:[]，
+// 前端據此完全走既有預約流程（零影響）。
+
+// 查當天可併組候選（LIFF 預約頁；去識別，不含姓名電話）
+app.get('/api/bookings/mergeable', async (req, res) => {
+  try {
+    const { date, time, phone } = req.query;
+    if (!date) return res.status(400).json({ error: '缺少日期' });
+    const config = await GroupMatching.getConfig();
+    if (!GroupMatching.isActiveOn(date, config)) return res.json({ active: false, groups: [] });
+
+    let excludeUserId = null;
+    if (phone) {
+      const clean = String(phone).replace(/[^0-9]/g, '');
+      const { data: u } = await supabase.from('users').select('id').eq('phone', clean).limit(1);
+      excludeUserId = u?.[0]?.id || null;
+    }
+    const bookingSettings = await getSettings();
+    const result = await GroupMatching.findMergeableGroups({ date, time, excludeUserId, config, bookingSettings });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 併入既有組（散客同意併組時呼叫）
+app.post('/api/bookings/join-group', async (req, res) => {
+  try {
+    const { phone, target_booking_id, players_info } = req.body || {};
+    if (!phone || !target_booking_id || !Array.isArray(players_info) || players_info.length === 0) {
+      return res.status(400).json({ error: '缺少必要欄位 (phone, target_booking_id, players_info)' });
+    }
+    const clean = String(phone).replace(/[^0-9]/g, '');
+    if (!/^09\d{8}$/.test(clean)) return res.status(400).json({ error: '請輸入正確的台灣手機號碼格式' });
+    for (const p of players_info) {
+      if (!p?.name || String(p.name).trim() === '') return res.status(400).json({ error: '球友姓名為必填' });
+    }
+
+    // 散客須為已註冊會員（與建立預約一致）
+    const { data: users } = await supabase.from('users')
+      .select('id, line_user_id, display_name').eq('phone', clean)
+      .order('created_at', { ascending: false }).limit(1);
+    if (!users || users.length === 0) return res.status(404).json({ error: '找不到使用者資料，請先完成註冊' });
+
+    const config = await GroupMatching.getConfig();
+    const { data: target } = await supabase.from('bookings').select('id, date, status').eq('id', target_booking_id).maybeSingle();
+    if (!target) return res.status(404).json({ error: '找不到目標組' });
+    if (!GroupMatching.isActiveOn(target.date, config)) return res.status(400).json({ error: '該日未開放自動併組' });
+
+    // 帶散客手機進 players_info，供「我的預約」查找
+    const joiners = players_info.map(p => ({ name: String(p.name).trim(), phone: p.phone || clean }));
+    const result = await GroupMatching.joinGroup({ targetBookingId: target_booking_id, joiners, config });
+
+    // LINE 併組成功通知（best-effort）
+    if (users[0].line_user_id) {
+      const dateStr = String(target.date).replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2/$3');
+      sendPushMessage(users[0].line_user_id,
+        `✅ 併組成功\n${dateStr} 已為您安排併組，該組目前 ${result.players_count} 人。`).catch(() => {});
+    }
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 後台：讀/寫 自動併組設定（enabled/enabledWeekdays/enabledDates/force/maxPerGroup）
+app.get('/api/group-matching-settings', requireAuth('settings'), async (req, res) => {
+  try {
+    res.json(await GroupMatching.getConfig());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.post('/api/group-matching-settings', requireAuth('settings'), async (req, res) => {
+  try {
+    const clean = GroupMatching.normalizeConfig(req.body?.config || req.body);
+    await supabase.from('system_settings').upsert({
+      key: GroupMatching.SETTINGS_KEY, value: clean, updated_at: new Date().toISOString(),
+    });
+    res.json({ success: true, config: clean });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
