@@ -124,6 +124,24 @@ async function main() {
     assert.ok(okCreate.status === 200 || okCreate.status === 201, `狀態應成功，實際 ${okCreate.status} / ${JSON.stringify(okBody)}`);
   });
 
+  // ── 後台設定端點：POST 寫入 → GET 讀回（mint settings 權限 JWT）──
+  const jwt = require('jsonwebtoken');
+  const token = jwt.sign({ adminId: 'test', username: 'test', name: '測試', role: 'super_admin', permissions: ['settings'] }, process.env.JWT_SECRET, { expiresIn: '5m' });
+  const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+  await fetch(`${BASE}/api/group-matching-settings`, { method: 'POST', headers: auth, body: JSON.stringify({ config: { enabled: true, enabledWeekdays: [0, 6], enabledDates: ['2099-12-30'], force: false, maxPerGroup: 3 } }) });
+  const readBack = await j(await fetch(`${BASE}/api/group-matching-settings`, { headers: auth }));
+  t('後台設定端點：寫入後讀回一致（normalizeConfig 生效）', () => {
+    assert.equal(readBack.enabled, true);
+    assert.deepEqual(readBack.enabledWeekdays.sort(), [0, 6]);
+    assert.deepEqual(readBack.enabledDates, ['2099-12-30']);
+    assert.equal(readBack.force, false);
+    assert.equal(readBack.maxPerGroup, 3);
+  });
+  const noAuth = await fetch(`${BASE}/api/group-matching-settings`);
+  t('後台設定端點：無權限 → 401/403', () => {
+    assert.ok(noAuth.status === 401 || noAuth.status === 403);
+  });
+
   console.log(`\n通過 ${passed} 項\n`);
 }
 
