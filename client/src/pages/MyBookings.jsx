@@ -36,15 +36,19 @@ export function MyBookings() {
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         const cutoffDate = sevenDaysAgo.toISOString().split('T')[0];
 
-        const { data } = await supabase
-            .from('bookings')
-            .select('*')
-            .eq('user_id', user.id)
-            .gte('date', cutoffDate)
-            .order('date', { ascending: false })
-            .order('time', { ascending: false });
+        // ① 自己擁有的預約　② 被併入的組（players_info 含本人手機）
+        const [ownedRes, joinedRes] = await Promise.all([
+            supabase.from('bookings').select('*').eq('user_id', user.id).gte('date', cutoffDate),
+            supabase.from('bookings').select('*').contains('players_info', JSON.stringify([{ phone }])).gte('date', cutoffDate),
+        ]);
 
-        setBookings(data || []);
+        const map = new Map();
+        (ownedRes.data || []).forEach(b => map.set(b.id, { ...b, _isJoined: false }));
+        (joinedRes.data || []).forEach(b => { if (!map.has(b.id)) map.set(b.id, { ...b, _isJoined: b.user_id !== user.id }); });
+
+        const merged = [...map.values()].sort((a, b) =>
+            `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
+        setBookings(merged);
     };
 
     const handleCancel = async (id) => {
@@ -114,6 +118,13 @@ export function MyBookings() {
                             }}>
                                 {b.status === 'checked_in' ? '已報到' : b.status === 'cancelled' ? '已取消' : '已預約'}
                             </span>
+                            {b._isJoined && (
+                                <span style={{
+                                    padding: '4px 8px', borderRadius: '12px', backgroundColor: '#eef5f1',
+                                    color: '#1f6f52', fontSize: '0.8rem', fontWeight: 'bold', marginTop: '4px',
+                                    marginLeft: '6px', display: 'inline-block'
+                                }}>🤝 與其他球友併組</span>
+                            )}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             <button
@@ -121,7 +132,7 @@ export function MyBookings() {
                                 style={{ backgroundColor: '#e0f2fe', color: '#0369a1', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}>
                                 查看詳情
                             </button>
-                            {b.status !== 'cancelled' && b.status !== 'checked_in' && (
+                            {b.status !== 'cancelled' && b.status !== 'checked_in' && !b._isJoined && (
                                 <button
                                     onClick={() => handleCancel(b.id)}
                                     style={{ backgroundColor: '#fee2e2', color: '#ef4444', border: 'none', padding: '8px 12px', borderRadius: '4px' }}>

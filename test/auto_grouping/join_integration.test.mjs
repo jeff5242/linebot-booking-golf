@@ -42,6 +42,12 @@ async function main() {
     assert.ok(after1.players_info.some(p => p.name === '散客丙' && p.phone === '0900000003'));
   });
 
+  // ①b 我的預約查找：以散客手機 jsonb contains 找得到被併入的組
+  const { data: found } = await sb.from('bookings').select('id').contains('players_info', JSON.stringify([{ phone: '0900000003' }]));
+  t('併組後：以散客手機 contains 查得到該組（供「我的預約」顯示）', () => {
+    assert.ok((found || []).some(b => b.id === bookingId));
+  });
+
   // ② 超過上限：目前 3 人，再加 2 位（=5）→ 應丟錯、資料不變
   let threw = false;
   try {
