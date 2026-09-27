@@ -2,12 +2,30 @@
 // 測試帳號、遠未來日期、跑完還原 group_matching 設定並清資料。
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 require('dotenv').config({ quiet: true });
 const { createClient } = require('@supabase/supabase-js');
 
-const BASE = process.env.TEST_BASE || 'http://localhost:3000';
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const PORT = process.env.TEST_PORT || '3011';
+const BASE = process.env.TEST_BASE || `http://localhost:${PORT}`;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+let server = null;
+
+async function startServer() {
+  if (process.env.TEST_BASE) return; // 外部已提供 server
+  server = spawn('node', ['index.js'], { cwd: ROOT, env: { ...process.env, PORT }, stdio: 'ignore' });
+  for (let i = 0; i < 50; i++) {
+    try { const r = await fetch(`${BASE}/api/config/timezone`); if (r.ok) return; } catch {}
+    await sleep(300);
+  }
+  throw new Error('本機 server 未就緒');
+}
+function stopServer() { try { if (server) server.kill('SIGKILL'); } catch {} }
 const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY);
 const KEY = 'group_matching';
 const TEST_DATE = '2099-12-30'; // 遠未來（假設週三；用 enabledDates 指定啟用，不依星期）
@@ -31,6 +49,7 @@ async function setConfig(cfg) {
 
 async function main() {
   console.log(`端點整合測試 @ ${BASE}`);
+  await startServer();
 
   // 快照原設定
   const { data: snap } = await sb.from('system_settings').select('value').eq('key', KEY).maybeSingle();
@@ -61,6 +80,7 @@ async function main() {
   const onRes = await j(await fetch(`${BASE}/api/bookings/mergeable?date=${TEST_DATE}&time=${GROUP_TIME}&phone=${guestPhone}`));
   t('啟用：mergeable 回未滿組（去識別，無姓名/電話）', () => {
     assert.equal(onRes.active, true);
+    assert.equal(onRes.force, true); // 前端據此判斷是否提供「自己開組」
     assert.equal(onRes.groups.length, 1);
     const g = onRes.groups[0];
     assert.equal(g.booking_id, groupBookingId);
@@ -119,6 +139,7 @@ async function cleanup() {
     if (prevSetting === undefined) await sb.from('system_settings').delete().eq('key', KEY);
     else await sb.from('system_settings').upsert({ key: KEY, value: prevSetting, updated_at: new Date().toISOString() });
   } catch {}
+  stopServer();
 }
 
 main().then(cleanup).catch(async (e) => { await cleanup(); console.error('端點整合測試失敗:', e.message); process.exit(1); });

@@ -893,7 +893,8 @@ app.get('/api/bookings/mergeable', async (req, res) => {
     }
     const bookingSettings = await getSettings();
     const result = await GroupMatching.findMergeableGroups({ date, time, excludeUserId, config, bookingSettings });
-    res.json(result);
+    res.json({ ...result, force: config.force }); // force：前端據此決定是否提供「自己開組」
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
