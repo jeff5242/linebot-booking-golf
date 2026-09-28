@@ -45,6 +45,9 @@ export function Booking() {
     // 營運日曆狀態
     const [dateStatus, setDateStatus] = useState(null);
 
+    // 散客自動併組：候選組別選擇（null=不顯示）。{ groups:[], force:bool }
+    const [mergeChoice, setMergeChoice] = useState(null);
+
     // Load Main User Info and Settings
     useEffect(() => {
         document.title = '預約球場';
@@ -209,9 +212,33 @@ export function Booking() {
             }
         }
 
+        // 散客自動併組：1~2 人送出前，先問後端當天有無可併的未滿組（功能未啟用→active:false，直接照舊）
+        try {
+            if (playersCount <= 2) {
+                const apiUrl = import.meta.env.VITE_API_URL || '';
+                const userPhone = localStorage.getItem('golf_user_phone') || '';
+                const dateStr = format(selectedDate, 'yyyy-MM-dd');
+                const timeStr = format(pendingTime, 'HH:mm:ss');
+                const mr = await fetch(`${apiUrl}/api/bookings/mergeable?date=${dateStr}&time=${timeStr}&phone=${encodeURIComponent(userPhone)}`)
+                    .then(r => r.json()).catch(() => ({ active: false }));
+                if (mr.active && Array.isArray(mr.groups) && mr.groups.length > 0) {
+                    setMergeChoice({ groups: mr.groups, force: !!mr.force });
+                    setLoading(false);
+                    return; // 交給併組選擇 modal
+                }
+            }
+        } catch (e) {
+            console.warn('mergeable check skipped:', e.message); // 併組檢查失敗不擋，照常建立
+        }
+
+        await doCreateBooking(false);
+    };
+
+    // 實際建立預約（accepted＝是否已同意併組；供直接建立與「自己開組」共用）
+    const doCreateBooking = async (accepted) => {
+        setLoading(true);
         try {
             const userPhone = localStorage.getItem('golf_user_phone');
-
             if (!userPhone) {
                 setMessageContent({ type: 'error', message: '找不到使用者資料，請重新註冊' });
                 setShowMessageModal(true);
@@ -231,14 +258,20 @@ export function Booking() {
                     players_count: playersCount,
                     players_info: players.slice(0, playersCount),
                     needs_cart: needsCart,
-                    needs_caddie: needsCaddie
+                    needs_caddie: needsCaddie,
+                    allow_matching: accepted
                 })
             });
 
             const result = await res.json();
+            // 後端安全網：啟用日強制併組時，未同意會回 409 → 改顯示併組選擇
+            if (res.status === 409 && result.code === 'MERGE_REQUIRED') {
+                setMergeChoice({ groups: result.groups || [], force: true });
+                return;
+            }
             if (!res.ok) throw new Error(result.error || '預約失敗');
 
-            // 預約成功，顯示成功訊息
+            setMergeChoice(null);
             setShowPlayerModal(false);
             setMessageContent({
                 type: 'success',
@@ -246,15 +279,48 @@ export function Booking() {
             });
             setShowMessageModal(true);
 
-            // 通知 LINE OA（以用戶身份發訊息，讓後台一對一聊天看得到）
             sendLiffMessage(`已預約成功 ${format(selectedDate, 'yyyy-MM-dd')} ${format(pendingTime, 'HH:mm')} ${selectedHoles}洞 ${playersCount}人`);
-
-            // 重新載入預約資料
             fetchBookings();
 
         } catch (e) {
             console.error('Booking error:', e);
             setMessageContent({ type: 'error', message: '預約失敗: ' + e.message });
+            setShowMessageModal(true);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 併入既有組
+    const handleJoinGroup = async (group) => {
+        setLoading(true);
+        try {
+            const userPhone = localStorage.getItem('golf_user_phone');
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const res = await fetch(`${apiUrl}/api/bookings/join-group`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phone: userPhone,
+                    target_booking_id: group.booking_id,
+                    players_info: players.slice(0, playersCount)
+                })
+            });
+            const result = await res.json();
+            if (!res.ok) throw new Error(result.error || '併組失敗');
+
+            setMergeChoice(null);
+            setShowPlayerModal(false);
+            setMessageContent({
+                type: 'success',
+                message: `併組成功！\n已加入 ${group.time} 的組別（目前 ${result.players_count} 人）\n日期：${format(selectedDate, 'yyyy-MM-dd')}\n請於現場付款`
+            });
+            setShowMessageModal(true);
+            sendLiffMessage(`已併組加入 ${format(selectedDate, 'yyyy-MM-dd')} ${group.time} 的組別`);
+            fetchBookings();
+        } catch (e) {
+            console.error('Join group error:', e);
+            setMessageContent({ type: 'error', message: '併組失敗: ' + e.message });
             setShowMessageModal(true);
         } finally {
             setLoading(false);
@@ -1037,6 +1103,44 @@ export function Booking() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* 散客自動併組：候選組別選擇 */}
+            {mergeChoice && (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+                    <div style={{ background: '#fff', borderRadius: '14px', width: '100%', maxWidth: '380px', maxHeight: '85vh', overflowY: 'auto', padding: '20px' }}>
+                        <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem', color: '#1f6f52' }}>🤝 這些時段有未滿的組可併</h3>
+                        <p style={{ margin: '0 0 14px', fontSize: '13px', color: '#6b7280' }}>
+                            {mergeChoice.force
+                                ? '本日採自動併組，請選擇加入其中一組。'
+                                : '您可以加入現有組別，或維持自己開一組。'}
+                        </p>
+                        {mergeChoice.groups.map((g) => (
+                            <div key={g.booking_id} style={{ border: '1px solid #d8e0dc', borderRadius: '10px', padding: '12px', marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                                <div style={{ fontSize: '13px', color: '#374b43' }}>
+                                    <div style={{ fontWeight: 700, fontSize: '15px', color: '#1b2420' }}>{g.time}</div>
+                                    <div>目前 {g.current_count} 人 · 尚缺 {g.remaining} 位{g.holes ? ` · ${g.holes} 洞` : ''}</div>
+                                </div>
+                                <button onClick={() => handleJoinGroup(g)} disabled={loading}
+                                    style={{ background: '#1f6f52', color: '#fff', border: 'none', borderRadius: '8px', padding: '9px 16px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                    加入
+                                </button>
+                            </div>
+                        ))}
+                        <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                            {!mergeChoice.force && (
+                                <button onClick={() => { setMergeChoice(null); doCreateBooking(true); }} disabled={loading}
+                                    style={{ flex: 1, background: '#eef5f1', color: '#1f6f52', border: '1px solid #cfe4d9', borderRadius: '8px', padding: '10px', fontWeight: 600, cursor: 'pointer' }}>
+                                    不併，自己開組
+                                </button>
+                            )}
+                            <button onClick={() => { setMergeChoice(null); setLoading(false); }} disabled={loading}
+                                style={{ flex: mergeChoice.force ? 1 : 'unset', background: '#fff', color: '#6b7280', border: '1px solid #d8e0dc', borderRadius: '8px', padding: '10px 16px', cursor: 'pointer' }}>
+                                取消
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

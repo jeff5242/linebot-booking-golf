@@ -372,6 +372,118 @@ function TimezoneCard() {
     );
 }
 
+// 散客自動併組設定（放營運管理分頁）
+const GM_WEEKDAYS = [{ v: 0, l: '日' }, { v: 1, l: '一' }, { v: 2, l: '二' }, { v: 3, l: '三' }, { v: 4, l: '四' }, { v: 5, l: '五' }, { v: 6, l: '六' }];
+function GroupMatchingCard() {
+    const [cfg, setCfg] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [msg, setMsg] = useState('');
+    const [newDate, setNewDate] = useState('');
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await adminFetch('/api/group-matching-settings');
+                const data = await res.json();
+                setCfg({
+                    enabled: !!data.enabled,
+                    enabledWeekdays: Array.isArray(data.enabledWeekdays) ? data.enabledWeekdays : [],
+                    enabledDates: Array.isArray(data.enabledDates) ? data.enabledDates : [],
+                    force: !!data.force,
+                    maxPerGroup: data.maxPerGroup || 4,
+                });
+            } catch { setCfg({ enabled: false, enabledWeekdays: [], enabledDates: [], force: false, maxPerGroup: 4 }); }
+            finally { setLoading(false); }
+        })();
+    }, []);
+
+    const patch = (p) => setCfg(c => ({ ...c, ...p }));
+    const toggleWeekday = (v) => setCfg(c => ({ ...c, enabledWeekdays: c.enabledWeekdays.includes(v) ? c.enabledWeekdays.filter(x => x !== v) : [...c.enabledWeekdays, v].sort() }));
+    const addDate = () => { if (/^\d{4}-\d{2}-\d{2}$/.test(newDate) && !cfg.enabledDates.includes(newDate)) { patch({ enabledDates: [...cfg.enabledDates, newDate].sort() }); setNewDate(''); } };
+    const removeDate = (d) => patch({ enabledDates: cfg.enabledDates.filter(x => x !== d) });
+
+    const save = async () => {
+        setSaving(true); setMsg('');
+        try {
+            const res = await adminFetch('/api/group-matching-settings', { method: 'POST', body: JSON.stringify({ config: cfg }) });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || '儲存失敗');
+            setMsg('✅ 已儲存');
+            setTimeout(() => setMsg(''), 2500);
+        } catch (e) { setMsg('❌ ' + e.message); }
+        finally { setSaving(false); }
+    };
+
+    if (loading || !cfg) return <Card title="散客自動併組" icon={Users}><div style={{ color: '#9ca3af' }}>載入中…</div></Card>;
+
+    const box = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: '8px', marginBottom: '10px' };
+    const sw = (on) => ({ width: 42, height: 24, borderRadius: 14, background: on ? '#1f6f52' : '#cbd5cf', position: 'relative', cursor: 'pointer', transition: 'background .15s', flexShrink: 0 });
+    const knob = (on) => ({ position: 'absolute', top: 2, left: on ? 20 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .15s' });
+
+    return (
+        <Card title="散客自動併組" icon={Users}>
+            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+                1~2 人散客線上預約時，於「啟用日」自動找當天未滿 4 人的組別提示併組。未啟用時預約流程完全不變。
+            </div>
+
+            <div style={box}>
+                <div><b>功能總開關</b><div style={{ fontSize: 12, color: '#9ca3af' }}>關閉時完全不影響現有預約</div></div>
+                <div style={sw(cfg.enabled)} onClick={() => patch({ enabled: !cfg.enabled })}><div style={knob(cfg.enabled)} /></div>
+            </div>
+
+            <div style={{ opacity: cfg.enabled ? 1 : 0.45, pointerEvents: cfg.enabled ? 'auto' : 'none' }}>
+                <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>啟用星期</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {GM_WEEKDAYS.map(w => (
+                            <button key={w.v} onClick={() => toggleWeekday(w.v)}
+                                style={{ width: 40, height: 38, borderRadius: 8, border: '1px solid', borderColor: cfg.enabledWeekdays.includes(w.v) ? '#1f6f52' : '#d1d5db', background: cfg.enabledWeekdays.includes(w.v) ? '#1f6f52' : '#fff', color: cfg.enabledWeekdays.includes(w.v) ? '#fff' : '#374151', fontWeight: 600, cursor: 'pointer' }}>
+                                {w.l}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>指定日期（如國定假日、活動日）</div>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                        <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '7px 10px', fontSize: 13 }} />
+                        <button onClick={addDate} style={{ background: '#eef5f1', color: '#1f6f52', border: '1px solid #cfe4d9', borderRadius: 8, padding: '7px 14px', fontWeight: 600, cursor: 'pointer' }}>加入</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {cfg.enabledDates.length === 0 && <span style={{ fontSize: 12, color: '#9ca3af' }}>尚無指定日期</span>}
+                        {cfg.enabledDates.map(d => (
+                            <span key={d} style={{ background: '#f3f4f6', borderRadius: 16, padding: '3px 6px 3px 10px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                {d}<button onClick={() => removeDate(d)} style={{ border: 'none', background: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 14 }}>×</button>
+                            </span>
+                        ))}
+                    </div>
+                </div>
+
+                <div style={box}>
+                    <div><b>啟用日強制併組</b><div style={{ fontSize: 12, color: '#9ca3af' }}>開：散客不同意併組則無法完成預約；關：可自己開組</div></div>
+                    <div style={sw(cfg.force)} onClick={() => patch({ force: !cfg.force })}><div style={knob(cfg.force)} /></div>
+                </div>
+
+                <div style={box}>
+                    <div><b>一組人數上限</b></div>
+                    <select value={cfg.maxPerGroup} onChange={e => patch({ maxPerGroup: Number(e.target.value) })} style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '6px 10px' }}>
+                        {[2, 3, 4].map(n => <option key={n} value={n}>{n} 人</option>)}
+                    </select>
+                </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                <button onClick={save} disabled={saving} style={{ background: '#1f6f52', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+                    {saving ? '儲存中…' : '儲存設定'}
+                </button>
+                {msg && <span style={{ fontSize: 13, color: msg.startsWith('✅') ? '#1f6f52' : '#dc2626' }}>{msg}</span>}
+            </div>
+        </Card>
+    );
+}
+
 function VoucherSettingsSubTabs() {
     const [sub, setSub] = useState('issue');
     const subs = [
@@ -1098,6 +1210,8 @@ export function AdminSettings() {
                                     </div>
                                 </div>
                             </Card>
+
+                            <GroupMatchingCard />
 
                             <Card title="身分限制設定" icon={Users}>
                                 <div className="space-y-4">
