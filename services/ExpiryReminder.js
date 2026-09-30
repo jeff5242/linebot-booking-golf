@@ -111,8 +111,122 @@ function selectDue(batches, todayStr, config, sentSet) {
   return out;
 }
 
+// ───────── DB 存取 ─────────
+const PAGE = 1000;
+async function fetchAll(buildQuery) {
+  const all = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await buildQuery().range(from, from + PAGE - 1);
+    if (error) throw error;
+    all.push(...(data || []));
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
+async function getConfig() {
+  try {
+    const { data } = await sb().from('system_settings').select('value').eq('key', SETTINGS_KEY).maybeSingle();
+    return normalizeConfig(data?.value);
+  } catch { return { ...DEFAULT_CONFIG }; }
+}
+
+async function getSentLog() {
+  try {
+    const { data } = await sb().from('system_settings').select('value').eq('key', LOG_KEY).maybeSingle();
+    return data?.value && typeof data.value === 'object' ? data.value : {};
+  } catch { return {}; }
+}
+
+async function saveSentLog(map) {
+  await sb().from('system_settings').upsert({ key: LOG_KEY, value: map, updated_at: new Date().toISOString() });
+}
+
+/** 移除已到期超過 30 天的紀錄，避免無限成長，純函式 */
+function pruneSentLog(map, todayStr) {
+  const out = {};
+  for (const [k, v] of Object.entries(map || {})) {
+    const d = k.split('|')[1];
+    if (d && daysBetween(d, todayStr) <= 30) out[k] = v; // 到期日距今 ≤30 天（含未來）才保留
+  }
+  return out;
+}
+
+/** 撈「每位會員每個到期批次」一列（active 數位券，依設定券種），附姓名與 line_user_id */
+async function fetchBatches(voucherTypes) {
+  const types = (Array.isArray(voucherTypes) ? voucherTypes : PRODUCT_NAMES).filter(t => PRODUCT_NAMES.includes(t));
+  const vs = await fetchAll(() => sb().from('vouchers')
+    .select('user_id, valid_until')
+    .eq('status', 'active').eq('source_type', 'digital_purchase')
+    .in('product_name', types.length ? types : PRODUCT_NAMES));
+
+  const map = new Map();
+  for (const v of vs) {
+    if (!v.valid_until) continue;
+    const d = String(v.valid_until).slice(0, 10);
+    const k = `${v.user_id}|${d}`;
+    const cur = map.get(k) || { user_id: v.user_id, valid_until: d, count: 0 };
+    cur.count++; map.set(k, cur);
+  }
+  const userIds = [...new Set([...map.values()].map(b => b.user_id))];
+  const users = {};
+  for (let i = 0; i < userIds.length; i += 100) {
+    const chunk = userIds.slice(i, i + 100);
+    const { data } = await sb().from('users').select('id, display_name, line_user_id').in('id', chunk);
+    for (const u of (data || [])) users[u.id] = u;
+  }
+  return [...map.values()].map(b => ({
+    ...b, name: users[b.user_id]?.display_name || '會員', line_user_id: users[b.user_id]?.line_user_id || null,
+  }));
+}
+
+/**
+ * 執行到期提醒。預設 dryRun=false 才真的推播。
+ * @param {{dryRun?, pushFn?, todayStr?}} opts pushFn 可注入（測試用），預設用 LINE sendPushMessage
+ * @returns {Promise<object>} 摘要
+ */
+async function run(opts = {}) {
+  const { dryRun = false, pushFn, todayStr } = opts;
+  const config = await getConfig();
+  if (!config.enabled) return { enabled: false, skipped: 'disabled', dueCount: 0, sent: 0, failed: 0 };
+
+  const today = todayStr || new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10); // 台灣日期
+  const batches = await fetchBatches(config.voucherTypes);
+  const sentLog = await getSentLog();
+  const sentSet = new Set(Object.keys(sentLog));
+  const due = selectDue(batches, today, config, sentSet);
+
+  if (dryRun) {
+    return {
+      enabled: true, dryRun: true, today, dueCount: due.length,
+      sample: due.slice(0, 8).map(d => ({ name: d.name, validUntil: d.validUntil, daysLeft: d.daysLeft, count: d.count })),
+    };
+  }
+
+  // 個人化逐人推播（LINE messages 需為陣列 [{type:'text',text}]）
+  const push = pushFn || (async (lineId, text) => {
+    const { sendPushMessage } = require('./LineNotification');
+    return sendPushMessage(lineId, [{ type: 'text', text }]);
+  });
+
+  let sent = 0, failed = 0;
+  const updated = { ...sentLog };
+  for (const m of due) {
+    const text = buildMessage(m, config);
+    let ok = false;
+    try { const r = await push(m.line_user_id, text); ok = !r || r.success !== false; } catch { ok = false; }
+    if (ok) { sent++; updated[sentKey(m.user_id, m.validUntil)] = today; }
+    else failed++;
+  }
+  await saveSentLog(pruneSentLog(updated, today));
+  return { enabled: true, dryRun: false, today, dueCount: due.length, sent, failed };
+}
+
 module.exports = {
   SETTINGS_KEY, LOG_KEY, PRODUCT_NAMES, DEFAULT_CONFIG, DEFAULT_TEMPLATE,
   sb,
   normalizeConfig, daysBetween, daysUntil, isDue, buildMessage, sentKey, selectDue,
+  getConfig, getSentLog, saveSentLog, pruneSentLog, fetchBatches, run,
 };

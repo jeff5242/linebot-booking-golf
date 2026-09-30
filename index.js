@@ -23,6 +23,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { getSettings, updateSettings } = require('./services/SystemSettings');
 const { generateTimeSlots, processWaitlist } = require('./services/BookingLogic');
 const GroupMatching = require('./services/GroupMatching');
+const ExpiryReminder = require('./services/ExpiryReminder');
 const OperationalCalendar = require('./services/OperationalCalendar');
 const CaddyManagement = require('./services/CaddyManagement');
 const ChargeCard = require('./services/ChargeCard');
@@ -955,6 +956,36 @@ app.post('/api/group-matching-settings', requireAuth('settings'), async (req, re
       key: GroupMatching.SETTINGS_KEY, value: clean, updated_at: new Date().toISOString(),
     });
     res.json({ success: true, config: clean });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 票券到期提醒（ExpiryReminder）──
+app.get('/api/expiry-reminder-settings', requireAuth('settings'), async (req, res) => {
+  try {
+    res.json(await ExpiryReminder.getConfig());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.post('/api/expiry-reminder-settings', requireAuth('settings'), async (req, res) => {
+  try {
+    const clean = ExpiryReminder.normalizeConfig(req.body?.config || req.body);
+    await supabase.from('system_settings').upsert({
+      key: ExpiryReminder.SETTINGS_KEY, value: clean, updated_at: new Date().toISOString(),
+    });
+    res.json({ success: true, config: clean });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+// 手動執行 / 試算（dry-run 不發送）；供後台按鈕與排程共用
+app.post('/api/admin/expiry-reminders/run', requireAuth('admins'), async (req, res) => {
+  try {
+    const dryRun = req.body?.dryRun !== false; // 預設 dry-run，需明確傳 false 才真的發
+    const result = await ExpiryReminder.run({ dryRun });
+    res.json({ success: true, ...result });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
