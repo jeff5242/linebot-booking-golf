@@ -933,7 +933,7 @@ app.post('/api/bookings/join-group', async (req, res) => {
     if (users[0].line_user_id) {
       const dateStr = String(target.date).replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$2/$3');
       sendPushMessage(users[0].line_user_id,
-        `✅ 併組成功\n${dateStr} 已為您安排併組，該組目前 ${result.players_count} 人。`).catch(() => {});
+        [{ type: 'text', text: `✅ 併組成功\n${dateStr} 已為您安排併組，該組目前 ${result.players_count} 人。` }]).catch(() => {});
     }
     res.json({ success: true, ...result });
   } catch (error) {
