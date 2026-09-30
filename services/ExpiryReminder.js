@@ -224,9 +224,41 @@ async function run(opts = {}) {
   return { enabled: true, dryRun: false, today, dueCount: due.length, sent, failed };
 }
 
+// ───────── 排程狀態（每日只跑一次，跨重啟保存）─────────
+const STATE_KEY = 'expiry_reminder_state';
+async function getState() {
+  try {
+    const { data } = await sb().from('system_settings').select('value').eq('key', STATE_KEY).maybeSingle();
+    return data?.value && typeof data.value === 'object' ? data.value : {};
+  } catch { return {}; }
+}
+async function setLastRun(dateStr) {
+  await sb().from('system_settings').upsert({ key: STATE_KEY, value: { lastRun: dateStr }, updated_at: new Date().toISOString() });
+}
+
+/**
+ * 排程每小時呼叫一次：功能開啟、已到執行時、且當天尚未跑過 → 執行。
+ * 皆不符合就跳過（不發送）。opts.nowMs / opts.pushFn 供測試注入。
+ */
+async function maybeRunDaily(opts = {}) {
+  const config = await getConfig();
+  if (!config.enabled) return { skipped: 'disabled' };
+  const nowMs = opts.nowMs || Date.now();
+  const tw = new Date(nowMs + 8 * 3600 * 1000);           // 位移到台灣時間
+  const todayStr = tw.toISOString().slice(0, 10);
+  const hour = tw.getUTCHours();                           // 位移後的 UTC 時＝台灣時
+  if (hour < config.runHour) return { skipped: 'before_run_hour', hour };
+  const state = await getState();
+  if (state.lastRun === todayStr) return { skipped: 'already_ran', lastRun: todayStr };
+  const result = await run({ dryRun: false, todayStr, pushFn: opts.pushFn });
+  await setLastRun(todayStr);
+  return { ran: true, ...result };
+}
+
 module.exports = {
-  SETTINGS_KEY, LOG_KEY, PRODUCT_NAMES, DEFAULT_CONFIG, DEFAULT_TEMPLATE,
+  SETTINGS_KEY, LOG_KEY, STATE_KEY, PRODUCT_NAMES, DEFAULT_CONFIG, DEFAULT_TEMPLATE,
   sb,
   normalizeConfig, daysBetween, daysUntil, isDue, buildMessage, sentKey, selectDue,
   getConfig, getSentLog, saveSentLog, pruneSentLog, fetchBatches, run,
+  getState, setLastRun, maybeRunDaily,
 };

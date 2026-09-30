@@ -1458,6 +1458,13 @@ if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     console.log(`LINE Bot 伺服器正在運行於 port ${PORT}`);
   });
+
+  // 票券到期提醒排程：每小時檢查一次（功能預設關閉時不動作；每日到執行時只跑一次）
+  const runExpiryTick = () => ExpiryReminder.maybeRunDaily()
+    .then(r => { if (r?.ran) console.log('[expiry-reminder] 已執行:', JSON.stringify(r)); })
+    .catch(err => console.error('[expiry-reminder] 排程錯誤:', err.message));
+  setTimeout(runExpiryTick, 60 * 1000);            // 啟動後 1 分鐘先檢查一次
+  setInterval(runExpiryTick, 60 * 60 * 1000);      // 之後每小時
 }
 
 module.exports = app;
