@@ -396,7 +396,7 @@ async function scanRedeemVoucher({ voucherId, operatorName, allowGreenFee }) {
   // 條件式更新（status 仍為 active 才更新），避免併發重複核銷
   const { data: updated, error: updErr } = await supabase
     .from('vouchers')
-    .update({ status: 'redeemed', redeemed_at: new Date().toISOString() })
+    .update({ status: 'redeemed', redeemed_at: new Date().toISOString(), redeemed_by: operatorName || 'Admin' })
     .eq('id', voucherId)
     .eq('status', 'active')
     .select('id')
