@@ -29,6 +29,14 @@ function normalizePhone(phone) {
 // 套本可續約的最短間隔（距上次購買起算），與前端 PackageIssueSection 一致
 const MIN_RENEWAL_MONTHS = 9;
 
+// 續約活動開放期限：此日期（含）之前，一律開放續約，不受 MIN_RENEWAL_MONTHS 下限。
+// 僅放寬「太早不能續」的下限；停權（過期太久）仍照各會員上次購買時間判斷，不受此影響。
+// 要延長活動只需改這個日期後重新部署。
+const RENEWAL_OPEN_UNTIL = '2026-10-31';
+function isWithinRenewalWindow() {
+  return new Date() <= new Date(`${RENEWAL_OPEN_UNTIL}T23:59:59+08:00`);
+}
+
 const DEFAULT_ISSUE_SETTINGS = {
   green_fee: { default_quantity: 10, unit_price: 200 },
   product: { default_quantity: 10, unit_price: 100 },
@@ -64,6 +72,8 @@ async function getActivePackage(userId) {
  * @returns {{ ok: boolean, reason?: string, renewableDate?: string }}
  */
 function isRenewalEligible(activePkg) {
+  // 續約活動期間：一律開放續約（提前續約），不受「距上次購買滿 9 個月」限制。
+  if (isWithinRenewalWindow()) return { ok: true };
   const basis = activePkg.valid_from || activePkg.created_at;
   if (!basis) return { ok: true };
   const renewable = new Date(basis);
