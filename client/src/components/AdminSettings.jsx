@@ -374,6 +374,109 @@ function TimezoneCard() {
 
 // 散客自動併組設定（放營運管理分頁）
 const GM_WEEKDAYS = [{ v: 0, l: '日' }, { v: 1, l: '一' }, { v: 2, l: '二' }, { v: 3, l: '三' }, { v: 4, l: '四' }, { v: 5, l: '五' }, { v: 6, l: '六' }];
+// 票券到期提醒設定（放營運管理分頁）
+function ExpiryReminderCard() {
+    const [cfg, setCfg] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [msg, setMsg] = useState('');
+    const [running, setRunning] = useState(false);
+    const [runResult, setRunResult] = useState(null);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const res = await adminFetch('/api/expiry-reminder-settings');
+                const d = await res.json();
+                setCfg({
+                    enabled: !!d.enabled, daysBefore: d.daysBefore || 100, windowDays: d.windowDays || 7,
+                    runHour: d.runHour ?? 10, voucherTypes: d.voucherTypes || ['果嶺券', '商品券'], template: d.template || '',
+                });
+            } catch { setCfg({ enabled: false, daysBefore: 100, windowDays: 7, runHour: 10, voucherTypes: ['果嶺券', '商品券'], template: '' }); }
+            finally { setLoading(false); }
+        })();
+    }, []);
+
+    const patch = (p) => setCfg(c => ({ ...c, ...p }));
+    const toggleType = (v) => setCfg(c => ({ ...c, voucherTypes: c.voucherTypes.includes(v) ? c.voucherTypes.filter(x => x !== v) : [...c.voucherTypes, v] }));
+
+    const save = async () => {
+        setSaving(true); setMsg('');
+        try {
+            const res = await adminFetch('/api/expiry-reminder-settings', { method: 'POST', body: JSON.stringify({ config: cfg }) });
+            const d = await res.json(); if (!res.ok) throw new Error(d.error || '儲存失敗');
+            setMsg('✅ 已儲存'); setTimeout(() => setMsg(''), 2500);
+        } catch (e) { setMsg('❌ ' + e.message); } finally { setSaving(false); }
+    };
+
+    const doRun = async (dryRun) => {
+        if (!dryRun && !confirm('確定「立即發送」提醒推播？符合條件的會員會立刻收到 LINE 訊息。')) return;
+        setRunning(true); setRunResult(null);
+        try {
+            const res = await adminFetch('/api/admin/expiry-reminders/run', { method: 'POST', body: JSON.stringify({ dryRun }) });
+            const d = await res.json(); if (!res.ok) throw new Error(d.error || '執行失敗');
+            setRunResult(d);
+        } catch (e) { setRunResult({ error: e.message }); } finally { setRunning(false); }
+    };
+
+    if (loading || !cfg) return <Card title="票券到期提醒" icon={Bell}><div style={{ color: '#9ca3af' }}>載入中…</div></Card>;
+
+    const box = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: '8px', marginBottom: '10px' };
+    const sw = (on) => ({ width: 42, height: 24, borderRadius: 14, background: on ? '#1f6f52' : '#cbd5cf', position: 'relative', cursor: 'pointer', flexShrink: 0 });
+    const knob = (on) => ({ position: 'absolute', top: 2, left: on ? 20 : 2, width: 20, height: 20, borderRadius: '50%', background: '#fff' });
+    const inp = { border: '1px solid #d1d5db', borderRadius: 8, padding: '6px 10px', width: 80 };
+
+    return (
+        <Card title="票券到期提醒" icon={Bell}>
+            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+                會員電子券在「剩 N 天到期」時，自動用 LINE 個人化推播提醒（每人每批只發一次）。關閉時完全不發送。
+            </div>
+
+            <div style={box}>
+                <div><b>功能總開關</b><div style={{ fontSize: 12, color: '#9ca3af' }}>關閉時排程不動作、不發送</div></div>
+                <div style={sw(cfg.enabled)} onClick={() => patch({ enabled: !cfg.enabled })}><div style={knob(cfg.enabled)} /></div>
+            </div>
+
+            <div style={{ opacity: cfg.enabled ? 1 : 0.5, pointerEvents: cfg.enabled ? 'auto' : 'none' }}>
+                <div style={box}><div><b>到期前幾天提醒</b></div><div><input type="number" min="1" max="365" value={cfg.daysBefore} onChange={e => patch({ daysBefore: Number(e.target.value) })} style={inp} /> 天</div></div>
+                <div style={box}><div><b>每日執行時間</b><div style={{ fontSize: 12, color: '#9ca3af' }}>台灣時間，0-23</div></div><div><input type="number" min="0" max="23" value={cfg.runHour} onChange={e => patch({ runHour: Number(e.target.value) })} style={inp} /> 時</div></div>
+                <div style={box}>
+                    <div><b>適用券種</b></div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                        {['果嶺券', '商品券'].map(ty => (
+                            <button key={ty} onClick={() => toggleType(ty)} style={{ border: '1px solid', borderColor: cfg.voucherTypes.includes(ty) ? '#1f6f52' : '#d1d5db', background: cfg.voucherTypes.includes(ty) ? '#1f6f52' : '#fff', color: cfg.voucherTypes.includes(ty) ? '#fff' : '#374151', borderRadius: 8, padding: '6px 12px', fontWeight: 600, cursor: 'pointer' }}>{ty}</button>
+                        ))}
+                    </div>
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>訊息內容</div>
+                    <textarea value={cfg.template} onChange={e => patch({ template: e.target.value })} rows={5}
+                        placeholder="可用變數：{name} 姓名、{date} 到期日、{days} 剩餘天數、{count} 可用張數"
+                        style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit' }} />
+                    <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 4 }}>變數：{'{name} {date} {days} {count}'}；留空用系統預設。</div>
+                </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 6 }}>
+                <button onClick={save} disabled={saving} style={{ background: '#1f6f52', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>{saving ? '儲存中…' : '儲存設定'}</button>
+                <button onClick={() => doRun(true)} disabled={running} style={{ background: '#eef5f1', color: '#1f6f52', border: '1px solid #cfe4d9', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer' }}>試算（不發送）</button>
+                <button onClick={() => doRun(false)} disabled={running || !cfg.enabled} style={{ background: '#fff', color: '#b45309', border: '1px solid #fcd9a8', borderRadius: 8, padding: '10px 16px', fontWeight: 600, cursor: 'pointer' }}>立即發送</button>
+                {msg && <span style={{ fontSize: 13, color: msg.startsWith('✅') ? '#1f6f52' : '#dc2626' }}>{msg}</span>}
+            </div>
+
+            {running && <div style={{ marginTop: 10, color: '#9ca3af', fontSize: 13 }}>執行中…</div>}
+            {runResult && !running && (
+                <div style={{ marginTop: 10, padding: 12, background: '#f9fafb', borderRadius: 8, fontSize: 13, color: '#374151' }}>
+                    {runResult.error ? <span style={{ color: '#dc2626' }}>❌ {runResult.error}</span>
+                        : runResult.skipped ? <span>目前狀態：{runResult.skipped === 'disabled' ? '功能未啟用' : runResult.skipped}</span>
+                            : runResult.dryRun ? <><b>試算結果：</b>符合條件 <b style={{ color: '#1f6f52' }}>{runResult.dueCount}</b> 位會員（不會實際發送）。{runResult.sample?.length ? <div style={{ marginTop: 6, color: '#6b7280' }}>例：{runResult.sample.map(s => `${s.name}(剩${s.daysLeft}天/${s.count}張)`).join('、')}</div> : null}</>
+                                : <><b>已發送：</b>{runResult.sent} 則（失敗 {runResult.failed}，符合 {runResult.dueCount}）。</>}
+                </div>
+            )}
+        </Card>
+    );
+}
+
 function GroupMatchingCard() {
     const [cfg, setCfg] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -1212,6 +1315,8 @@ export function AdminSettings() {
                             </Card>
 
                             <GroupMatchingCard />
+
+                            <ExpiryReminderCard />
 
                             <Card title="身分限制設定" icon={Users}>
                                 <div className="space-y-4">
