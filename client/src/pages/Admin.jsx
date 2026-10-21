@@ -16,6 +16,7 @@ import { SmsLogPanel } from '../components/SmsLogPanel';
 import { VoucherUsageReport } from '../components/VoucherUsageReport';
 import { VoucherReportPanel } from '../components/VoucherReportPanel';
 import { VoucherOpsPanel } from '../components/VoucherOpsPanel';
+import { MemberDedupPanel } from '../components/MemberDedupPanel';
 import { getAdminPermissions, getAdminInfo, adminFetch, clearAdminSession } from '../utils/adminApi';
 
 const ALL_TABS = [
@@ -35,6 +36,7 @@ const ALL_TABS = [
     { key: 'voucher_report', label: '📊 電子票券報表' },
     { key: 'paper_report', label: '紙券明細' },
     { key: 'voucher_ops', label: '🎟️ 發券/用券' },
+    { key: 'member_dedup', label: '🔗 會員去重' },
 ];
 
 // ... (DepartureList, CheckInList components remain unchanged)
@@ -2957,6 +2959,7 @@ export function AdminDashboard() {
             {activeTab === 'voucher_report' && <VoucherReportPanel />}
             {activeTab === 'paper_report' && <VoucherUsageReport />}
             {activeTab === 'voucher_ops' && <VoucherOpsPanel />}
+            {activeTab === 'member_dedup' && <MemberDedupPanel />}
 
             {/* 收費卡彈窗 */}
             {chargeCardBooking && (

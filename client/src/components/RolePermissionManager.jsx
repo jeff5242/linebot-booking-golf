@@ -18,6 +18,7 @@ const ALL_TABS = [
     { key: 'voucher_report', label: '📊 電子票券報表' },
     { key: 'paper_report', label: '紙券明細' },
     { key: 'voucher_ops', label: '🎟️ 發券/用券' },
+    { key: 'member_dedup', label: '🔗 會員去重' },
     { key: 'redeem_green_fee', label: '⛳ 果嶺券核銷（限發球台）' },
 ];
 
