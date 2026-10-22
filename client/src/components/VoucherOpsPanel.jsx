@@ -3,6 +3,10 @@ import { adminFetch, hasPermission } from '../utils/adminApi';
 import { VoucherActivityPanel } from './VoucherActivityPanel';
 import { InvoiceScanner } from './InvoiceScanner';
 
+// 續約活動期間：已停權會員也可續約（須與後端 services/VoucherOps.js 的 RENEWAL_OPEN_UNTIL 一致）
+const RENEWAL_OPEN_UNTIL = '2026-10-31';
+const isWithinRenewalWindow = () => new Date() <= new Date(`${RENEWAL_OPEN_UNTIL}T23:59:59+08:00`);
+
 const VOUCHER_TYPE_LABELS = {
     green_fee: '果嶺券',
     product: '商品券',
@@ -733,14 +737,21 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                 if (today < renewableDate) {
                     setRenewalStatus({ type: 'too_early', date: renewableDate.toISOString().slice(0, 10) });
                 } else if (today >= suspendDate) {
-                    setRenewalStatus({ type: 'suspended', date: suspendDate.toISOString().slice(0, 10), expiryDate: expiryDate.toISOString().slice(0, 10) });
+                    setRenewalStatus({
+                        type: isWithinRenewalWindow() ? 'reopened' : 'suspended',
+                        date: suspendDate.toISOString().slice(0, 10),
+                        expiryDate: expiryDate.toISOString().slice(0, 10),
+                    });
                 } else if (today >= expiryDate) {
                     setRenewalStatus({ type: 'grace', expiryDate: expiryDate.toISOString().slice(0, 10), deadline: suspendDate.toISOString().slice(0, 10) });
                 }
 
                 // 起始日以後端 package-status 的建議（舊套本到期日）為準；沒有才用推算
+                // 已停權後重新續約：舊券早已過期，從今天起算
                 if (!(ps?.hasActive && ps?.suggestedStartDate)) {
-                    const next = new Date(last.getTime() + validityYears * 365.25 * 24 * 60 * 60 * 1000);
+                    const next = today >= suspendDate
+                        ? today
+                        : new Date(last.getTime() + validityYears * 365.25 * 24 * 60 * 60 * 1000);
                     setCustomStartDate(next.toISOString().slice(0, 10));
                 }
             } else {
@@ -850,6 +861,11 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                                 {renewalStatus?.type === 'grace' && (
                                     <div style={{ padding: '10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', marginBottom: '10px', fontSize: '13px', color: '#92400e' }}>
                                         會員已於 {renewalStatus.expiryDate} 過期，寬限期至 <b>{renewalStatus.deadline}</b>，請儘速續約
+                                    </div>
+                                )}
+                                {renewalStatus?.type === 'reopened' && (
+                                    <div style={{ padding: '10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', marginBottom: '10px', fontSize: '13px', color: '#92400e' }}>
+                                        會員寬限期已於 {renewalStatus.date} 截止，<b>續約活動期間（至 {RENEWAL_OPEN_UNTIL}）</b>仍可續約，新券從今天起算 {validityYears} 年
                                     </div>
                                 )}
                                 <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500' }}>效期起始日</label>
