@@ -24,6 +24,7 @@ const { getSettings, updateSettings } = require('./services/SystemSettings');
 const { generateTimeSlots, processWaitlist } = require('./services/BookingLogic');
 const GroupMatching = require('./services/GroupMatching');
 const ExpiryReminder = require('./services/ExpiryReminder');
+const MemberNameEdit = require('./services/MemberNameEdit');
 const OperationalCalendar = require('./services/OperationalCalendar');
 const CaddyManagement = require('./services/CaddyManagement');
 const ChargeCard = require('./services/ChargeCard');
@@ -503,12 +504,17 @@ app.get('/api/users', requireAuth('users'), async (req, res) => {
     // Apply pagination and ordering
     query = query.order('created_at', { ascending: false }).range(offset, offset + limit - 1);
 
-    const { data, count, error } = await query;
+    // 改名紀錄只用來標示「已改名」，讀取失敗不影響會員列表
+    const nameEditsPromise = MemberNameEdit.getEditLog().catch(err => {
+      console.error('Get Member Name Edits Error:', err);
+      return {};
+    });
+    const [{ data, count, error }, nameEdits] = await Promise.all([query, nameEditsPromise]);
 
     if (error) throw error;
 
     res.json({
-      users: data || [],
+      users: (data || []).map(u => ({ ...u, name_edited: Boolean(nameEdits[u.id]) })),
       total: count || 0,
       page,
       totalPages: Math.ceil((count || 0) / limit)
@@ -516,6 +522,36 @@ app.get('/api/users', requireAuth('users'), async (req, res) => {
   } catch (error) {
     console.error('Get Users Error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// 修改會員名稱（只改名字；留紀錄；之後試算表同步不覆蓋）
+app.put('/api/users/:id/display-name', requireAuth('users'), async (req, res) => {
+  try {
+    const result = await MemberNameEdit.renameMember({
+      userId: req.params.id,
+      newName: req.body?.displayName,
+      operator: req.admin?.name,
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    if (error instanceof MemberNameEdit.NameEditError) {
+      return res.status(error.status).json({ success: false, code: error.code, error: error.message });
+    }
+    console.error('Rename Member Error:', error);
+    res.status(500).json({ success: false, error: '修改失敗，請稍後再試' });
+  }
+});
+
+// 改名紀錄（最新在前）；帶 userId 只看該會員
+app.get('/api/member-name-edits', requireAuth('users'), async (req, res) => {
+  try {
+    const all = MemberNameEdit.flattenLog(await MemberNameEdit.getEditLog());
+    const edits = req.query.userId ? all.filter(e => e.userId === req.query.userId) : all;
+    res.json({ success: true, edits });
+  } catch (error) {
+    console.error('Get Member Name Edits Error:', error);
+    res.status(500).json({ success: false, error: '讀取紀錄失敗' });
   }
 });
 
