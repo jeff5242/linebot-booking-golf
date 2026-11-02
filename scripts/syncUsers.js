@@ -1,6 +1,7 @@
 const { google } = require('googleapis');
 const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
+const { getNameLockedPhones } = require('../services/MemberNameEdit');
 
 // Configuration
 const SHEET_ID = process.env.GOOGLE_SHEET_ID || '1cCgy5goR_INTdjTaBtKwlgx-f-iNGnejcu7Rz7yWuM8'; // Updated from user request
@@ -20,6 +21,22 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+/**
+ * 組出要 upsert 的會員資料。後台手動改過名字的電話（nameLockedPhones）不帶 display_name，
+ * upsert 遇到既有會員時就不會覆蓋名字。
+ */
+function buildUserRow({ phone, name, memberNo, gender, taxId, golferType, validUntil }, nameLockedPhones) {
+    return {
+        phone,
+        ...(nameLockedPhones.has(phone) ? {} : { display_name: name }),
+        member_no: memberNo || null,
+        gender: gender || null,
+        tax_id: taxId || null,
+        golfer_type: golferType || null,
+        member_valid_until: validUntil || null
+    };
+}
 
 async function syncUsers() {
     console.log('Starting sync...');
@@ -58,6 +75,10 @@ async function syncUsers() {
         }
 
         console.log(`Found ${rows.length} rows.`);
+
+        // 後台手動改過名字的會員：同步時保留平台上的名字，不用試算表覆蓋
+        const nameLockedPhones = await getNameLockedPhones();
+        let nameKeptCount = 0;
 
         // 3. Process each row
         let successCount = 0;
@@ -109,18 +130,18 @@ async function syncUsers() {
 
             // Upsert to Supabase
             // Use phone as unique key (or combined with name)
+            if (nameLockedPhones.has(phone)) nameKeptCount++;
             const { data, error } = await supabase
                 .from('users')
-                .upsert({
-                    phone: phone,
-                    display_name: name,
-                    member_no: memberNo || null,
-                    gender: gender || null,
-                    tax_id: validTaxId || null,
-                    golfer_type: golferType || null,
-                    member_valid_until: validUntilDate || null
-                    // Add other fields as needed
-                }, { onConflict: 'phone' })
+                .upsert(buildUserRow({
+                    phone,
+                    name,
+                    memberNo,
+                    gender,
+                    taxId: validTaxId,
+                    golferType,
+                    validUntil: validUntilDate
+                }, nameLockedPhones), { onConflict: 'phone' })
                 .select();
 
             if (error) {
@@ -131,8 +152,8 @@ async function syncUsers() {
             }
         }
 
-        console.log(`Sync Complete. Success: ${successCount}, Failed: ${failCount}`);
-        return { success: true, synced: successCount, failed: failCount };
+        console.log(`Sync Complete. Success: ${successCount}, Failed: ${failCount}, Name kept: ${nameKeptCount}`);
+        return { success: true, synced: successCount, failed: failCount, nameKept: nameKeptCount };
 
     } catch (error) {
         console.error('The API returned an error: ' + error);
@@ -145,4 +166,4 @@ if (require.main === module) {
     syncUsers();
 }
 
-module.exports = { syncUsers };
+module.exports = { syncUsers, buildUserRow };

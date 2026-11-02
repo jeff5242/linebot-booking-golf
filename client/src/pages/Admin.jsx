@@ -16,6 +16,7 @@ import { SmsLogPanel } from '../components/SmsLogPanel';
 import { VoucherUsageReport } from '../components/VoucherUsageReport';
 import { VoucherReportPanel } from '../components/VoucherReportPanel';
 import { VoucherOpsPanel } from '../components/VoucherOpsPanel';
+import { MemberNameEditModal, MemberNameEditLog } from '../components/MemberNameEdit';
 import { getAdminPermissions, getAdminInfo, adminFetch, clearAdminSession } from '../utils/adminApi';
 
 const ALL_TABS = [
@@ -2461,6 +2462,8 @@ function UserManagement() {
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
     const [voucherOpsUser, setVoucherOpsUser] = useState(null);
+    const [nameEditUser, setNameEditUser] = useState(null);
+    const [showNameLog, setShowNameLog] = useState(false);
 
     // Filter states
     const [filters, setFilters] = useState({
@@ -2517,7 +2520,8 @@ function UserManagement() {
             const res = await adminFetch('/api/users/sync', { method: 'POST' });
             const data = await res.json();
             if (data.success) {
-                alert(`同步成功！\n新增/更新: ${data.synced} 筆\n失敗: ${data.failed} 筆`);
+                const keptNote = data.nameKept ? `\n保留後台改過的名字: ${data.nameKept} 筆` : '';
+                alert(`同步成功！\n新增/更新: ${data.synced} 筆\n失敗: ${data.failed} 筆${keptNote}`);
                 fetchUsers();
             } else {
                 alert('同步失敗: ' + (data.message || data.error));
@@ -2529,20 +2533,34 @@ function UserManagement() {
         }
     };
 
+    const handleNameSaved = (updated) => {
+        setUsers(prev => prev.map(u => (u.id === updated.id ? { ...u, display_name: updated.display_name, name_edited: true } : u)));
+        setNameEditUser(null);
+    };
+
     const golferTypes = ['白金會員', '社區會員', 'VIP-A', '一桿進洞', '金卡會員', '來賓'];
 
     return (
         <div className="card animate-fade-in">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
                 <h2 className="title" style={{ fontSize: '1.2rem', marginBottom: 0 }}>平台用戶管理 ({total})</h2>
-                <button
-                    onClick={handleSyncUsers}
-                    className="btn"
-                    disabled={loading}
-                    style={{ width: 'auto', background: '#0d9488', color: 'white', display: 'flex', alignItems: 'center', gap: '5px' }}
-                >
-                    {loading ? '處理中...' : '🔄 同步會員資料'}
-                </button>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                        onClick={() => setShowNameLog(true)}
+                        className="btn"
+                        style={{ width: 'auto', background: 'white', color: '#374151', border: '1px solid #d1d5db' }}
+                    >
+                        📝 改名紀錄
+                    </button>
+                    <button
+                        onClick={handleSyncUsers}
+                        className="btn"
+                        disabled={loading}
+                        style={{ width: 'auto', background: '#0d9488', color: 'white', display: 'flex', alignItems: 'center', gap: '5px' }}
+                    >
+                        {loading ? '處理中...' : '🔄 同步會員資料'}
+                    </button>
+                </div>
             </div>
 
             {/* Filters */}
@@ -2608,7 +2626,22 @@ function UserManagement() {
                         ) : users.map(u => (
                             <tr key={u.id} style={{ borderBottom: '1px solid #eee' }}>
                                 <td style={{ padding: '10px', color: '#666' }}>{u.member_no || '-'}</td>
-                                <td style={{ padding: '10px', fontWeight: 'bold' }}>{u.display_name || '-'}</td>
+                                <td style={{ padding: '10px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                        <span style={{ fontWeight: 'bold' }}>{u.display_name || '-'}</span>
+                                        <button
+                                            onClick={() => setNameEditUser({ id: u.id, display_name: u.display_name, phone: u.phone, member_no: u.member_no })}
+                                            title="修改名字"
+                                            aria-label={`修改 ${u.display_name || ''} 的名字`}
+                                            style={{ padding: '2px 6px', fontSize: '12px', border: '1px solid #d1d5db', borderRadius: '4px', background: 'white', cursor: 'pointer' }}
+                                        >
+                                            ✏️
+                                        </button>
+                                        {u.name_edited && (
+                                            <span title="後台改過名字，同步時不會被試算表覆蓋" style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', padding: '1px 6px', borderRadius: '4px' }}>已改名</span>
+                                        )}
+                                    </div>
+                                </td>
                                 <td style={{ padding: '10px' }}>{u.phone}</td>
                                 <td style={{ padding: '10px' }}>
                                     {u.golfer_type && <span style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px', fontSize: '0.85rem' }}>{u.golfer_type}</span>}
@@ -2666,6 +2699,11 @@ function UserManagement() {
                     </div>
                 </div>
             )}
+
+            {nameEditUser && (
+                <MemberNameEditModal user={nameEditUser} onClose={() => setNameEditUser(null)} onSaved={handleNameSaved} />
+            )}
+            {showNameLog && <MemberNameEditLog onClose={() => setShowNameLog(false)} />}
         </div>
     );
 }
