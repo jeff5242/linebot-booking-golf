@@ -878,6 +878,11 @@ export function Booking() {
                                             <span>預計總計金額 ({pricing.playersCount}人)</span>
                                             <span style={{ color: 'var(--primary-color)' }}>${pricing.groupTotal}</span>
                                         </div>
+                                        {pricing.breakdown.caddyFee == null && (
+                                            <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#b45309' }}>
+                                                ※ 以上金額不含桿弟費，桿弟費另計，可諮詢球場實際金額。
+                                            </p>
+                                        )}
                                     </div>
                                 );
                             })()}
