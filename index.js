@@ -3051,7 +3051,12 @@ app.post('/api/voucher-ops/issue-package', requireAuth('voucher_ops'), async (re
       validFrom: valid_from,
       invoiceNumber: invoice_number,
     });
-    res.json({ success: true, ...result, message: `成功發出「${result.package.name}」：果嶺券 ${result.green_fee.count} 張 + 商品券 ${result.product.count} 張` });
+    const tier = result.tierChange;
+    const tierNote = !tier ? ''
+      : tier.changed ? `\n會員身分已由「${tier.from}」改為「${tier.to}」`
+      : tier.error ? `\n⚠️ 會員身分未能改為「${tier.to}」，請通知工程端（${tier.error}）`
+      : '';
+    res.json({ success: true, ...result, message: `成功發出「${result.package.name}」：果嶺券 ${result.green_fee.count} 張 + 商品券 ${result.product.count} 張${tierNote}` });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }

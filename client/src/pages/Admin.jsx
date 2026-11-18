@@ -2520,7 +2520,8 @@ function UserManagement() {
             const res = await adminFetch('/api/users/sync', { method: 'POST' });
             const data = await res.json();
             if (data.success) {
-                const keptNote = data.nameKept ? `\n保留後台改過的名字: ${data.nameKept} 筆` : '';
+                const keptNote = (data.nameKept ? `\n保留後台改過的名字: ${data.nameKept} 筆` : '')
+                    + (data.tierKept ? `\n保留系統改過的會員身分（白金停權改金卡）: ${data.tierKept} 筆` : '');
                 alert(`同步成功！\n新增/更新: ${data.synced} 筆\n失敗: ${data.failed} 筆${keptNote}`);
                 fetchUsers();
             } else {
