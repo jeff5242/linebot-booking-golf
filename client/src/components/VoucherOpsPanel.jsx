@@ -6,6 +6,9 @@ import { InvoiceScanner } from './InvoiceScanner';
 // 續約活動期間：已停權會員也可續約（須與後端 services/VoucherOps.js 的 RENEWAL_OPEN_UNTIL 一致）
 const RENEWAL_OPEN_UNTIL = '2026-10-31';
 const isWithinRenewalWindow = () => new Date() <= new Date(`${RENEWAL_OPEN_UNTIL}T23:59:59+08:00`);
+// 停權的白金會員仍可買的套本（B 套本＝加入金卡會員；發券後會員身分由後端自動改為金卡會員）
+// 須與後端 services/MemberTierChange.js 的 GOLD_PACKAGE_INDEX 一致
+const LAPSED_ALLOWED_PACKAGE_INDEX = 1;
 
 const VOUCHER_TYPE_LABELS = {
     green_fee: '果嶺券',
@@ -764,11 +767,16 @@ function PackageIssueSection({ userId, onIssued, settings }) {
         }
     };
 
+    const isSuspended = renewalStatus?.type === 'suspended';
+    const isLapsedGoldJoin = isSuspended && showPackageModal === LAPSED_ALLOWED_PACKAGE_INDEX;
+    const isSuspendedBlocked = isSuspended && !isLapsedGoldJoin;
+
     const handleIssuePackage = async () => {
         const pkg = PACKAGES[showPackageModal];
         const invoice = invoiceNumber.trim();
         if (!invoice) { alert('請輸入電子發票號碼'); return; }
-        if (!confirm(`確定要發出「${pkg.name}」嗎？\n果嶺券 ${pkg.green_fee} 張 + 商品券 ${pkg.product} 張\n起始日：${customStartDate}\n電子發票：${invoice}`)) return;
+        const tierLine = isLapsedGoldJoin ? '\n會員已停權：發這本＝加入金卡會員（白金會員身分會改為「金卡會員」）' : '';
+        if (!confirm(`確定要發出「${pkg.name}」嗎？\n果嶺券 ${pkg.green_fee} 張 + 商品券 ${pkg.product} 張\n起始日：${customStartDate}\n電子發票：${invoice}${tierLine}`)) return;
         setIssuing(true);
         try {
             const res = await adminFetch('/api/voucher-ops/issue-package', {
@@ -831,14 +839,17 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                                     如需更換，請先於下方「全部退券」後再購買。
                                 </div>
                             </div>
-                        ) : renewalStatus?.type === 'suspended' ? (
+                        ) : isSuspendedBlocked ? (
                             <div style={{ padding: '14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', marginBottom: '16px' }}>
                                 <div style={{ color: '#dc2626', fontWeight: '600', marginBottom: '6px' }}>會員已停權</div>
                                 <div style={{ fontSize: '13px', color: '#6b7280' }}>
                                     上次購買日期：{lastPurchaseDate}<br />
                                     會員過期日：{renewalStatus.expiryDate}（購買後 {EXPIRY_MONTHS} 個月）<br />
                                     續約寬限期已於 <b>{renewalStatus.date}</b> 截止<br />
-                                    該用戶已無白金會員資格，僅能使用來賓卡
+                                    該用戶已無白金會員資格，僅能使用來賓卡<br />
+                                    {PACKAGES[LAPSED_ALLOWED_PACKAGE_INDEX] && (
+                                        <>如客人要加入金卡會員，請改按「<b>{PACKAGES[LAPSED_ALLOWED_PACKAGE_INDEX].name}</b>」</>
+                                    )}
                                 </div>
                             </div>
                         ) : (
@@ -848,7 +859,13 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                                         續約：舊套本「{packageStatus.activePackage?.package_name}」於 <b>{packageStatus.activePackage?.valid_until}</b> 到期，新券將從該日起算 {validityYears} 年
                                     </div>
                                 )}
-                                {lastPurchaseDate && (
+                                {isLapsedGoldJoin && (
+                                    <div style={{ padding: '10px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', marginBottom: '10px', fontSize: '13px', color: '#92400e' }}>
+                                        會員已停權（寬限期於 {renewalStatus.date} 截止）。<br />
+                                        發這本＝<b>加入金卡會員</b>：原本是白金會員的，發券後身分自動改為「金卡會員」；新券從今天起算 {validityYears} 年。
+                                    </div>
+                                )}
+                                {lastPurchaseDate && !isLapsedGoldJoin && (
                                     <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
                                         上次購買日期：{lastPurchaseDate}（+{validityYears}年 = {customStartDate}）
                                     </div>
@@ -903,7 +920,7 @@ function PackageIssueSection({ userId, onIssued, settings }) {
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
                             <button onClick={() => setShowPackageModal(null)} style={cancelBtnStyle}>取消</button>
                             {(() => {
-                                const blocked = renewalStatus?.type === 'suspended' || (packageStatus?.hasActive && !packageStatus?.canIssue) || !invoiceNumber.trim();
+                                const blocked = isSuspendedBlocked || (packageStatus?.hasActive && !packageStatus?.canIssue) || !invoiceNumber.trim();
                                 return (
                                     <button
                                         onClick={handleIssuePackage}

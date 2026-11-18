@@ -9,18 +9,11 @@
  * - 有紀錄的會員＝「手動改過名字」：Google 試算表同步（scripts/syncUsers.js）不再覆蓋其名稱。
  */
 
-const { createClient } = require('@supabase/supabase-js');
+const UserSettingsLog = require('./UserSettingsLog');
 
-let _sb = null;
-function sb() {
-  if (!_sb) _sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY);
-  return _sb;
-}
-
+const { sb, flattenLog } = UserSettingsLog;
 const LOG_KEY = 'member_name_edits';
 const MAX_NAME_LENGTH = 30;
-const LOG_WRITE_RETRIES = 3;
-const ID_CHUNK_SIZE = 200;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 class NameEditError extends Error {
@@ -41,53 +34,9 @@ function normalizeName(raw) {
   return { ok: true, name };
 }
 
-/** 回傳加上一筆紀錄後的新 log（不修改原物件） */
-function appendEdit(log, userId, entry) {
-  const prev = Array.isArray(log?.[userId]) ? log[userId] : [];
-  return { ...(log || {}), [userId]: [...prev, entry] };
-}
-
-/** 攤平成「最新在前」的清單（純函式） */
-function flattenLog(log) {
-  return Object.entries(log || {})
-    .flatMap(([userId, entries]) => (Array.isArray(entries) ? entries : []).map(e => ({ userId, ...e })))
-    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
-}
-
-async function readLogRow() {
-  const { data, error } = await sb().from('system_settings').select('value, updated_at').eq('key', LOG_KEY).maybeSingle();
-  if (error) throw error;
-  return data;
-}
-
-async function getEditLog() {
-  const row = await readLogRow();
-  return row?.value && typeof row.value === 'object' ? row.value : {};
-}
-
-/**
- * 寫入一筆紀錄。以 updated_at 做樂觀鎖，避免兩位管理人員同時修改時互相蓋掉紀錄。
- */
-async function saveEditEntry(userId, entry) {
-  for (let attempt = 0; attempt < LOG_WRITE_RETRIES; attempt++) {
-    const row = await readLogRow();
-    const nextValue = appendEdit(row?.value, userId, entry);
-    const updatedAt = new Date().toISOString();
-    if (!row) {
-      const { error } = await sb().from('system_settings').insert({ key: LOG_KEY, value: nextValue, updated_at: updatedAt });
-      if (!error) return;
-      if (error.code !== '23505') throw error; // 23505＝別人剛好先建立，重試
-      continue;
-    }
-    const { data, error } = await sb().from('system_settings')
-      .update({ value: nextValue, updated_at: updatedAt })
-      .eq('key', LOG_KEY).eq('updated_at', row.updated_at)
-      .select('key');
-    if (error) throw error;
-    if (data && data.length) return;
-  }
-  throw new Error('改名紀錄寫入衝突，請再試一次');
-}
+const appendEdit = UserSettingsLog.appendEntry;
+const getEditLog = () => UserSettingsLog.getLog(LOG_KEY);
+const saveEditEntry = (userId, entry) => UserSettingsLog.saveEntry(LOG_KEY, userId, entry);
 
 /**
  * 修改會員名稱並留下紀錄。
@@ -129,17 +78,7 @@ async function renameMember({ userId, newName, operator }) {
 }
 
 /** 手動改過名字的會員電話（同步時不覆蓋這些人的名字） */
-async function getNameLockedPhones() {
-  const userIds = Object.keys(await getEditLog());
-  const phones = new Set();
-  for (let i = 0; i < userIds.length; i += ID_CHUNK_SIZE) {
-    const chunk = userIds.slice(i, i + ID_CHUNK_SIZE);
-    const { data, error } = await sb().from('users').select('phone').in('id', chunk);
-    if (error) throw error;
-    (data || []).forEach(u => u.phone && phones.add(u.phone));
-  }
-  return phones;
-}
+const getNameLockedPhones = () => UserSettingsLog.getLockedPhones(LOG_KEY);
 
 module.exports = {
   LOG_KEY, MAX_NAME_LENGTH, NameEditError,

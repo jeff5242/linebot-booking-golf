@@ -2,6 +2,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
+const MemberTierChange = require('./MemberTierChange');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -234,6 +235,33 @@ async function issueVouchers({ userId, voucherType, quantity, operatorName, vali
   return { vouchers: inserted, user };
 }
 
+/** 發套本前判斷是否要改會員身分（白金停權 + B 套本 → 金卡） */
+async function planTierChangeForUser(userId, packageIndex) {
+  if (!MemberTierChange.isPackageAllowedWhenLapsed(packageIndex)) return null;
+  const { data: buyer, error } = await supabase.from('users').select('golfer_type').eq('id', userId).maybeSingle();
+  if (error) throw error;
+  if (!buyer) return null;
+  const lastPurchaseDate = await getLastPurchaseDate(userId);
+  return MemberTierChange.planTierChange({ packageIndex, golferType: buyer.golfer_type, lastPurchaseDate });
+}
+
+/**
+ * 發券成功後改會員身分。券已發出（客人已付款），身分變更失敗不回滾券，
+ * 改回傳錯誤讓櫃檯知道要請工程端補改。
+ */
+async function applyTierChangeAfterIssue({ userId, plan, operatorName, packageName }) {
+  try {
+    const result = await MemberTierChange.applyTierChange({
+      userId, from: plan.from, to: plan.to, operator: operatorName,
+      reason: `白金停權後購買「${packageName}」`,
+    });
+    return { ...plan, changed: result.changed };
+  } catch (err) {
+    console.error('[VoucherOps] 會員身分變更失敗:', err);
+    return { ...plan, changed: false, error: err.message };
+  }
+}
+
 async function issuePackage({ userId, packageIndex, operatorName, validFrom, invoiceNumber }) {
   const settings = await getIssueSettings();
   const packages = settings.packages || DEFAULT_ISSUE_SETTINGS.packages;
@@ -246,6 +274,9 @@ async function issuePackage({ userId, packageIndex, operatorName, validFrom, inv
 
   const validityYears = settings.validity_years || 1;
   const today = new Date().toISOString().slice(0, 10);
+
+  // 停權的白金會員買 B 套本＝加入金卡會員：發券前先判斷（發券後上次購買日就變成今天了）
+  const tierPlan = await planTierChangeForUser(userId, packageIndex);
 
   // 檢查是否已有 active 套本：擋重複購買，或判斷為續約
   const active = await getActivePackage(userId);
@@ -312,6 +343,10 @@ async function issuePackage({ userId, packageIndex, operatorName, validFrom, inv
       operatorName, validFrom: startDate, validUntil: endDate, invoiceNumber: invoice,
     });
 
+    const tierChange = tierPlan
+      ? await applyTierChangeAfterIssue({ userId, plan: tierPlan, operatorName, packageName: pkg.name })
+      : null;
+
     return {
       package: pkg,
       green_fee: { count: greenResult.vouchers.length },
@@ -319,6 +354,7 @@ async function issuePackage({ userId, packageIndex, operatorName, validFrom, inv
       validFrom: startDate,
       validUntil: endDate,
       isRenewal,
+      tierChange,
     };
   } catch (err) {
     await supabase.from('voucher_packages').delete().eq('id', pkgRow.id);
