@@ -6,6 +6,7 @@ const ALL_TABS = [
     { key: 'waitlist', label: '候補監控' },
     { key: 'scan', label: '📷 掃碼 (報到/核銷)' },
     { key: 'checkin_list', label: '📋 報到清單' },
+    { key: 'checkin_board', label: '🟩 報到看板' },
     { key: 'vouchers', label: '🎫 票券管理' },
     { key: 'users', label: '用戶管理' },
     { key: 'settings', label: '參數設定' },
