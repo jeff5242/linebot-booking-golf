@@ -751,6 +751,7 @@ app.post('/api/bookings', async (req, res) => {
       if (gmConfig.force && Number(players_count) <= 2 && !accepted && GroupMatching.isActiveOn(date, gmConfig)) {
         const { groups } = await GroupMatching.findMergeableGroups({
           date, time, excludeUserId: userId, config: gmConfig, bookingSettings: settings,
+          playersCount: Number(players_count),
         });
         if (groups.length > 0) {
           return res.status(409).json({
@@ -917,7 +918,7 @@ app.post('/api/waitlist', async (req, res) => {
 // 查當天可併組候選（LIFF 預約頁；去識別，不含姓名電話）
 app.get('/api/bookings/mergeable', async (req, res) => {
   try {
-    const { date, time, phone } = req.query;
+    const { date, time, phone, players } = req.query; // players：這次要併入的人數，只列空位夠的組
     if (!date) return res.status(400).json({ error: '缺少日期' });
     const config = await GroupMatching.getConfig();
     if (!GroupMatching.isActiveOn(date, config)) return res.json({ active: false, groups: [] });
@@ -929,7 +930,9 @@ app.get('/api/bookings/mergeable', async (req, res) => {
       excludeUserId = u?.[0]?.id || null;
     }
     const bookingSettings = await getSettings();
-    const result = await GroupMatching.findMergeableGroups({ date, time, excludeUserId, config, bookingSettings });
+    const result = await GroupMatching.findMergeableGroups({
+      date, time, excludeUserId, config, bookingSettings, playersCount: players,
+    });
     res.json({ ...result, force: config.force }); // force：前端據此決定是否提供「自己開組」
 
   } catch (error) {

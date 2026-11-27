@@ -219,7 +219,7 @@ export function Booking() {
                 const userPhone = localStorage.getItem('golf_user_phone') || '';
                 const dateStr = format(selectedDate, 'yyyy-MM-dd');
                 const timeStr = format(pendingTime, 'HH:mm:ss');
-                const mr = await fetch(`${apiUrl}/api/bookings/mergeable?date=${dateStr}&time=${timeStr}&phone=${encodeURIComponent(userPhone)}`)
+                const mr = await fetch(`${apiUrl}/api/bookings/mergeable?date=${dateStr}&time=${timeStr}&players=${playersCount}&phone=${encodeURIComponent(userPhone)}`)
                     .then(r => r.json()).catch(() => ({ active: false }));
                 if (mr.active && Array.isArray(mr.groups) && mr.groups.length > 0) {
                     setMergeChoice({ groups: mr.groups, force: !!mr.force });
