@@ -19,6 +19,7 @@ import { VoucherOpsPanel } from '../components/VoucherOpsPanel';
 import { MemberNameEditModal, MemberNameEditLog } from '../components/MemberNameEdit';
 import CheckinBoard from '../components/CheckinBoard';
 import PlayerCheckinChips from '../components/PlayerCheckinChips';
+import { fetchBoardState } from '../utils/checkinBoardApi';
 import { getAdminPermissions, getAdminInfo, adminFetch, clearAdminSession } from '../utils/adminApi';
 
 const ALL_TABS = [
@@ -1209,6 +1210,16 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
     const [slotFilter, setSlotFilter] = useState('all'); // 'all' | 'booked'
     const [hiddenSlots, setHiddenSlots] = useState([]);
     const [isSavingHidden, setIsSavingHidden] = useState(false);
+    const [departedMap, setDepartedMap] = useState({});
+
+    // 報到看板按「已出發」的組（system_settings）；讀不到時不標示，其他功能照常
+    useEffect(() => {
+        let cancelled = false;
+        fetchBoardState(format(selectedDate, 'yyyy-MM-dd'))
+            .then(state => { if (!cancelled) setDepartedMap(state.departed); })
+            .catch(() => { if (!cancelled) setDepartedMap({}); });
+        return () => { cancelled = true; };
+    }, [selectedDate, bookings]);
 
     // 載入選定日期的營運日曆覆蓋設定
     useEffect(() => {
@@ -1914,7 +1925,13 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                                     <td style={{ padding: '12px', fontWeight: 'bold', textDecoration: isHidden ? 'line-through' : 'none', color: isHidden ? '#dc2626' : 'inherit' }}>{displayTime}</td>
                                     {booking ? (
                                         <>
-                                            <td style={{ padding: '12px' }}>{booking.status === 'checked_in' ? '已報到' : '已預約'}</td>
+                                            <td style={{ padding: '12px' }}>
+                                                {departedMap[booking.id] ? (
+                                                    <span style={{ display: 'inline-block', background: '#1f6f52', color: '#fff', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                                                        已出發 {format(new Date(departedMap[booking.id]), 'HH:mm')}
+                                                    </span>
+                                                ) : (booking.status === 'checked_in' ? '已報到' : '已預約')}
+                                            </td>
                                             <td style={{ padding: '12px' }}>
                                                 {booking.users?.display_name || booking.players_info?.[0]?.name || '-'}
                                                 {booking.notes?.includes('果嶺隊預約') && (

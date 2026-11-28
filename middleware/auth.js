@@ -44,6 +44,21 @@ function requireAuth(requiredPermission) {
 }
 
 /**
+ * 驗證 JWT，且至少要有其中一個權限（例：報到看板與出發台看板都能按「已出發」）
+ * @param {string[]} permissionKeys
+ */
+function requireAnyPermission(permissionKeys) {
+    const check = requireAuth();
+    return (req, res, next) => check(req, res, () => {
+        const permissions = req.admin?.permissions || [];
+        if (!permissionKeys.some(k => permissions.includes(k))) {
+            return res.status(403).json({ error: '權限不足', required: permissionKeys });
+        }
+        next();
+    });
+}
+
+/**
  * 可選驗證：有 JWT 就解析，沒有也不擋
  * 用於公開端點（如 /api/rates/active 同時服務前台和後台）
  */
@@ -60,4 +75,4 @@ function optionalAuth(req, res, next) {
     next();
 }
 
-module.exports = { requireAuth, optionalAuth };
+module.exports = { requireAuth, requireAnyPermission, optionalAuth };
