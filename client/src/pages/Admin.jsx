@@ -17,6 +17,8 @@ import { VoucherUsageReport } from '../components/VoucherUsageReport';
 import { VoucherReportPanel } from '../components/VoucherReportPanel';
 import { VoucherOpsPanel } from '../components/VoucherOpsPanel';
 import { MemberNameEditModal, MemberNameEditLog } from '../components/MemberNameEdit';
+import CheckinBoard from '../components/CheckinBoard';
+import PlayerCheckinChips from '../components/PlayerCheckinChips';
 import { getAdminPermissions, getAdminInfo, adminFetch, clearAdminSession } from '../utils/adminApi';
 
 const ALL_TABS = [
@@ -24,6 +26,7 @@ const ALL_TABS = [
     { key: 'waitlist', label: '候補監控' },
     { key: 'scan', label: '📷 掃碼 (報到/核銷)' },
     { key: 'checkin_list', label: '📋 報到清單' },
+    { key: 'checkin_board', label: '🟩 報到看板' },
     { key: 'vouchers', label: '🎫 票券管理' },
     { key: 'users', label: '用戶管理' },
     { key: 'settings', label: '參數設定' },
@@ -1256,12 +1259,6 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
         return startObj;
     };
 
-    const handleCheckIn = async (id) => {
-        if (!confirm('確認報到?')) return;
-        const { error } = await supabase.from('bookings').update({ status: 'checked_in', checkin_time: new Date() }).eq('id', id);
-        if (!error) fetchBookings();
-    };
-
     const handleScheduleDeparture = async (id, currentTime) => {
         const newTime = prompt('輸入排定時間 (HH:MM):', currentTime);
         if (newTime && /^\d{2}:\d{2}$/.test(newTime)) {
@@ -1930,9 +1927,8 @@ function StarterDashboard({ selectedDate, setSelectedDate, bookings, fetchBookin
                                             <td style={{ padding: '12px' }}>{booking.players_count}人</td>
                                             <td style={{ padding: '12px' }}>
                                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                                                    {!booking.checkin_time ? (
-                                                        <button onClick={() => handleCheckIn(booking.id)} className="btn" style={{ padding: '4px 8px', fontSize: '0.8rem', width: 'auto' }}>報到</button>
-                                                    ) : (
+                                                    <PlayerCheckinChips booking={booking} onChanged={fetchBookings} />
+                                                    {booking.checkin_time && (
                                                         <div style={{ background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 'bold' }}>
                                                             {format(new Date(booking.checkin_time), 'HH:mm')}
                                                         </div>
@@ -2982,6 +2978,7 @@ export function AdminDashboard() {
             {activeTab === 'starter' && <StarterDashboard selectedDate={selectedDate} setSelectedDate={setSelectedDate} bookings={bookings} fetchBookings={fetchBookings} setChargeCardBooking={setChargeCardBooking} systemSettings={systemSettings} />}
             {activeTab === 'scan' && <QRScannerTab />}
             {activeTab === 'checkin_list' && <CheckInList bookings={bookings} selectedDate={selectedDate} />}
+            {activeTab === 'checkin_board' && <CheckinBoard systemSettings={systemSettings} />}
             {activeTab === 'departure_list' && <DepartureList bookings={bookings} selectedDate={selectedDate} />}
             {activeTab === 'vouchers' && <VoucherManagement />}
             {activeTab === 'users' && <UserManagement />}
