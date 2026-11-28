@@ -15,12 +15,14 @@ import {
     Bell,
     TrendingUp,
     KeyRound,
-    Ticket
+    Ticket,
+    Monitor
 } from 'lucide-react';
 import { VoucherIssueSettings } from './VoucherIssueSettings';
 import { OaFunctionMatrix } from './OaFunctionMatrix';
 import { adminFetch } from '../utils/adminApi';
 import { setTzOffsetMinutes } from '../utils/timezone';
+import { fetchBoardSettings, saveBoardSettings } from '../utils/checkinBoardApi';
 
 // ============= 輔助元件 =============
 
@@ -581,6 +583,91 @@ function GroupMatchingCard() {
                 <button onClick={save} disabled={saving} style={{ background: '#1f6f52', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
                     {saving ? '儲存中…' : '儲存設定'}
                 </button>
+                {msg && <span style={{ fontSize: 13, color: msg.startsWith('✅') ? '#1f6f52' : '#dc2626' }}>{msg}</span>}
+            </div>
+        </Card>
+    );
+}
+
+// 報到看板：全員到齊後自動移除（放營運管理分頁）
+const CHECKIN_HIDE_OPTIONS = [
+    { v: 30, l: '30 秒' },
+    { v: 60, l: '1 分鐘' },
+    { v: 180, l: '3 分鐘' },
+    { v: 300, l: '5 分鐘' },
+];
+
+function CheckinBoardCard() {
+    const [cfg, setCfg] = useState(null);
+    const [loadError, setLoadError] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [msg, setMsg] = useState('');
+
+    useEffect(() => {
+        fetchBoardSettings()
+            .then(data => setCfg({ autoHideEnabled: data.autoHideEnabled !== false, autoHideSeconds: Number(data.autoHideSeconds) || 30 }))
+            .catch(e => setLoadError(e.message));
+    }, []);
+
+    const save = async () => {
+        setSaving(true); setMsg('');
+        try {
+            const data = await saveBoardSettings(cfg);
+            setCfg(data.config);
+            setMsg('✅ 已儲存');
+            setTimeout(() => setMsg(''), 2500);
+        } catch (e) { setMsg('❌ ' + e.message); }
+        finally { setSaving(false); }
+    };
+
+    if (loadError) return <Card title="報到看板" icon={Monitor}><div role="alert" style={{ color: '#dc2626', fontSize: 13 }}>{loadError}</div></Card>;
+    if (!cfg) return <Card title="報到看板" icon={Monitor}><div style={{ color: '#9ca3af' }}>載入中…</div></Card>;
+
+    const box = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: '8px', marginBottom: '10px' };
+    const on = cfg.autoHideEnabled;
+
+    return (
+        <Card title="報到看板" icon={Monitor}>
+            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+                設定「🟩 報到看板」上，全員到齊的組什麼時候從看板移除。員工按「已出發」的組會立刻移除，不受這個設定影響。
+            </div>
+
+            <div style={box}>
+                <div>
+                    <label htmlFor="checkin-auto-hide" style={{ fontWeight: 700 }}>全員到齊後自動移除</label>
+                    <div style={{ fontSize: 12, color: '#9ca3af' }}>關閉時，只有按「已出發」才會移除</div>
+                </div>
+                <button id="checkin-auto-hide" type="button" role="switch" aria-checked={on}
+                    onClick={() => setCfg(c => ({ ...c, autoHideEnabled: !c.autoHideEnabled }))}
+                    style={{ width: 48, height: 28, borderRadius: 14, border: 'none', padding: 0, background: on ? '#1f6f52' : '#cbd5cf', position: 'relative', cursor: 'pointer', flexShrink: 0 }}>
+                    <span style={{ position: 'absolute', top: 3, left: on ? 23 : 3, width: 22, height: 22, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+                </button>
+            </div>
+
+            <div style={{ ...box, opacity: on ? 1 : 0.45 }}>
+                <div>
+                    <label htmlFor="checkin-hide-delay" style={{ fontWeight: 700 }}>全員到齊後，等多久移除</label>
+                    <div style={{ fontSize: 12, color: '#9ca3af' }}>從最後一位組員報到的時間開始算</div>
+                </div>
+                <select id="checkin-hide-delay" value={cfg.autoHideSeconds} disabled={!on}
+                    onChange={e => setCfg(c => ({ ...c, autoHideSeconds: Number(e.target.value) }))}
+                    style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 12px', minHeight: 40 }}>
+                    {CHECKIN_HIDE_OPTIONS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                </select>
+            </div>
+
+            <div style={{ background: '#f0f7f3', borderRadius: 8, padding: '12px 14px', fontSize: 13, color: '#374151', display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                <b style={{ color: '#1f6f52' }}>移除後</b>
+                <span>• 這一組只從看板拿掉，報到紀錄和預約都不會刪除。</span>
+                <span>• 其他組的組號不變，頁數會重新計算。</span>
+                <span>• 按「已出發」後 10 秒內，可以按「復原」放回看板。</span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <button onClick={save} disabled={saving} style={{ background: '#1f6f52', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontWeight: 700, cursor: 'pointer', minHeight: 44, opacity: saving ? 0.6 : 1 }}>
+                    {saving ? '儲存中…' : '儲存設定'}
+                </button>
+                <span style={{ fontSize: 13, color: '#6b7280' }}>儲存後，看板最晚 15 秒內套用</span>
                 {msg && <span style={{ fontSize: 13, color: msg.startsWith('✅') ? '#1f6f52' : '#dc2626' }}>{msg}</span>}
             </div>
         </Card>
@@ -1315,6 +1402,8 @@ export function AdminSettings() {
                             </Card>
 
                             <GroupMatchingCard />
+
+                            <CheckinBoardCard />
 
                             <ExpiryReminderCard />
 

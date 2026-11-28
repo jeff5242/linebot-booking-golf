@@ -99,18 +99,43 @@ export function boardSession(nowMinutes) {
 const hhmm = (t) => String(t || '').slice(0, 5);
 
 /**
+ * 全員到齊時，回傳最後一位組員的報到時間；有人沒到回 null。
+ * 舊資料（整組報到、沒有個別紀錄）用整組報到時間。
+ * @param {object} booking
+ * @returns {string|null}
+ */
+export function groupLastCheckinAt(booking) {
+    const list = players(booking);
+    if (list.length === 0) return null;
+    if (isLegacyWholeGroup(booking)) return booking.checkin_time || null;
+    if (!list.every(p => p && p.checked_in_at)) return null;
+    return list.reduce((latest, p) => (Date.parse(p.checked_in_at) > Date.parse(latest) ? p.checked_in_at : latest), list[0].checked_in_at);
+}
+
+/** 還要幾秒自動移除；不會自動移除時回 null（關閉、有人沒到、時間格式錯誤） */
+function secondsUntilAutoHide(booking, autoHideSeconds, nowMs) {
+    if (!(autoHideSeconds > 0) || !Number.isFinite(nowMs)) return null;
+    const last = Date.parse(groupLastCheckinAt(booking) || '');
+    if (!Number.isFinite(last)) return null;
+    return Math.max(0, Math.ceil((last + autoHideSeconds * 1000 - nowMs) / 1000));
+}
+
+/**
  * 組出報到看板的資料。
  * 上午 = 開球時間早於後台「下午 B 時段」開始時間；沒設定時用 12:00。
- * 組號每場照開球時間從 1 開始。
+ * 組號每場照開球時間從 1 開始；先編號再拿掉已出發的組，所以組號不會變。
  * @param {object[]} bookings 當天預約
- * @param {{settings?: object, nowMinutes: number, perPage?: number}} opts
+ * @param {{settings?: object, nowMinutes: number, perPage?: number,
+ *          departed?: Object<string, string>, autoHideSeconds?: number, nowMs?: number}} opts
+ *   departed：{ 預約 id: 已出發時間 }；autoHideSeconds：全員到齊後幾秒自動移除，0 = 關閉
  */
-export function buildBoard(bookings, { settings, nowMinutes, perPage = GROUPS_PER_PAGE }) {
+export function buildBoard(bookings, { settings, nowMinutes, perPage = GROUPS_PER_PAGE, departed = {}, autoHideSeconds = 0, nowMs = Date.now() }) {
     const session = boardSession(nowMinutes);
     const pmStart = hhmm(settings?.peak_b?.start) || DEFAULT_PM_START;
     const inSession = (b) => (session === 'am' ? hhmm(b.time) < pmStart : hhmm(b.time) >= pmStart);
 
-    const groups = (Array.isArray(bookings) ? bookings : [])
+    const departedMap = departed && typeof departed === 'object' ? departed : {};
+    const allGroups = (Array.isArray(bookings) ? bookings : [])
         .filter(b => b && b.status !== 'cancelled' && inSession(b))
         .slice()
         .sort((a, b) => hhmm(a.time).localeCompare(hhmm(b.time)))
@@ -122,11 +147,15 @@ export function buildBoard(bookings, { settings, nowMinutes, perPage = GROUPS_PE
                 return { empty: false, checked: isPlayerCheckedIn(b, i), name };
             });
             const inCount = seats.filter(s => s.checked).length;
+            const departedAt = departedMap[b.id] || null;
+            const hideInSeconds = departedAt ? null : secondsUntilAutoHide(b, autoHideSeconds, nowMs);
             return {
                 id: b.id, no: gi + 1, time: hhmm(b.time), holes: b.holes,
                 seats, inCount, size: list.length, allIn: list.length > 0 && inCount === list.length,
+                departedAt, hideInSeconds, hidden: Boolean(departedAt) || hideInSeconds === 0,
             };
         });
+    const groups = allGroups.filter(g => !g.hidden);
 
     const pages = [];
     for (let i = 0; i < groups.length; i += perPage) pages.push(groups.slice(i, i + perPage));
@@ -135,8 +164,9 @@ export function buildBoard(bookings, { settings, nowMinutes, perPage = GROUPS_PE
         session,
         groups,
         pages,
-        totalGroups: groups.length,
-        totalPlayers: groups.reduce((n, g) => n + g.size, 0),
-        checkedPlayers: groups.reduce((n, g) => n + g.inCount, 0),
+        totalGroups: allGroups.length,
+        departedGroups: allGroups.length - groups.length,
+        totalPlayers: allGroups.reduce((n, g) => n + g.size, 0),
+        checkedPlayers: allGroups.reduce((n, g) => n + g.inCount, 0),
     };
 }

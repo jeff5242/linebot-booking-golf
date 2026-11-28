@@ -23,6 +23,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { getSettings, updateSettings } = require('./services/SystemSettings');
 const { generateTimeSlots, processWaitlist } = require('./services/BookingLogic');
 const GroupMatching = require('./services/GroupMatching');
+const CheckinBoard = require('./services/CheckinBoard');
 const ExpiryReminder = require('./services/ExpiryReminder');
 const MemberNameEdit = require('./services/MemberNameEdit');
 const OperationalCalendar = require('./services/OperationalCalendar');
@@ -31,7 +32,7 @@ const ChargeCard = require('./services/ChargeCard');
 const { login: adminLogin, loginByOtp: adminLoginByOtp, issueTokenForUsername } = require('./services/AuthService');
 const StaffRichMenu = require('./services/StaffRichMenu');
 const AppConfig = require('./services/AppConfig');
-const { requireAuth, optionalAuth } = require('./middleware/auth');
+const { requireAuth, requireAnyPermission, optionalAuth } = require('./middleware/auth');
 const RoleMgmt = require('./services/RoleManagement');
 const bcrypt = require('bcryptjs');
 const OtpService = require('./services/OtpService');
@@ -995,6 +996,62 @@ app.post('/api/group-matching-settings', requireAuth('settings'), async (req, re
       key: GroupMatching.SETTINGS_KEY, value: clean, updated_at: new Date().toISOString(),
     });
     res.json({ success: true, config: clean });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── 報到看板：已出發 + 全員到齊後自動移除（CheckinBoard）──
+const CHECKIN_BOARD_PERMS = ['checkin_board', 'starter'];
+
+// 看板/出發台：讀當天已出發的組 + 自動移除設定
+app.get('/api/checkin-board/state', requireAnyPermission(CHECKIN_BOARD_PERMS), async (req, res) => {
+  try {
+    const date = String(req.query.date || '');
+    if (!CheckinBoard.isValidDate(date)) return res.status(400).json({ error: '日期格式必須是 YYYY-MM-DD' });
+    const [config, departed] = await Promise.all([CheckinBoard.getConfig(), CheckinBoard.getDeparted(date)]);
+    res.json({ date, config, autoHideSeconds: CheckinBoard.effectiveAutoHideSeconds(config), departed });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 看板：按「已出發」（departed=true）或「復原」（departed=false）
+app.post('/api/checkin-board/departed', requireAnyPermission(CHECKIN_BOARD_PERMS), async (req, res) => {
+  try {
+    const { date, booking_id: bookingId, departed } = req.body || {};
+    if (!CheckinBoard.isValidDate(date)) return res.status(400).json({ error: '日期格式必須是 YYYY-MM-DD' });
+    if (typeof bookingId !== 'string' || !bookingId) return res.status(400).json({ error: '缺少預約編號' });
+    if (typeof departed !== 'boolean') return res.status(400).json({ error: 'departed 必須是 true 或 false' });
+
+    if (departed) {
+      const { data: booking, error: bErr } = await supabase
+        .from('bookings').select('id, date, status').eq('id', bookingId).maybeSingle();
+      if (bErr) return res.status(500).json({ error: `讀取預約失敗：${bErr.message}` });
+      if (!booking || booking.date !== date) return res.status(404).json({ error: '找不到這一天的這筆預約' });
+      if (booking.status === 'cancelled') return res.status(400).json({ error: '這筆預約已取消' });
+    }
+
+    const map = await CheckinBoard.setDeparted({ date, bookingId, departed, nowIso: new Date().toISOString() });
+    CheckinBoard.pruneOldDeparted(CheckinBoard.pruneCutoff()).catch(err => console.error('[CheckinBoard] 清除舊紀錄失敗:', err.message));
+    res.json({ success: true, date, departed: map });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 後台參數設定：讀/寫 自動移除設定
+app.get('/api/checkin-board-settings', requireAuth('settings'), async (req, res) => {
+  try {
+    res.json(await CheckinBoard.getConfig());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+app.post('/api/checkin-board-settings', requireAuth('settings'), async (req, res) => {
+  try {
+    const config = await CheckinBoard.saveConfig(req.body?.config || req.body);
+    res.json({ success: true, config });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
