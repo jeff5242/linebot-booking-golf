@@ -61,4 +61,47 @@ t('maxPerGroup=3 時，3人組視為滿、不列入', () => {
   assert.ok(!out.map(g => g.booking_id).includes('g2'), '3人組在上限3時應算滿');
 });
 
+// ── 空位要夠：只列出容得下這次人數的組 ──
+
+t('2 人預約：只剩 1 位的 3 人組不列入', () => {
+  const out = GM.rankMergeable(sample(), '08:00', peakA, peakB, 4, new Set(['gSelf']), 2);
+  const ids = out.map(g => g.booking_id);
+  assert.ok(!ids.includes('g2'), '3 人組只剩 1 位，2 人不應看到');
+  assert.deepEqual(ids, ['g1', 'g3']);
+});
+
+t('1 人預約：只剩 1 位的 3 人組仍列入', () => {
+  const out = GM.rankMergeable(sample(), '08:00', peakA, peakB, 4, new Set(['gSelf']), 1);
+  assert.ok(out.map(g => g.booking_id).includes('g2'));
+});
+
+t('空位剛好等於人數時列入（2 人組 + 2 人 = 4）', () => {
+  const out = GM.rankMergeable(sample(), '08:00', peakA, peakB, 4, new Set(['gSelf']), 2);
+  const g1 = out.find(g => g.booking_id === 'g1');
+  assert.ok(g1, '2 人組剩 2 位，2 人應看得到');
+  assert.equal(g1.remaining, 2);
+});
+
+t('沒給人數時視為 1 人（舊前端相容）', () => {
+  const withDefault = GM.rankMergeable(sample(), '08:00', peakA, peakB, 4, new Set(['gSelf']));
+  const withOne = GM.rankMergeable(sample(), '08:00', peakA, peakB, 4, new Set(['gSelf']), 1);
+  assert.deepEqual(withDefault, withOne);
+});
+
+t('人數不合法（0、負數、非數字、超過上限）時視為 1 人', () => {
+  const base = GM.rankMergeable(sample(), '08:00', peakA, peakB, 4, new Set(['gSelf']), 1);
+  for (const bad of [0, -2, 'abc', NaN, null, 5, 2.5]) {
+    assert.deepEqual(GM.rankMergeable(sample(), '08:00', peakA, peakB, 4, new Set(['gSelf']), bad), base, `seatsNeeded=${bad}`);
+  }
+});
+
+t('normalizeSeatsNeeded：合法值原樣、其餘回 1', () => {
+  assert.equal(GM.normalizeSeatsNeeded(2, 4), 2);
+  assert.equal(GM.normalizeSeatsNeeded('2', 4), 2);
+  assert.equal(GM.normalizeSeatsNeeded(4, 4), 4);
+  assert.equal(GM.normalizeSeatsNeeded(5, 4), 1);
+  assert.equal(GM.normalizeSeatsNeeded(undefined, 4), 1);
+  assert.equal(GM.normalizeSeatsNeeded('x', 4), 1);
+});
+
 console.log(`\n通過 ${passed} 項\n`);

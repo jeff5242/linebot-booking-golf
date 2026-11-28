@@ -95,19 +95,34 @@ function peakType(time, peakA, peakB) {
 }
 
 /**
+ * 這次要併入的人數（外部輸入不可信）：1 ~ maxPerGroup 的整數，其餘一律視為 1。
+ * 視為 1＝與舊版「只看有沒有空位」相同，舊前端沒帶人數時行為不變。
+ * @param {*} raw
+ * @param {number} maxPerGroup
+ * @returns {number}
+ */
+function normalizeSeatsNeeded(raw, maxPerGroup) {
+  const max = maxPerGroup || DEFAULT_CONFIG.maxPerGroup;
+  const n = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
+  return Number.isInteger(n) && n >= 1 && n <= max ? n : 1;
+}
+
+/**
  * 把候選預約排序＋去識別（純函式，好測試）。
  * 規則：同一開球時間優先 → 同 Peak → 當天其他；同群組內時間近者優先。
- * 只回未滿 maxPerGroup 人的組，且排除自己（excludeBookingIds）。
+ * 只回空位容得下 seatsNeeded 人的組，且排除自己（excludeBookingIds）。
  * @param {Array} bookings 當天非取消預約（含 id,time,players_count,players_info,holes）
  * @param {string} reqTime 散客想要的開球時間 'HH:mm'
  * @param {{start,end}} peakA
  * @param {{start,end}} peakB
  * @param {number} maxPerGroup
  * @param {Set<string>} excludeBookingIds 要排除的 booking id（自己的組）
+ * @param {number} [seatsNeeded=1] 這次要併入的人數（見 normalizeSeatsNeeded）
  * @returns {Array<{booking_id,time,current_count,remaining,holes,peak,same_slot}>}
  */
-function rankMergeable(bookings, reqTime, peakA, peakB, maxPerGroup, excludeBookingIds) {
+function rankMergeable(bookings, reqTime, peakA, peakB, maxPerGroup, excludeBookingIds, seatsNeeded) {
   const max = maxPerGroup || 4;
+  const seats = normalizeSeatsNeeded(seatsNeeded, max);
   const reqShort = String(reqTime || '').slice(0, 5);
   const reqPeak = peakType(reqShort, peakA, peakB);
   const exclude = excludeBookingIds instanceof Set ? excludeBookingIds : new Set();
@@ -115,7 +130,7 @@ function rankMergeable(bookings, reqTime, peakA, peakB, maxPerGroup, excludeBook
   const candidates = (bookings || [])
     .filter(b => b && b.status !== 'cancelled')
     .filter(b => !exclude.has(String(b.id)))
-    .filter(b => Number(b.players_count) > 0 && Number(b.players_count) < max)
+    .filter(b => Number(b.players_count) > 0 && Number(b.players_count) + seats <= max)
     .map(b => {
       const tShort = String(b.time || '').slice(0, 5);
       const p = peakType(tShort, peakA, peakB);
@@ -142,11 +157,12 @@ function rankMergeable(bookings, reqTime, peakA, peakB, maxPerGroup, excludeBook
 
 /**
  * 查當天可併組候選（DB）。功能未啟用時一律回空陣列（零影響）。
- * @param {{date,time,excludeUserId,config,bookingSettings}} args
+ * @param {{date,time,excludeUserId,config,bookingSettings,playersCount}} args
  *   config: normalizeConfig 後設定；bookingSettings: 含 peak_a/peak_b 的預約設定
+ *   playersCount: 這次要併入的人數；只回空位夠的組（沒給視為 1）
  * @returns {Promise<{active:boolean, groups:Array}>}
  */
-async function findMergeableGroups({ date, time, excludeUserId, config, bookingSettings }) {
+async function findMergeableGroups({ date, time, excludeUserId, config, bookingSettings, playersCount }) {
   const cfg = config || DEFAULT_CONFIG;
   if (!isActiveOn(date, cfg)) return { active: false, groups: [] };
 
@@ -166,7 +182,7 @@ async function findMergeableGroups({ date, time, excludeUserId, config, bookingS
 
   const peakA = bookingSettings?.peak_a;
   const peakB = bookingSettings?.peak_b;
-  const groups = rankMergeable(bookings, time, peakA, peakB, cfg.maxPerGroup, exclude);
+  const groups = rankMergeable(bookings, time, peakA, peakB, cfg.maxPerGroup, exclude, playersCount);
   return { active: true, groups };
 }
 
@@ -225,6 +241,7 @@ module.exports = {
   normalizeConfig,
   isActiveOn,
   peakType,
+  normalizeSeatsNeeded,
   rankMergeable,
   findMergeableGroups,
   joinGroup,
